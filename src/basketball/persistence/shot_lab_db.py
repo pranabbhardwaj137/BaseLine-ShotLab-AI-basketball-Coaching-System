@@ -14,7 +14,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 import contextlib
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 TAXONOMY_HARD_NEGATIVES = [
     "dribble_drive",
@@ -358,6 +358,33 @@ class ShotLabDB:
                 )
             """)
 
+            # 09 (schema v8): Personalized Workout Coach. One row per generated plan, always tied to
+            # the shooting session whose report it was built from. JSON columns hold the plan, the
+            # resumable player state, recorded set-level progress, feedback and the final summary.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS workout_plans (
+                    workout_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    player_id TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'planned',
+                    plan_version TEXT NOT NULL,
+                    preferences_json TEXT NOT NULL,
+                    findings_json TEXT NOT NULL,
+                    plan_json TEXT NOT NULL,
+                    planned_duration_s INTEGER NOT NULL,
+                    state_json TEXT,
+                    progress_json TEXT,
+                    feedback_json TEXT,
+                    summary_json TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    started_at TIMESTAMP,
+                    ended_at TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (session_id) REFERENCES sessions (session_id)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_workout_plans_session ON workout_plans (session_id)")
+
             # Run column migration checks for backwards compatibility
             self._migrate_columns(cursor)
             conn.commit()
@@ -485,11 +512,80 @@ class ShotLabDB:
                     notes = {}
                 if session_id in {notes.get("source_session_id"), notes.get("follow_up_session_id")}:
                     conn.execute("DELETE FROM remediations WHERE remediation_id = ?", (remediation["remediation_id"],))
-            for table in ("attempt_analysis", "session_analysis", "session_reports"):
+            for table in ("attempt_analysis", "session_analysis", "session_reports", "workout_plans"):
                 conn.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
             conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
             conn.commit()
             return session
+
+    # ------------------------------------------------------------------ 09 workout plans
+    _WORKOUT_JSON = ("preferences", "findings", "plan", "state", "progress", "feedback", "summary")
+
+    def _workout_row(self, row) -> Optional[Dict[str, Any]]:
+        if not row:
+            return None
+        record = dict(row)
+        for key in self._WORKOUT_JSON:
+            raw = record.pop(f"{key}_json", None)
+            try:
+                record[key] = json.loads(raw) if raw else None
+            except (TypeError, json.JSONDecodeError):
+                record[key] = None
+        return record
+
+    def save_workout_plan(self, workout_id: str, session_id: str, player_id: str, plan: Dict[str, Any],
+                          preferences: Dict[str, Any], findings: Any) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO workout_plans (workout_id, session_id, player_id, status, plan_version, preferences_json, "
+                "findings_json, plan_json, planned_duration_s) VALUES (?, ?, ?, 'planned', ?, ?, ?, ?, ?)",
+                (workout_id, session_id, player_id, plan.get("plan_version", ""), json.dumps(preferences),
+                 json.dumps(findings), json.dumps(plan), int(plan["duration"]["total_s"])),
+            )
+            conn.commit()
+
+    def get_workout_plan(self, workout_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT * FROM workout_plans WHERE workout_id = ?", (workout_id,)).fetchone()
+        return self._workout_row(row)
+
+    def list_workout_plans(self, session_id: str) -> list:
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT workout_id, session_id, player_id, status, planned_duration_s, created_at, started_at, ended_at, "
+                "updated_at, plan_json, summary_json FROM workout_plans WHERE session_id = ? ORDER BY created_at DESC, rowid DESC",
+                (session_id,)).fetchall()
+        out = []
+        for row in rows:
+            record = dict(row)
+            plan = json.loads(record.pop("plan_json") or "{}")
+            summary = json.loads(record.pop("summary_json") or "null")
+            record["title"] = plan.get("title")
+            record["summary"] = summary
+            out.append(record)
+        return out
+
+    def update_workout_progress(self, workout_id: str, *, status: str, state: Any, progress: Any,
+                                feedback: Any = None, summary: Any = None, started: bool = False,
+                                ended: bool = False) -> None:
+        """Write player state/progress in one statement; start/end timestamps are set once, server-side."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE workout_plans SET status = ?, state_json = ?, progress_json = ?, "
+                "feedback_json = COALESCE(?, feedback_json), summary_json = COALESCE(?, summary_json), "
+                "started_at = CASE WHEN ? AND started_at IS NULL THEN CURRENT_TIMESTAMP ELSE started_at END, "
+                "ended_at = CASE WHEN ? AND ended_at IS NULL THEN CURRENT_TIMESTAMP ELSE ended_at END, "
+                "updated_at = CURRENT_TIMESTAMP WHERE workout_id = ?",
+                (status, json.dumps(state), json.dumps(progress), json.dumps(feedback) if feedback is not None else None,
+                 json.dumps(summary) if summary is not None else None, int(started), int(ended), workout_id),
+            )
+            conn.commit()
+
+    def delete_workout_plan(self, workout_id: str) -> bool:
+        with self._get_connection() as conn:
+            cursor = conn.execute("DELETE FROM workout_plans WHERE workout_id = ?", (workout_id,))
+            conn.commit()
+            return cursor.rowcount > 0
 
     # ------------------------------------------------------------------ 08-07 analysis store
     def save_session_analysis(self, session_id: str, analysis: Dict[str, Any], input_key: str) -> None:
