@@ -522,10 +522,14 @@ const mmss = seconds => {
 };
 
 /* ------------------------------------------------------------------ routing */
-const VIEWS = ['new', 'review', 'report', 'progress'];
-const VIEW_TITLES = {new: 'New session', review: 'Review', report: 'Report', progress: 'Progress'};
+const VIEWS = ['new', 'review', 'report', 'workout', 'progress'];
+const VIEW_TITLES = {new: 'New session', review: 'Review', report: 'Report', workout: 'Workout', progress: 'Progress'};
+let currentView = null;
+let workoutSessionId = null;  // the shooting session whose report a workout is built from
 function setView(name, {push = true} = {}) {
   const view = VIEWS.includes(name) ? name : 'new';
+  if (currentView === 'workout' && view !== 'workout') window.ShotLabWorkout?.hide();
+  currentView = view;
   for (const section of document.querySelectorAll('[data-view]')) section.hidden = section.dataset.view !== view;
   for (const link of document.querySelectorAll('[data-nav]')) {
     if (link.dataset.nav === view) link.setAttribute('aria-current', 'page');
@@ -537,6 +541,12 @@ function setView(name, {push = true} = {}) {
   document.title = `${VIEW_TITLES[view]} · Baseline Shot Lab`;
   if (view === 'progress') loadPlayerHistory(progressPlayer.value || playerIdInput.value);
   if (view === 'report') showReport(reportSessionId || activeSessionId);
+  if (view === 'workout') {
+    workoutSessionId = workoutSessionId || storage('get', 'shotLabWorkoutSession') || reportSessionId || activeSessionId;
+    // workout.js loads after app.js (both deferred); on the very first boot it may not exist yet.
+    if (window.ShotLabWorkout) window.ShotLabWorkout.show(workoutSessionId);
+    else window.addEventListener('DOMContentLoaded', () => window.ShotLabWorkout?.show(workoutSessionId), {once: true});
+  }
   window.scrollTo({top: 0});
   moveNavIndicator();
   const section = document.querySelector(`[data-view="${view}"]`);
@@ -1632,7 +1642,9 @@ function renderResults(result, jobId) {
   lowerGrid.append(el('section', {class: 'card report-card', 'aria-labelledby': 'report-title'},
     el('h2', {id: 'report-title', text: 'Full coaching report'}),
     el('p', {text: 'Ten sections: overview, coaching summary, technical table, annotated keyframes, shot-by-shot review, correction plan, practice plan, technique and injury-risk reduction, progress, and methodology. Print it or save it as a PDF.'}),
-    el('button', {type: 'button', class: 'btn btn-primary', onclick: () => { reportSessionId = result.session_id; setView('report'); }}, 'Open full report')));
+    el('div', {class: 'report-card-actions'},
+      el('button', {type: 'button', class: 'btn btn-primary', onclick: () => { reportSessionId = result.session_id; setView('report'); }}, 'Open full report'),
+      el('button', {type: 'button', class: 'btn btn-quiet', onclick: () => { reportSessionId = result.session_id; openWorkoutFor(result.session_id); }}, 'Personalized workout'))));
   results.append(lowerGrid);
 
   const enableChat = health => {
@@ -2198,6 +2210,7 @@ async function showReport(sessionId, {refresh = false} = {}) {
     reportRoot.replaceChildren();
     reportPrint.disabled = true;
     reportRefresh.disabled = true;
+    reportWorkout.disabled = true;
     reportStatus.textContent = '';
     return;
   }
@@ -2224,6 +2237,9 @@ async function showReport(sessionId, {refresh = false} = {}) {
       },
     });
     reportPrint.disabled = false;
+    reportWorkout.disabled = false;
+    const cover = reportRoot.querySelector('.report-cover');
+    if (cover) cover.after(workoutCta(sessionId));
     animateReport();
     reportStatus.textContent = report.meta.from_cache ? `Saved report from ${formatDate(report.meta.generated_at)}` : `Generated ${formatDate(report.meta.generated_at)}`;
   } catch (error) {
@@ -2252,6 +2268,23 @@ function animateReport() {
   }
 }
 reportPrint.addEventListener('click', () => window.print());
+function openWorkoutFor(sessionId) {
+  if (!sessionId) return;
+  workoutSessionId = sessionId;
+  storage('set', 'shotLabWorkoutSession', sessionId);
+  setView('workout');
+}
+const reportWorkout = $('#report-workout');
+reportWorkout.addEventListener('click', () => openWorkoutFor(reportSessionId));
+function workoutCta(sessionId) {
+  return el('section', {class: 'workout-cta no-print', 'aria-labelledby': 'workout-cta-title'},
+    el('div', {},
+      el('p', {class: 'eyebrow', text: 'Next step'}),
+      el('h2', {id: 'workout-cta-title', text: 'Turn this report into a workout'}),
+      el('p', {text: 'Builds a plan of 20 minutes or more from the findings above, the equipment you have and how you feel today. You review it before you start.'})),
+    el('button', {type: 'button', class: 'btn btn-primary', id: 'report-workout-cta', onclick: () => openWorkoutFor(sessionId)},
+      iconEl('i-workout'), 'Generate My Personalized Workout'));
+}
 // Collapsed <details> do not print their content; open them for printing, then restore.
 let printOpened = [];
 window.addEventListener('beforeprint', () => {

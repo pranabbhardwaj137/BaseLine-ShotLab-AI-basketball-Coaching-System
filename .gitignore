@@ -94,3 +94,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Workout demonstration videos (local media library, read-only; see docs/reference/WORKOUT_COACH.md)
+/workout/

@@ -1,0 +1,3 @@
+[console_scripts]
+basketball = basketball.app.main:main
+basketball-web = basketball.app.web_app:main

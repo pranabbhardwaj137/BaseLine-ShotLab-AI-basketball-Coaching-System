@@ -1,0 +1,182 @@
+{
+ "meta": {
+  "session_id": "sess_fixture",
+  "player_id": "vqa_player",
+  "generated_at": "2026-10-27T12:15:36+00:00"
+ },
+ "overview": {
+  "session_date": "2026-10-26 09:08:46",
+  "video_filename": "practice.mp4",
+  "analysis_status": "COMPLETE",
+  "skill_level": "beginner",
+  "attempts_total": 12,
+  "attempts_confirmed": 0,
+  "limitations": [
+   "Measurements come from single-camera 2D pose estimation; they are estimates, not lab motion capture.",
+   "Ball and rim are not tracked in this flow, so release angle, arc and make/miss are not measured; outcomes come only from your labels.",
+   "None of the attempts has been confirmed in Review yet; findings rest on machine-proposed attempts and their confidence is reduced."
+  ]
+ },
+ "injury": {
+  "pain_reported": false
+ },
+ "findings": [
+  {
+   "id": "torso",
+   "kind": "improvement",
+   "category": "torso",
+   "confidence": "medium",
+   "confidence_reason": "Seen in 11 of 11 measured attempts, all with high landmark confidence; none of these attempts has been confirmed by you yet, so confidence is reduced one level.",
+   "title": "Upper body moves a lot during the shot",
+   "observed": "The torso angle changed by 17\u00b0\u201328\u00b0 (forward/back in this view) between the start and just after release on attempts 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12.",
+   "affected": "11 of 11 measured attempts",
+   "timestamps": [
+    {
+     "attempt": 1,
+     "time_s": 0.8,
+     "frame": 24,
+     "label": "Torso movement during the shot"
+    },
+    {
+     "attempt": 2,
+     "time_s": 3.433,
+     "frame": 103,
+     "label": "Torso movement during the shot"
+    }
+   ],
+   "limitations": [
+    "Torso movement during the shot: Some forward lean on the way up and back on landing is normal; compare attempts rather than chasing zero.",
+    "Thresholds are coaching heuristics for this prototype, not validated norms."
+   ]
+  },
+  {
+   "id": "consistency",
+   "kind": "improvement",
+   "category": "consistency",
+   "confidence": "medium",
+   "confidence_reason": "Spread computed from 12\u201312 attempts with usable measurements.",
+   "title": "The shot changes from attempt to attempt",
+   "observed": "Across attempts, these varied the most: deepest knee bend, torso lean at release.",
+   "affected": null,
+   "timestamps": [],
+   "limitations": [
+    "Deepest knee bend: Image-plane projection; reads as a straighter leg than reality when the camera is not side-on. Light smoothing can round off a very sharp dip by a degree or two.",
+    "Torso lean at release: Assumes the camera is level; a tilted phone adds a constant offset.",
+    "Thresholds are coaching heuristics for this prototype, not validated norms."
+   ]
+  },
+  {
+   "id": "sequencing_good",
+   "kind": "strength",
+   "category": "timing",
+   "confidence": "medium",
+   "confidence_reason": "Seen in 10 of 11 measured attempts, all with high landmark confidence; none of these attempts has been confirmed by you yet, so confidence is reduced one level.",
+   "title": "Legs lead, arm follows",
+   "observed": "The knees straightened fastest 0 ms\u2013200 ms before the elbow on attempts 1, 2, 3, 4, 5, 6, 7, 9, 11, 12.",
+   "affected": "10 of 11 measured attempts",
+   "timestamps": [
+    {
+     "attempt": 1,
+     "time_s": 0.7,
+     "frame": 21,
+     "label": "Legs-to-arm timing"
+    },
+    {
+     "attempt": 2,
+     "time_s": 3.367,
+     "frame": 101,
+     "label": "Legs-to-arm timing"
+    }
+   ],
+   "limitations": [
+    "Legs-to-arm timing: Resolution is one frame (\u224833 ms at 30 fps); smoothing of the pose can shift peaks by a frame.",
+    "Thresholds are coaching heuristics for this prototype, not validated norms."
+   ]
+  },
+  {
+   "id": "arm_extension_good",
+   "kind": "strength",
+   "category": "release",
+   "confidence": "medium",
+   "confidence_reason": "Seen in 11 of 11 measured attempts, all with high landmark confidence; none of these attempts has been confirmed by you yet, so confidence is reduced one level.",
+   "title": "Arm extends fully through the release",
+   "observed": "The shooting elbow reached 176\u00b0\u2013180\u00b0 around release on attempts 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12.",
+   "affected": "11 of 11 measured attempts",
+   "timestamps": [
+    {
+     "attempt": 1,
+     "time_s": 0.967,
+     "frame": 29,
+     "label": "Arm extension through release"
+    },
+    {
+     "attempt": 2,
+     "time_s": 3.5,
+     "frame": 105,
+     "label": "Arm extension through release"
+    }
+   ],
+   "limitations": [
+    "Arm extension through release: Image-plane projection; foreshortening makes an extended arm pointing at the camera look bent.",
+    "Thresholds are coaching heuristics for this prototype, not validated norms."
+   ]
+  },
+  {
+   "id": "landing",
+   "kind": "improvement",
+   "category": "balance",
+   "confidence": "low",
+   "confidence_reason": "Seen in 11 of 12 measured attempts, with at least medium landmark confidence; none of these attempts has been confirmed by you yet, so confidence is reduced one level.",
+   "title": "Landing away from the take-off spot",
+   "observed": "You landed 0.63 torso lengths\u20132.70 torso lengths from where you took off (backward, forward) on attempts 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11.",
+   "affected": "11 of 12 measured attempts",
+   "timestamps": [
+    {
+     "attempt": 1,
+     "time_s": 1.6,
+     "frame": 48,
+     "label": "Landing spot vs take-off spot"
+    },
+    {
+     "attempt": 2,
+     "time_s": 4.233,
+     "frame": 127,
+     "label": "Body drift (dip to landing)"
+    }
+   ],
+   "limitations": [
+    "Body drift (dip to landing): Side view shows forward/back drift; front view shows sideways drift. A moving camera invalidates it.",
+    "Landing spot vs take-off spot: Needs both ankles in frame; side view cannot show sideways landing and front view cannot show forward landing.",
+    "Thresholds are coaching heuristics for this prototype, not validated norms."
+   ]
+  },
+  {
+   "id": "leg_load_good",
+   "kind": "strength",
+   "category": "lower_body",
+   "confidence": "low",
+   "confidence_reason": "Seen in 12 of 12 measured attempts, with at least medium landmark confidence; none of these attempts has been confirmed by you yet, so confidence is reduced one level.",
+   "title": "Knees bend to load the shot",
+   "observed": "A clear knee bend (100\u00b0\u2013152\u00b0 at the deepest point) on attempts 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12.",
+   "affected": "12 of 12 measured attempts",
+   "timestamps": [
+    {
+     "attempt": 1,
+     "time_s": 0.267,
+     "frame": 8,
+     "label": "Deepest knee bend"
+    },
+    {
+     "attempt": 2,
+     "time_s": 2.833,
+     "frame": 85,
+     "label": "Deepest knee bend"
+    }
+   ],
+   "limitations": [
+    "Deepest knee bend: Image-plane projection; reads as a straighter leg than reality when the camera is not side-on. Light smoothing can round off a very sharp dip by a degree or two.",
+    "Thresholds are coaching heuristics for this prototype, not validated norms."
+   ]
+  }
+ ]
+}

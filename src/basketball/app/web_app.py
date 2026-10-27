@@ -37,6 +37,9 @@ from basketball.services.live_service import LiveCameraEngine
 import basketball.services.report_service as report_service
 import basketball.analysis.shooting_analysis as shooting_analysis
 from basketball.services.video_analysis_service import KEY_JOINTS, MIN_SUFFICIENT_VALID_JOINT_RATIO
+import basketball.workout.catalog as workout_catalog
+import basketball.workout.planner as workout_planner
+import basketball.workout.progress as workout_progress
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -55,6 +58,7 @@ MIME_EXTENSIONS = {"video/mp4": ".mp4", "video/quicktime": ".mov", "video/x-m4v"
 ACCESS_COOKIE = "shotlab_access"
 CSRF_HEADER = "X-Shotlab"
 LOOPBACK_NAMES = {"127.0.0.1", "localhost", "::1"}
+WORKOUT_ID = re.compile(r"wk_[a-f0-9]{20}")
 KEYFRAME_NAME = re.compile(r"shot_[A-Za-z0-9_-]{1,64}_(?:dip|release|finish)_\d{1,7}\.jpg")
 ACCESS_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Baseline Shot Lab access</title>
@@ -608,10 +612,41 @@ class AppHandler(BaseHTTPRequestHandler):
                 "outcomes": {"human": "unknown_pending_review", "automated": "not_run"},
             })
 
+        context_match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/workout-context", parsed.path)
+        if context_match:
+            return self._workout_context(context_match.group(1))
+        workouts_match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/workouts", parsed.path)
+        if workouts_match:
+            session_id = workouts_match.group(1)
+            if not ShotLabDB(self.server.db_path).get_session(session_id):
+                return self._text_error(404, "Session not found")
+            return self._json(200, {"session_id": session_id,
+                                    "workouts": ShotLabDB(self.server.db_path).list_workout_plans(session_id)})
+        workout_match = re.fullmatch(r"/api/workouts/([A-Za-z0-9_]{1,40})", parsed.path)
+        if workout_match:
+            record = self._get_workout(workout_match.group(1))
+            if not record:
+                return self._text_error(404, "Workout not found")
+            return self._json(200, self._workout_payload(record))
+        media_match = re.fullmatch(r"/api/workout-media/([^/]{1,80})", parsed.path)
+        if media_match:
+            exercise_id = media_match.group(1)
+            if not workout_catalog.EXERCISE_ID.fullmatch(exercise_id):
+                return self._text_error(404, "Unknown exercise")
+            try:
+                catalog = workout_catalog.load_catalog(self.server.workout_catalog_path)
+            except (OSError, ValueError) as exc:
+                return self._text_error(500, f"The exercise catalog could not be loaded: {exc}")
+            path = workout_catalog.media_path(catalog, exercise_id, self.server.workout_dir)
+            if not path:
+                return self._text_error(404, "No demonstration video is available for this exercise")
+            return self._stream_local_file(str(path), self.server.workout_dir, allow_range=True, content_type="video/mp4")
+
         assets = {"/": ("index.html", "text/html; charset=utf-8"),
                   "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
                   "/assets/app.css": ("app.css", "text/css; charset=utf-8"),
                   "/assets/report.js": ("report.js", "text/javascript; charset=utf-8"),
+                  "/assets/workout.js": ("workout.js", "text/javascript; charset=utf-8"),
                   "/assets/fonts/archivo-variable.woff2": ("fonts/archivo-variable.woff2", "font/woff2")}
         asset = assets.get(parsed.path)
         if asset:
@@ -706,6 +741,9 @@ class AppHandler(BaseHTTPRequestHandler):
         if path == "/api/live/reset":
             return self._handle_live_reset()
 
+        create_workout = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/workouts", path)
+        if create_workout:
+            return self._create_workout(create_workout.group(1))
         cancel_match = re.fullmatch(r"/api/jobs/([a-f0-9]{32})/cancel", path)
         if cancel_match:
             job = self.server.job_store.get(cancel_match.group(1))
@@ -1057,6 +1095,9 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def _do_put(self):
         path = urlparse(self.path).path
+        progress_match = re.fullmatch(r"/api/workouts/([A-Za-z0-9_]{1,40})/progress", path)
+        if progress_match:
+            return self._update_workout(progress_match.group(1))
         goal_match = re.fullmatch(r"/api/players/([A-Za-z0-9_-]{1,64})/goal", path)
         if goal_match:
             try:
@@ -1216,6 +1257,12 @@ class AppHandler(BaseHTTPRequestHandler):
         return self._json(200, {"shot": db.get_shot(shot_id), "history": db.get_shot_review_history(shot_id)})
 
     def _do_delete(self):
+        workout_match = re.fullmatch(r"/api/workouts/([A-Za-z0-9_]{1,40})", urlparse(self.path).path)
+        if workout_match:
+            if not WORKOUT_ID.fullmatch(workout_match.group(1)) or \
+                    not ShotLabDB(self.server.db_path).delete_workout_plan(workout_match.group(1)):
+                return self._text_error(404, "Workout not found")
+            return self._json(200, {"deleted_workout_id": workout_match.group(1)})
         match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})", urlparse(self.path).path)
         if not match:
             return self._text_error(404, "Not found")
@@ -1269,6 +1316,158 @@ class AppHandler(BaseHTTPRequestHandler):
         })
 
 
+    # ------------------------------------------------------------------ 09 workout coach
+    def _session_report(self, session_id):
+        """The persisted report for exactly this session, or (None, error-sent)."""
+        db = ShotLabDB(self.server.db_path)
+        if not db.get_session(session_id):
+            self._text_error(404, "Session not found")
+            return None
+        if self.server.job_store.active_job_for_session(session_id):
+            self._text_error(409, "This session is still being analysed; the workout can be planned when the report is ready.")
+            return None
+        lock = self.server.session_locks.setdefault(session_id, threading.Lock())
+        if not lock.acquire(timeout=60):
+            self._text_error(409, "The session is busy; try again in a moment.")
+            return None
+        try:
+            return build_session_report(self.server, session_id)
+        except LookupError as exc:
+            self._text_error(404, str(exc))
+        except Exception as exc:
+            self._text_error(500, f"Could not load the shooting report: {exc}")
+        finally:
+            lock.release()
+        return None
+
+    def _workout_catalog(self):
+        try:
+            return workout_catalog.load_catalog(self.server.workout_catalog_path)
+        except (OSError, ValueError) as exc:
+            self._text_error(500, f"The exercise catalog could not be loaded: {exc}")
+            return None
+
+    def _workout_context(self, session_id):
+        report = self._session_report(session_id)
+        if report is None:
+            return
+        catalog = self._workout_catalog()
+        if catalog is None:
+            return
+        findings = workout_planner.extract_findings(report)
+        status = workout_catalog.video_status(catalog, self.server.workout_dir)
+        present = set(status["present"])
+        equipment = []
+        for key, info in catalog["equipment"].items():
+            main = [e for e in catalog["exercises"] if e["equipment"] == key and "main" in e["phases"]]
+            equipment.append({"key": key, "label": info["label"], "description": info["description"],
+                              "exercises": len(main), "videos": sum(1 for e in main if e["id"] in present)})
+        skill = (report.get("overview") or {}).get("skill_level")
+        return self._json(200, {
+            "session_id": session_id,
+            "source": {k: findings[k] for k in ("session_id", "player_id", "session_date", "video_filename",
+                                                "report_generated_at", "attempts_total", "attempts_confirmed")},
+            "summary": workout_planner.summary_sentence(findings, catalog),
+            "findings": findings,
+            "defaults": {"fitness_level": skill if skill in workout_catalog.LEVELS else "intermediate" if skill == "coach" else "beginner",
+                         "pain": bool((report.get("injury") or {}).get("pain_reported")), "duration_min": 20},
+            "equipment": equipment, "goals": workout_planner.GOALS, "avoid": workout_planner.AVOID,
+            "durations": list(workout_planner.DURATION_CHOICES),
+            "video_library": {"mapped_present": len(status["present"]), "mapped_missing": len(status["missing"]),
+                              "folder_found": Path(self.server.workout_dir).is_dir()},
+            "workouts": ShotLabDB(self.server.db_path).list_workout_plans(session_id),
+        })
+
+    def _create_workout(self, session_id):
+        try:
+            raw = self._read_json(16 * 1024)
+        except (ValueError, json.JSONDecodeError) as exc:
+            return self._text_error(400, str(exc))
+        catalog = self._workout_catalog()
+        if catalog is None:
+            return
+        try:
+            prefs = workout_planner.validate_preferences(raw, catalog)
+        except ValueError as exc:
+            return self._text_error(400, str(exc))
+        report = self._session_report(session_id)
+        if report is None:
+            return
+        cache = {}
+
+        def available(exercise_id):
+            if exercise_id not in cache:
+                cache[exercise_id] = workout_catalog.media_path(catalog, exercise_id, self.server.workout_dir) is not None
+            return cache[exercise_id]
+
+        try:
+            plan = workout_planner.build_plan(report, prefs, catalog, video_available=available)
+        except Exception as exc:
+            return self._text_error(500, f"Could not build the workout: {exc}")
+        if not any(item["phase"] == "main" for item in plan["items"]):
+            return self._text_error(422, "No video-demonstrated exercise fits this combination of equipment, level, pain and "
+                                         "movements to avoid. Add Bodyweight or other equipment, or remove a limitation, and try again.")
+        if plan["duration"]["total_s"] < plan["duration"]["target_s"]:
+            # Only video-demonstrated exercises are prescribed; never pad the plan with text-only exercises.
+            achievable = plan["duration"]["total_s"] // 60
+            shorter = None
+            for minutes in sorted(workout_planner.DURATION_CHOICES, reverse=True):
+                if minutes >= prefs["duration_min"]:
+                    continue
+                trial = workout_planner.build_plan(report, dict(prefs, duration_min=minutes), catalog,
+                                                   video_available=available)
+                if trial["duration"]["total_s"] >= trial["duration"]["target_s"]:
+                    shorter = minutes
+                    break
+            hint = f"choose {shorter} minutes, " if shorter else ""
+            return self._text_error(422, f"With these choices only about {achievable} minutes of exercises with a "
+                                         f"demonstration video fit, short of the {prefs['duration_min']} minutes you asked for. "
+                                         f"To continue, {hint}add equipment, or remove a movement limitation.")
+        workout_id = "wk_" + uuid.uuid4().hex[:20]
+        session = ShotLabDB(self.server.db_path).get_session(session_id)
+        ShotLabDB(self.server.db_path).save_workout_plan(workout_id, session_id, session["player_id"], plan, prefs,
+                                                         plan["findings_used"])
+        return self._json(201, self._workout_payload(self._get_workout(workout_id)))
+
+    def _get_workout(self, workout_id):
+        if not WORKOUT_ID.fullmatch(workout_id):
+            return None
+        return ShotLabDB(self.server.db_path).get_workout_plan(workout_id)
+
+    @staticmethod
+    def _workout_payload(record):
+        return {key: record.get(key) for key in ("workout_id", "session_id", "player_id", "status", "plan", "state",
+                                                 "progress", "feedback", "summary", "planned_duration_s",
+                                                 "created_at", "started_at", "ended_at", "updated_at")}
+
+    def _update_workout(self, workout_id):
+        record = self._get_workout(workout_id)
+        if not record:
+            return self._text_error(404, "Workout not found")
+        if record["status"] in workout_progress.FINAL_STATUSES:
+            return self._text_error(409, "This workout is finished; its record can no longer change.")
+        try:
+            body = self._read_json(512 * 1024)
+            status = body.get("status")
+            if status not in ("active", "completed", "ended_early"):
+                raise ValueError("status must be active, completed or ended_early")
+            plan = record["plan"]
+            state = workout_progress.validate_state(plan, body.get("state") or {})
+            progress = workout_progress.validate_progress(plan, body.get("progress") or {})
+            feedback = workout_progress.validate_feedback(body.get("feedback"))
+        except (ValueError, json.JSONDecodeError) as exc:
+            return self._text_error(400, str(exc))
+        final = status in workout_progress.FINAL_STATUSES
+        db = ShotLabDB(self.server.db_path)
+        db.update_workout_progress(workout_id, status=status, state=state, progress=progress, feedback=feedback,
+                                   started=True, ended=final)
+        if final:
+            updated = db.get_workout_plan(workout_id)
+            summary = workout_progress.build_summary(plan, progress, feedback, status, updated["started_at"], updated["ended_at"])
+            db.update_workout_progress(workout_id, status=status, state=state, progress=progress, summary=summary)
+        return self._json(200, self._workout_payload(db.get_workout_plan(workout_id)))
+
+
 class LocalAppServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -1276,6 +1475,8 @@ class LocalAppServer(ThreadingHTTPServer):
     access_token = None
     tls_enabled = False
     lan_urls: list = []
+    workout_dir = workout_catalog.DEFAULT_WORKOUT_DIR
+    workout_catalog_path = workout_catalog.DEFAULT_CATALOG_PATH
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1321,6 +1522,8 @@ def build_parser():
     parser.add_argument("--upload-dir", default="user_data/uploads", help="Local directory for uploaded clips")
     parser.add_argument("--pose-cache-dir", default="user_data/pose_cache", help="Local directory for replay pose data")
     parser.add_argument("--keyframe-dir", default="user_data/keyframes", help="Local directory for report keyframe images")
+    parser.add_argument("--workout-dir", default=str(workout_catalog.DEFAULT_WORKOUT_DIR),
+                        help="Folder with the exercise demonstration videos (default: the project's workout/ folder)")
     parser.add_argument("--lan", action="store_true",
                         help="Allow phones on the same private network (Wi-Fi) to connect with an access code")
     parser.add_argument("--access-code", default=os.environ.get("SHOTLAB_ACCESS_CODE"),
@@ -1380,6 +1583,7 @@ def main():
     server.upload_dir = upload_dir
     server.pose_cache_dir = pose_cache_dir
     server.keyframe_dir = keyframe_dir
+    server.workout_dir = Path(args.workout_dir).resolve()
     server.job_store = JobStore(db_path + ".web_jobs.sqlite3", upload_root=upload_dir)
     server.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="shot-analysis")
     server.worker_slots = threading.BoundedSemaphore(2)

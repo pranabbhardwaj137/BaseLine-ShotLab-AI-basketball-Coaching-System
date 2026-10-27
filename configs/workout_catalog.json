@@ -1,0 +1,5378 @@
+{
+ "catalog_version": "workout-catalog-1.0",
+ "notes": [
+  "Video paths are relative to the project's workout/ folder and are served only by exercise id.",
+  "video: null means no demonstration video exists; the player shows a written guide instead.",
+  "Dose, rest and cadence defaults below are conservative coaching defaults for this prototype, not prescriptions validated for every person."
+ ],
+ "equipment": {
+  "barbell": {
+   "label": "Barbell",
+   "folder": "Barbell",
+   "description": "Bar and plates (a rack for squats and presses)."
+  },
+  "bodyweight": {
+   "label": "Bodyweight",
+   "folder": "Bodyweight",
+   "description": "No equipment needed."
+  },
+  "cable": {
+   "label": "Cable machine",
+   "folder": "Cable Machine",
+   "description": "Adjustable cable station."
+  },
+  "dumbbell": {
+   "label": "Dumbbell",
+   "folder": "Dumbbell",
+   "description": "One or more pairs of dumbbells."
+  },
+  "machine": {
+   "label": "Gym machine",
+   "folder": "Gym Machine",
+   "description": "Leg press, rows and other selectorised machines."
+  },
+  "band": {
+   "label": "Resistance band",
+   "folder": "Resistance Band",
+   "description": "Loop or handle bands."
+  },
+  "smith": {
+   "label": "Smith machine",
+   "folder": "Smith Machine",
+   "description": "Guided barbell machine."
+  },
+  "stretching": {
+   "label": "Stretching and mobility",
+   "folder": "Stretching",
+   "description": "Adds a mobility block to the main workout."
+  },
+  "trx": {
+   "label": "TRX suspension trainer",
+   "folder": "TRX Suspension",
+   "description": "Suspension straps with a secure anchor."
+  }
+ },
+ "areas": {
+  "lower_strength": "Lower-body strength",
+  "hip_drive": "Hip extension and leg drive",
+  "core": "Core stability and torso control",
+  "balance": "Single-leg balance and landing control",
+  "shoulder": "Shoulder and upper-back control",
+  "arm": "Arm-extension strength (triceps)",
+  "upper_push": "Upper-body strength",
+  "conditioning": "Stamina and conditioning",
+  "mobility": "Mobility",
+  "power_low": "Low-intensity elastic leg work"
+ },
+ "dosing": {
+  "strength_compound": {
+   "beginner": {
+    "sets": 2,
+    "reps": 10,
+    "rest_between_sets": 75,
+    "rest_after": 60
+   },
+   "intermediate": {
+    "sets": 3,
+    "reps": 8,
+    "rest_between_sets": 90,
+    "rest_after": 75
+   },
+   "advanced": {
+    "sets": 3,
+    "reps": 6,
+    "rest_between_sets": 120,
+    "rest_after": 90
+   }
+  },
+  "strength_accessory": {
+   "beginner": {
+    "sets": 2,
+    "reps": 12,
+    "rest_between_sets": 45,
+    "rest_after": 45
+   },
+   "intermediate": {
+    "sets": 3,
+    "reps": 12,
+    "rest_between_sets": 60,
+    "rest_after": 60
+   },
+   "advanced": {
+    "sets": 3,
+    "reps": 10,
+    "rest_between_sets": 60,
+    "rest_after": 60
+   }
+  },
+  "core_static": {
+   "beginner": {
+    "sets": 2,
+    "seconds": 20,
+    "rest_between_sets": 30,
+    "rest_after": 40
+   },
+   "intermediate": {
+    "sets": 3,
+    "seconds": 30,
+    "rest_between_sets": 30,
+    "rest_after": 40
+   },
+   "advanced": {
+    "sets": 3,
+    "seconds": 40,
+    "rest_between_sets": 30,
+    "rest_after": 45
+   }
+  },
+  "core_dynamic": {
+   "beginner": {
+    "sets": 2,
+    "reps": 10,
+    "rest_between_sets": 30,
+    "rest_after": 40
+   },
+   "intermediate": {
+    "sets": 3,
+    "reps": 12,
+    "rest_between_sets": 30,
+    "rest_after": 40
+   },
+   "advanced": {
+    "sets": 3,
+    "reps": 14,
+    "rest_between_sets": 30,
+    "rest_after": 45
+   }
+  },
+  "balance": {
+   "beginner": {
+    "sets": 2,
+    "reps": 8,
+    "seconds": 30,
+    "rest_between_sets": 30,
+    "rest_after": 40
+   },
+   "intermediate": {
+    "sets": 3,
+    "reps": 8,
+    "seconds": 30,
+    "rest_between_sets": 30,
+    "rest_after": 40
+   },
+   "advanced": {
+    "sets": 3,
+    "reps": 10,
+    "seconds": 40,
+    "rest_between_sets": 30,
+    "rest_after": 45
+   }
+  },
+  "power_low": {
+   "beginner": {
+    "sets": 2,
+    "reps": 6,
+    "seconds": 15,
+    "rest_between_sets": 60,
+    "rest_after": 60
+   },
+   "intermediate": {
+    "sets": 3,
+    "reps": 6,
+    "seconds": 15,
+    "rest_between_sets": 60,
+    "rest_after": 60
+   },
+   "advanced": {
+    "sets": 3,
+    "reps": 8,
+    "seconds": 20,
+    "rest_between_sets": 75,
+    "rest_after": 60
+   }
+  },
+  "conditioning": {
+   "beginner": {
+    "sets": 3,
+    "seconds": 30,
+    "rest_between_sets": 30,
+    "rest_after": 45
+   },
+   "intermediate": {
+    "sets": 4,
+    "seconds": 40,
+    "rest_between_sets": 20,
+    "rest_after": 45
+   },
+   "advanced": {
+    "sets": 5,
+    "seconds": 40,
+    "rest_between_sets": 20,
+    "rest_after": 45
+   }
+  },
+  "mobility": {
+   "beginner": {
+    "sets": 1,
+    "seconds": 45,
+    "rest_between_sets": 0,
+    "rest_after": 15
+   },
+   "intermediate": {
+    "sets": 1,
+    "seconds": 45,
+    "rest_between_sets": 0,
+    "rest_after": 15
+   },
+   "advanced": {
+    "sets": 1,
+    "seconds": 45,
+    "rest_between_sets": 0,
+    "rest_after": 15
+   }
+  },
+  "warmup": {
+   "beginner": {
+    "sets": 1,
+    "seconds": 45,
+    "rest_between_sets": 0,
+    "rest_after": 10
+   },
+   "intermediate": {
+    "sets": 1,
+    "seconds": 45,
+    "rest_between_sets": 0,
+    "rest_after": 10
+   },
+   "advanced": {
+    "sets": 1,
+    "seconds": 45,
+    "rest_between_sets": 0,
+    "rest_after": 10
+   }
+  },
+  "stretch": {
+   "beginner": {
+    "sets": 1,
+    "seconds": 30,
+    "rest_between_sets": 0,
+    "rest_after": 10
+   },
+   "intermediate": {
+    "sets": 1,
+    "seconds": 30,
+    "rest_between_sets": 0,
+    "rest_after": 10
+   },
+   "advanced": {
+    "sets": 1,
+    "seconds": 30,
+    "rest_between_sets": 0,
+    "rest_after": 10
+   }
+  }
+ },
+ "cadence_seconds_per_rep": {
+  "strength_compound": 4.0,
+  "strength_accessory": 3.0,
+  "core_dynamic": 3.0,
+  "balance": 4.0,
+  "power_low": 3.0,
+  "conditioning": 2.0,
+  "mobility": 4.0,
+  "warmup": 2.0,
+  "stretch": 4.0,
+  "core_static": 3.0
+ },
+ "transition_to_main_seconds": 30,
+ "exercises": [
+  {
+   "id": "march_in_place",
+   "name": "Marching in place",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "warmup",
+   "areas": [
+    "conditioning"
+   ],
+   "muscles": [
+    "legs",
+    "hips"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "warmup",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Easy marching to raise your temperature without impact.",
+   "instructions": [
+    "Stand tall and march, lifting each knee to about hip height.",
+    "Swing the opposite arm with each knee."
+   ],
+   "cues": [
+    "Tall posture, relaxed shoulders."
+   ],
+   "mistakes": [
+    "Leaning back to lift the knees higher."
+   ],
+   "safety": "Keep it easy; this is a warm-up.",
+   "regression": "Smaller steps.",
+   "progression": "Running in place."
+  },
+  {
+   "id": "running_in_place",
+   "name": "Running in place",
+   "video": "Bodyweight/Cardio/Running in Place.mp4",
+   "equipment": "bodyweight",
+   "kind": "warmup",
+   "areas": [
+    "conditioning"
+   ],
+   "muscles": [
+    "calves",
+    "quads",
+    "hip flexors"
+   ],
+   "min_level": "beginner",
+   "impact": "low",
+   "stresses": [
+    "ankle"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "warmup",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Light jog on the spot.",
+   "instructions": [
+    "Jog on the spot on the balls of your feet.",
+    "Keep the arms bent and swinging."
+   ],
+   "cues": [
+    "Quiet, light feet."
+   ],
+   "mistakes": [
+    "Heavy heel landings."
+   ],
+   "safety": "Stop if it causes pain in feet, ankles or knees.",
+   "regression": "Marching in place.",
+   "progression": "High knee taps."
+  },
+  {
+   "id": "high_knee_taps",
+   "name": "High knee taps",
+   "video": "Bodyweight/Cardio/High Knee Taps.mp4",
+   "equipment": "bodyweight",
+   "kind": "conditioning",
+   "areas": [
+    "conditioning"
+   ],
+   "muscles": [
+    "hip flexors",
+    "calves",
+    "quads"
+   ],
+   "min_level": "intermediate",
+   "impact": "moderate",
+   "stresses": [
+    "ankle",
+    "knee"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "warmup",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Quick knee lifts to the hands.",
+   "instructions": [
+    "Hold your hands at hip height.",
+    "Drive alternate knees up to tap the hands at a quick, controlled pace."
+   ],
+   "cues": [
+    "Stay tall; knees up, not body down."
+   ],
+   "mistakes": [
+    "Leaning back.",
+    "Landing flat-footed and loud."
+   ],
+   "safety": "Moderate impact: skip it if jumping or running hurts.",
+   "regression": "Marching in place.",
+   "progression": "Faster pace."
+  },
+  {
+   "id": "butt_kicks",
+   "name": "Butt kicks",
+   "video": "Bodyweight/Cardio/Butt Kicks.mp4",
+   "equipment": "bodyweight",
+   "kind": "warmup",
+   "areas": [
+    "conditioning"
+   ],
+   "muscles": [
+    "hamstrings",
+    "calves"
+   ],
+   "min_level": "beginner",
+   "impact": "low",
+   "stresses": [
+    "ankle"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "warmup",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Jog on the spot bringing heels toward the glutes.",
+   "instructions": [
+    "Jog lightly on the spot.",
+    "Bring each heel up toward your glutes."
+   ],
+   "cues": [
+    "Knees point down."
+   ],
+   "mistakes": [
+    "Arching the lower back."
+   ],
+   "safety": "Stop if your knees or ankles hurt.",
+   "regression": "Walking heel kicks.",
+   "progression": "Faster pace."
+  },
+  {
+   "id": "jumping_jack",
+   "name": "Jumping jacks",
+   "video": "Bodyweight/Cardio/Jumping Jack.mp4",
+   "equipment": "bodyweight",
+   "kind": "conditioning",
+   "areas": [
+    "conditioning"
+   ],
+   "muscles": [
+    "calves",
+    "shoulders",
+    "hips"
+   ],
+   "min_level": "intermediate",
+   "impact": "moderate",
+   "stresses": [
+    "ankle",
+    "knee",
+    "overhead"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "warmup",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Classic jumping jacks.",
+   "instructions": [
+    "Jump the feet apart while raising the arms overhead.",
+    "Jump back together with arms down."
+   ],
+   "cues": [
+    "Land softly on the balls of the feet."
+   ],
+   "mistakes": [
+    "Stiff-legged landings."
+   ],
+   "safety": "Moderate impact: choose a no-jump step-jack if jumping is uncomfortable.",
+   "regression": "Step jacks (step out instead of jumping).",
+   "progression": "Faster pace."
+  },
+  {
+   "id": "arm_circles",
+   "name": "Arm circles",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "warmup",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "shoulders"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "warmup"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Small to large arm circles, forwards then backwards.",
+   "instructions": [
+    "Arms out to the sides.",
+    "Draw small circles, gradually making them larger; switch direction halfway."
+   ],
+   "cues": [
+    "Move within a comfortable range."
+   ],
+   "mistakes": [
+    "Shrugging the shoulders."
+   ],
+   "safety": "Keep circles small if your shoulder is sensitive.",
+   "regression": "Smaller circles.",
+   "progression": "Larger circles."
+  },
+  {
+   "id": "leg_swings",
+   "name": "Leg swings",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "warmup",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "hips",
+    "hamstrings"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "warmup"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Front-to-back leg swings holding a support.",
+   "instructions": [
+    "Hold a wall or post for balance.",
+    "Swing one leg forwards and back in a relaxed, growing arc.",
+    "Switch legs halfway."
+   ],
+   "cues": [
+    "Keep the torso tall."
+   ],
+   "mistakes": [
+    "Forcing the range."
+   ],
+   "safety": "Stay within a pain-free range.",
+   "regression": "Smaller swings.",
+   "progression": "Add side-to-side swings."
+  },
+  {
+   "id": "hip_circles",
+   "name": "Hip circles",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "warmup",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "hips",
+    "lower back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "warmup"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Slow circles of the hips with hands on the waist.",
+   "instructions": [
+    "Hands on hips, feet shoulder-width.",
+    "Draw slow circles with the hips; switch direction halfway."
+   ],
+   "cues": [
+    "Smooth and slow."
+   ],
+   "mistakes": [
+    "Moving the shoulders instead of the hips."
+   ],
+   "safety": "Small circles if your back is sensitive.",
+   "regression": "Smaller circles.",
+   "progression": "Larger circles."
+  },
+  {
+   "id": "ankle_rocks",
+   "name": "Knee-to-wall ankle rocks",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "mobility",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "ankles",
+    "calves"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "warmup",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle ankle mobility: rock the knee forward over the toes toward a wall.",
+   "instructions": [
+    "Stand in a split stance facing a wall, front foot a few inches away.",
+    "Keeping the heel down, rock the front knee toward the wall and back.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Heel stays down."
+   ],
+   "mistakes": [
+    "Letting the knee cave inward."
+   ],
+   "safety": "Comfortable range only.",
+   "regression": "Move the foot closer to the wall.",
+   "progression": "Move the foot slightly further away."
+  },
+  {
+   "id": "standing_quad_stretch",
+   "name": "Standing quadriceps stretch",
+   "video": "Stretching/Lower Body/Standing Quadricep Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "quadriceps",
+    "hip flexors"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the quadriceps, hip flexors.",
+   "instructions": [
+    "Hold a support for balance.",
+    "Bend one knee and hold the ankle behind you, knees together.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "kneeling_hamstring_stretch",
+   "name": "Kneeling hamstring stretch",
+   "video": "Stretching/Lower Body/Kneeling Hamstring Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "hamstrings"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the hamstrings.",
+   "instructions": [
+    "Kneel and straighten one leg in front, heel down.",
+    "Hinge forward from the hips with a long back.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "lunging_calf_stretch",
+   "name": "Lunging calf stretch",
+   "video": "Stretching/Lower Body/Lunging Calf Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "calves",
+    "ankles"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the calves, ankles.",
+   "instructions": [
+    "Step one foot back into a short lunge.",
+    "Press the back heel down until you feel the calf.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "hip_flexor_stretch",
+   "name": "Hip flexor stretch",
+   "video": "Stretching/Lower Body/Hip Flexor Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "hip flexors",
+    "quadriceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "knee"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the hip flexors, quadriceps.",
+   "instructions": [
+    "Half-kneel with one knee down.",
+    "Tuck the pelvis and shift gently forward.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "lying_glute_stretch",
+   "name": "Lying glute stretch",
+   "video": "Stretching/Lower Body/Lying Glute Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "glutes",
+    "hips"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the glutes, hips.",
+   "instructions": [
+    "Lie on your back and cross one ankle over the other knee.",
+    "Pull the lower leg gently toward you.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "side_lunge_stretch",
+   "name": "Side lunge stretch",
+   "video": "Stretching/Lower Body/Side Lunge Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "adductors",
+    "hips"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the adductors, hips.",
+   "instructions": [
+    "Take a wide stance and shift your weight to one side, bending that knee.",
+    "Keep the other leg straight.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "standing_forward_bend",
+   "name": "Standing forward bend",
+   "video": "Stretching/Lower Body/Standing Forward Bending.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "hamstrings",
+    "lower back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the hamstrings, lower back.",
+   "instructions": [
+    "Soften the knees and fold forward from the hips.",
+    "Let the arms and head hang."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "knee_to_chest_stretch",
+   "name": "Standing knee-to-chest stretch",
+   "video": "Stretching/Lower Body/Standing Knee to Chest Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "glutes",
+    "hips"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the glutes, hips.",
+   "instructions": [
+    "Stand tall (hold a support if needed).",
+    "Hug one knee toward your chest.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "childs_pose",
+   "name": "Child's pose",
+   "video": "Stretching/Upper Body/Child_s Pose Back Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "back",
+    "lats",
+    "hips"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "knee"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the back, lats, hips.",
+   "instructions": [
+    "Kneel, sit back toward your heels and reach the arms forward.",
+    "Rest the forehead down and breathe."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "overhead_tricep_stretch",
+   "name": "Overhead triceps stretch",
+   "video": "Stretching/Upper Body/Overhead Tricep Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "triceps",
+    "shoulders"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "overhead",
+    "shoulder"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the triceps, shoulders.",
+   "instructions": [
+    "Reach one hand down your back.",
+    "Gently press the elbow with the other hand.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "rear_delt_stretch",
+   "name": "Rear shoulder stretch",
+   "video": "Stretching/Upper Body/Rear Deltoid Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "rear shoulders",
+    "upper back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the rear shoulders, upper back.",
+   "instructions": [
+    "Bring one arm across the chest.",
+    "Hold it gently with the other arm.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "doorway_chest_stretch",
+   "name": "Doorway chest stretch",
+   "video": "Stretching/Upper Body/Doorway Chest Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "chest",
+    "front shoulders"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": "A doorway or upright",
+   "description": "Gentle static stretch for the chest, front shoulders.",
+   "instructions": [
+    "Place the forearm on a door frame, elbow at shoulder height.",
+    "Step through gently.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "side_tilt",
+   "name": "Standing side bend stretch",
+   "video": "Stretching/Upper Body/Side Tilt.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "obliques",
+    "lats"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "overhead"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle static stretch for the obliques, lats.",
+   "instructions": [
+    "Reach one arm overhead.",
+    "Lean gently to the opposite side.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Breathe slowly and relax into it."
+   ],
+   "mistakes": [
+    "Bouncing or forcing the stretch."
+   ],
+   "safety": "Mild tension only; never stretch into pain.",
+   "regression": "Reduce the range.",
+   "progression": "Hold a little longer."
+  },
+  {
+   "id": "cat_cow",
+   "name": "Cat-cow",
+   "video": "Stretching/Upper Body/Cat Cow Stretch.mp4",
+   "equipment": "stretching",
+   "kind": "mobility",
+   "areas": [
+    "mobility",
+    "core"
+   ],
+   "muscles": [
+    "spine",
+    "upper back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "wrist"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "warmup",
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Gentle spinal mobility on hands and knees.",
+   "instructions": [
+    "On hands and knees, round the back up (cat).",
+    "Then let the chest sink and lift the head (cow). Move with your breath."
+   ],
+   "cues": [
+    "Slow, smooth, with the breath."
+   ],
+   "mistakes": [
+    "Rushing."
+   ],
+   "safety": "Comfortable range only.",
+   "regression": "Smaller range.",
+   "progression": "Pause at each end."
+  },
+  {
+   "id": "downward_dog",
+   "name": "Downward-facing dog",
+   "video": "Stretching/Upper Body/Downward Facing Dog.mp4",
+   "equipment": "stretching",
+   "kind": "stretch",
+   "areas": [
+    "mobility"
+   ],
+   "muscles": [
+    "calves",
+    "hamstrings",
+    "shoulders"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "wrist",
+    "shoulder",
+    "overhead",
+    "floor"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "cooldown",
+    "main"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Inverted V stretch for calves, hamstrings and shoulders.",
+   "instructions": [
+    "From hands and knees, lift the hips up and back.",
+    "Press the heels toward the floor; knees can stay bent."
+   ],
+   "cues": [
+    "Long spine before straight legs."
+   ],
+   "mistakes": [
+    "Rounding the back to straighten the legs."
+   ],
+   "safety": "Skip if wrists or shoulders are sore.",
+   "regression": "Child's pose.",
+   "progression": "Pedal the heels."
+  },
+  {
+   "id": "thoracic_open_book",
+   "name": "Open-book thoracic rotation",
+   "video": null,
+   "equipment": "stretching",
+   "kind": "mobility",
+   "areas": [
+    "mobility",
+    "shoulder"
+   ],
+   "muscles": [
+    "upper back",
+    "chest"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "main",
+    "cooldown"
+   ],
+   "equipment_free": true,
+   "needs": null,
+   "description": "Side-lying upper-back rotation.",
+   "instructions": [
+    "Lie on one side, knees bent, arms straight in front.",
+    "Open the top arm across to the other side, following it with your eyes.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Knees stay together."
+   ],
+   "mistakes": [
+    "Twisting from the lower back."
+   ],
+   "safety": "Move within a comfortable range.",
+   "regression": "Smaller rotation.",
+   "progression": "Pause for a breath at the end."
+  },
+  {
+   "id": "air_squat",
+   "name": "Bodyweight squat",
+   "video": "Bodyweight/Legs/Air Squat.mp4",
+   "equipment": "bodyweight",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes",
+    "adductors"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "A basic squat that trains leg strength and a controlled knee bend.",
+   "instructions": [
+    "Feet about shoulder-width, toes slightly out.",
+    "Sit the hips back and down while the knees follow the toes.",
+    "Go to a depth you control, then stand up by pushing the floor away."
+   ],
+   "cues": [
+    "Chest tall, whole foot on the floor.",
+    "Knees track over the toes."
+   ],
+   "mistakes": [
+    "Knees caving inward.",
+    "Heels lifting.",
+    "Rounding the lower back."
+   ],
+   "safety": "Use a depth that is pain-free.",
+   "regression": "Squat to a chair or box.",
+   "progression": "Dumbbell or band squat."
+  },
+  {
+   "id": "sumo_squat_bw",
+   "name": "Bodyweight sumo squat",
+   "video": "Bodyweight/Legs/Sumo Squat.mp4",
+   "equipment": "bodyweight",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes",
+    "adductors"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "A wide-stance squat.",
+   "instructions": [
+    "Take a wide stance, toes turned out.",
+    "Lower straight down, knees pushing out over the toes.",
+    "Stand back up."
+   ],
+   "cues": [
+    "Knees out over the toes."
+   ],
+   "mistakes": [
+    "Knees caving in."
+   ],
+   "safety": "Use a comfortable depth.",
+   "regression": "Smaller range.",
+   "progression": "Hold a dumbbell."
+  },
+  {
+   "id": "split_squat_bw",
+   "name": "Split squat",
+   "video": "Bodyweight/Legs/Split Squat.mp4",
+   "equipment": "bodyweight",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "A staggered-stance squat that builds single-leg strength and control.",
+   "instructions": [
+    "Take a long split stance.",
+    "Lower the back knee toward the floor, front shin fairly upright.",
+    "Push through the front foot to rise. Do all reps on one side, then switch."
+   ],
+   "cues": [
+    "Front knee over the middle of the foot.",
+    "Torso tall."
+   ],
+   "mistakes": [
+    "Front heel lifting.",
+    "Knee caving inward."
+   ],
+   "safety": "Shorten the range if the knee is uncomfortable.",
+   "regression": "Hold a support; smaller range.",
+   "progression": "Bulgarian split squat."
+  },
+  {
+   "id": "bulgarian_split_squat_bw",
+   "name": "Bulgarian split squat",
+   "video": "Bodyweight/Legs/Bulgarian Split Squat.mp4",
+   "equipment": "bodyweight",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench or step",
+   "description": "Rear-foot-elevated split squat.",
+   "instructions": [
+    "Rest the back foot on a bench.",
+    "Lower straight down under control.",
+    "Drive up through the front foot. Switch sides after all reps."
+   ],
+   "cues": [
+    "Most weight on the front leg."
+   ],
+   "mistakes": [
+    "Bouncing off the bottom."
+   ],
+   "safety": "Use a range you control.",
+   "regression": "Split squat.",
+   "progression": "Hold dumbbells."
+  },
+  {
+   "id": "step_up",
+   "name": "Step-up",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A sturdy step or low box",
+   "description": "Step onto a low, stable step and stand up tall.",
+   "instructions": [
+    "Place one whole foot on a sturdy step (start low).",
+    "Push through that foot to stand up tall.",
+    "Step down slowly with the other foot. Finish one side, then switch."
+   ],
+   "cues": [
+    "Push through the top foot, not the bottom one."
+   ],
+   "mistakes": [
+    "Knee caving in.",
+    "Pushing off the floor foot."
+   ],
+   "safety": "Use a stable step; start low.",
+   "regression": "Lower step.",
+   "progression": "Higher step or hold dumbbells."
+  },
+  {
+   "id": "glute_bridge",
+   "name": "Glute bridge",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "strength_accessory",
+   "areas": [
+    "hip_drive",
+    "core"
+   ],
+   "muscles": [
+    "glutes",
+    "hamstrings"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Lying hip extension for the glutes.",
+   "instructions": [
+    "Lie on your back, knees bent, feet flat.",
+    "Squeeze the glutes and lift the hips until knees, hips and shoulders line up.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Ribs down; lift with the glutes, not the back."
+   ],
+   "mistakes": [
+    "Arching the lower back at the top."
+   ],
+   "safety": "Stop if you feel it in the lower back rather than the glutes.",
+   "regression": "Smaller range.",
+   "progression": "Single-leg glute bridge or hip thrust."
+  },
+  {
+   "id": "hip_thrust_bw",
+   "name": "Bodyweight hip thrust",
+   "video": "Bodyweight/Legs/Hip Thrust.mp4",
+   "equipment": "bodyweight",
+   "kind": "strength_accessory",
+   "areas": [
+    "hip_drive"
+   ],
+   "muscles": [
+    "glutes",
+    "hamstrings"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench or sofa edge",
+   "description": "Hip extension with the upper back supported.",
+   "instructions": [
+    "Upper back against a bench, feet flat.",
+    "Drive the hips up until the torso is level.",
+    "Lower with control."
+   ],
+   "cues": [
+    "Chin tucked, ribs down."
+   ],
+   "mistakes": [
+    "Over-arching at the top."
+   ],
+   "safety": "Keep the movement in the hips.",
+   "regression": "Glute bridge.",
+   "progression": "Dumbbell hip thrust."
+  },
+  {
+   "id": "calf_raise_bw",
+   "name": "Calf raise",
+   "video": "Bodyweight/Legs/Calf Raise.mp4",
+   "equipment": "bodyweight",
+   "kind": "strength_accessory",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "calves",
+    "ankles"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "ankle"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Raises onto the balls of the feet for calf and ankle strength.",
+   "instructions": [
+    "Stand tall, hold a support if needed.",
+    "Rise onto the balls of the feet.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Straight up and down; pause at the top."
+   ],
+   "mistakes": [
+    "Rolling to the outside of the feet."
+   ],
+   "safety": "Stop if the Achilles area is painful.",
+   "regression": "Both feet with support.",
+   "progression": "Single-leg calf raise."
+  },
+  {
+   "id": "single_leg_deadlift_bw",
+   "name": "Single-leg Romanian deadlift",
+   "video": "Bodyweight/Legs/SIngle Leg Deadlift.mp4",
+   "equipment": "bodyweight",
+   "kind": "balance",
+   "areas": [
+    "balance",
+    "hip_drive"
+   ],
+   "muscles": [
+    "hamstrings",
+    "glutes",
+    "ankle stabilisers"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Single-leg hip hinge for balance and hamstring control.",
+   "instructions": [
+    "Stand on one leg, slight knee bend.",
+    "Hinge forward as the free leg reaches back.",
+    "Return to standing. Finish one side, then switch."
+   ],
+   "cues": [
+    "Hips stay square to the floor."
+   ],
+   "mistakes": [
+    "Rounding the back.",
+    "Rotating the hips open."
+   ],
+   "safety": "Touch a wall for balance if needed.",
+   "regression": "Kickstand (back toe on the floor).",
+   "progression": "Hold a dumbbell."
+  },
+  {
+   "id": "single_leg_balance",
+   "name": "Single-leg balance",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "balance",
+   "areas": [
+    "balance"
+   ],
+   "muscles": [
+    "ankles",
+    "hips",
+    "core"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Quiet single-leg stance for ankle and hip control.",
+   "instructions": [
+    "Stand on one foot with a slight knee bend, near a wall.",
+    "Hold still with the hips level.",
+    "Switch legs halfway."
+   ],
+   "cues": [
+    "Grip the floor with the whole foot; hips level."
+   ],
+   "mistakes": [
+    "Locking the knee.",
+    "Leaning on the wall the whole time."
+   ],
+   "safety": "Keep a wall within reach.",
+   "regression": "Light fingertip support.",
+   "progression": "Eyes closed or reach with the free leg."
+  },
+  {
+   "id": "step_down",
+   "name": "Controlled step-down",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "balance",
+   "areas": [
+    "balance",
+    "lower_strength"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A low, sturdy step",
+   "description": "Slowly lower one heel from a step to train landing-style knee control.",
+   "instructions": [
+    "Stand on a low step on one leg.",
+    "Slowly lower the other heel to touch the floor, keeping the knee in line with the toes.",
+    "Return to the top. Finish one side, then switch."
+   ],
+   "cues": [
+    "Knee stays over the middle of the foot.",
+    "Slow down (3 seconds)."
+   ],
+   "mistakes": [
+    "Knee caving inward.",
+    "Dropping quickly."
+   ],
+   "safety": "Start with a very low step; hold a support if needed.",
+   "regression": "Lower step or hold a support.",
+   "progression": "Higher step."
+  },
+  {
+   "id": "landing_stick",
+   "name": "Snap-down to stick",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "power_low",
+   "areas": [
+    "balance",
+    "power_low"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes",
+    "calves"
+   ],
+   "min_level": "intermediate",
+   "impact": "low",
+   "stresses": [
+    "knee",
+    "ankle"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Practise a quiet, balanced landing position without jumping.",
+   "instructions": [
+    "Rise onto the toes with arms up.",
+    "Quickly drop into a quarter-squat landing position and freeze for two seconds.",
+    "Stand and repeat."
+   ],
+   "cues": [
+    "Land quiet, knees over toes, chest up."
+   ],
+   "mistakes": [
+    "Knees caving in.",
+    "Landing stiff-legged."
+   ],
+   "safety": "No jumping needed; stop if knees or ankles hurt.",
+   "regression": "Slower drop.",
+   "progression": "Small hop to stick."
+  },
+  {
+   "id": "pogo_hops",
+   "name": "Low pogo hops",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "power_low",
+   "areas": [
+    "power_low"
+   ],
+   "muscles": [
+    "calves",
+    "ankles"
+   ],
+   "min_level": "intermediate",
+   "impact": "moderate",
+   "stresses": [
+    "ankle",
+    "knee"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Small, quick, low hops for ankle stiffness and rhythm.",
+   "instructions": [
+    "Stand tall, knees soft.",
+    "Make small hops (a few centimetres) off the balls of the feet.",
+    "Stay relaxed and quiet."
+   ],
+   "cues": [
+    "Small and quiet; bounce off the floor."
+   ],
+   "mistakes": [
+    "Hopping high.",
+    "Landing on the heels."
+   ],
+   "safety": "Low intensity only. Skip if you have any pain in feet, ankles or knees.",
+   "regression": "Calf raises.",
+   "progression": "Slightly higher hops."
+  },
+  {
+   "id": "squat_to_calf_raise",
+   "name": "Squat to calf raise",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "power_low",
+   "areas": [
+    "lower_strength",
+    "power_low",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes",
+    "calves"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Squat, then rise smoothly onto the toes; rehearses legs-then-extension without jumping.",
+   "instructions": [
+    "Squat to a comfortable depth.",
+    "Stand up and continue smoothly onto the balls of the feet.",
+    "Lower the heels and repeat."
+   ],
+   "cues": [
+    "Legs first, then rise all the way up."
+   ],
+   "mistakes": [
+    "Rising onto toes before the legs straighten."
+   ],
+   "safety": "No impact; keep it controlled.",
+   "regression": "Squat only.",
+   "progression": "Slower lowering."
+  },
+  {
+   "id": "db_squat",
+   "name": "Dumbbell squat",
+   "video": "Dumbbell/Legs/Dumbbell Squat.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Squat holding dumbbells.",
+   "instructions": [
+    "Feet about shoulder-width, toes slightly out.",
+    "Sit the hips back and down while the knees follow the toes.",
+    "Go to a depth you control, then stand up by pushing the floor away."
+   ],
+   "cues": [
+    "Chest tall, whole foot on the floor.",
+    "Knees track over the toes."
+   ],
+   "mistakes": [
+    "Knees caving inward.",
+    "Heels lifting.",
+    "Rounding the lower back."
+   ],
+   "safety": "Choose a weight you can control for every rep.",
+   "regression": "Bodyweight squat.",
+   "progression": "Heavier dumbbells."
+  },
+  {
+   "id": "db_split_squat",
+   "name": "Dumbbell split squat",
+   "video": "Dumbbell/Legs/Dumbbell Split Squat.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Split squat holding dumbbells.",
+   "instructions": [
+    "Hold dumbbells at your sides in a long split stance.",
+    "Lower the back knee toward the floor.",
+    "Drive up through the front foot. Switch sides after all reps."
+   ],
+   "cues": [
+    "Front knee over the middle of the foot."
+   ],
+   "mistakes": [
+    "Knee caving inward."
+   ],
+   "safety": "Light weight first.",
+   "regression": "Bodyweight split squat.",
+   "progression": "Heavier dumbbells."
+  },
+  {
+   "id": "db_rdl",
+   "name": "Dumbbell Romanian deadlift",
+   "video": "Dumbbell/Legs/Dumbbell Romanian Deadlift.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_compound",
+   "areas": [
+    "hip_drive",
+    "lower_strength"
+   ],
+   "muscles": [
+    "hamstrings",
+    "glutes",
+    "back extensors"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Hip hinge for hamstrings and glutes.",
+   "instructions": [
+    "Hold dumbbells in front of the thighs, knees soft.",
+    "Push the hips back, sliding the weights down the legs.",
+    "Stop when you feel the hamstrings, then stand by driving the hips forward."
+   ],
+   "cues": [
+    "Long, neutral back.",
+    "Hips back, not down."
+   ],
+   "mistakes": [
+    "Rounding the back.",
+    "Turning it into a squat."
+   ],
+   "safety": "Light weight; stop before your back rounds.",
+   "regression": "Hip hinge with no weight.",
+   "progression": "Heavier dumbbells."
+  },
+  {
+   "id": "db_hip_thrust",
+   "name": "Dumbbell hip thrust",
+   "video": "Dumbbell/Legs/Dumbbell Hip Thrust.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_accessory",
+   "areas": [
+    "hip_drive"
+   ],
+   "muscles": [
+    "glutes",
+    "hamstrings"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench",
+   "description": "Hip thrust with a dumbbell on the hips.",
+   "instructions": [
+    "Upper back on a bench, dumbbell on the hips.",
+    "Drive the hips up until level.",
+    "Lower with control."
+   ],
+   "cues": [
+    "Chin tucked, ribs down."
+   ],
+   "mistakes": [
+    "Over-arching at the top."
+   ],
+   "safety": "Pad the dumbbell.",
+   "regression": "Bodyweight hip thrust.",
+   "progression": "Heavier dumbbell."
+  },
+  {
+   "id": "db_seated_calf_raise",
+   "name": "Dumbbell seated calf raise",
+   "video": "Dumbbell/Legs/Dumbbell Seated Calf Raise.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_accessory",
+   "areas": [
+    "lower_strength"
+   ],
+   "muscles": [
+    "calves"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "ankle"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench or chair",
+   "description": "Seated calf raise with dumbbells on the knees.",
+   "instructions": [
+    "Sit with dumbbells resting on the knees.",
+    "Raise the heels as high as possible.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Full range, pause at the top."
+   ],
+   "mistakes": [
+    "Bouncing."
+   ],
+   "safety": "Comfortable weight.",
+   "regression": "Standing calf raise.",
+   "progression": "Heavier weight."
+  },
+  {
+   "id": "band_squat",
+   "name": "Band squat",
+   "video": "Resistance Band/Legs/Band Squat.mp4",
+   "equipment": "band",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Squat against band resistance.",
+   "instructions": [
+    "Feet about shoulder-width, toes slightly out.",
+    "Sit the hips back and down while the knees follow the toes.",
+    "Go to a depth you control, then stand up by pushing the floor away."
+   ],
+   "cues": [
+    "Chest tall, whole foot on the floor.",
+    "Knees track over the toes."
+   ],
+   "mistakes": [
+    "Knees caving inward.",
+    "Heels lifting.",
+    "Rounding the lower back."
+   ],
+   "safety": "Check the band is not worn or torn.",
+   "regression": "Bodyweight squat.",
+   "progression": "Stronger band."
+  },
+  {
+   "id": "band_split_squat",
+   "name": "Band split squat",
+   "video": "Resistance Band/Legs/Band Split Squat.mp4",
+   "equipment": "band",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Split squat with band resistance.",
+   "instructions": [
+    "Stand on the band with the front foot in a split stance.",
+    "Lower the back knee toward the floor.",
+    "Drive up through the front foot. Switch sides after all reps."
+   ],
+   "cues": [
+    "Front knee over the middle of the foot."
+   ],
+   "mistakes": [
+    "Knee caving inward."
+   ],
+   "safety": "Check the band is secure under the foot.",
+   "regression": "Bodyweight split squat.",
+   "progression": "Stronger band."
+  },
+  {
+   "id": "band_bulgarian_split_squat",
+   "name": "Band Bulgarian split squat",
+   "video": "Resistance Band/Legs/Band Bulgarian Split Squat.mp4",
+   "equipment": "band",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench",
+   "description": "Rear-foot-elevated split squat with a band.",
+   "instructions": [
+    "Back foot on a bench, front foot on the band.",
+    "Lower under control.",
+    "Drive up. Switch sides after all reps."
+   ],
+   "cues": [
+    "Most weight on the front leg."
+   ],
+   "mistakes": [
+    "Bouncing."
+   ],
+   "safety": "Use a range you control.",
+   "regression": "Band split squat.",
+   "progression": "Stronger band."
+  },
+  {
+   "id": "band_rdl",
+   "name": "Band Romanian deadlift",
+   "video": "Resistance Band/Legs/Band Romanian Deadlift.mp4",
+   "equipment": "band",
+   "kind": "strength_compound",
+   "areas": [
+    "hip_drive",
+    "lower_strength"
+   ],
+   "muscles": [
+    "hamstrings",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Hip hinge against a band.",
+   "instructions": [
+    "Stand on the band, holding the ends.",
+    "Push the hips back with a long back.",
+    "Drive the hips forward to stand tall."
+   ],
+   "cues": [
+    "Hips back, not down."
+   ],
+   "mistakes": [
+    "Rounding the back."
+   ],
+   "safety": "Stop before your back rounds.",
+   "regression": "Hip hinge with no band.",
+   "progression": "Stronger band."
+  },
+  {
+   "id": "band_glute_bridge",
+   "name": "Band glute bridge",
+   "video": "Resistance Band/Legs/Band Glute Bridge.mp4",
+   "equipment": "band",
+   "kind": "strength_accessory",
+   "areas": [
+    "hip_drive",
+    "core"
+   ],
+   "muscles": [
+    "glutes",
+    "hamstrings"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Glute bridge with a band across the hips or knees.",
+   "instructions": [
+    "Lie on your back, band in place, knees bent.",
+    "Squeeze the glutes and lift the hips.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Lift with the glutes; ribs down."
+   ],
+   "mistakes": [
+    "Arching the lower back."
+   ],
+   "safety": "Stop if you feel it in the lower back.",
+   "regression": "Glute bridge without the band.",
+   "progression": "Single-leg bridge."
+  },
+  {
+   "id": "bb_back_squat",
+   "name": "Barbell back squat",
+   "video": "Barbell/Legs/Barbell Back Squat.mp4",
+   "equipment": "barbell",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes",
+    "back extensors"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee",
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A squat rack with safeties",
+   "description": "Loaded squat for overall leg strength.",
+   "instructions": [
+    "Bar on the upper back, feet shoulder-width.",
+    "Brace, then squat to a controlled depth.",
+    "Drive up, keeping the chest up."
+   ],
+   "cues": [
+    "Brace before each rep.",
+    "Knees track over the toes."
+   ],
+   "mistakes": [
+    "Losing the brace.",
+    "Heels lifting."
+   ],
+   "safety": "Use safety pins or spotter arms; choose a weight you can lift with good form for every rep.",
+   "regression": "Dumbbell or bodyweight squat.",
+   "progression": "Small weight increases over weeks."
+  },
+  {
+   "id": "bb_rdl",
+   "name": "Barbell Romanian deadlift",
+   "video": "Barbell/Legs/Barbell Romanian Deadlift.mp4",
+   "equipment": "barbell",
+   "kind": "strength_compound",
+   "areas": [
+    "hip_drive",
+    "lower_strength"
+   ],
+   "muscles": [
+    "hamstrings",
+    "glutes",
+    "back extensors"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Loaded hip hinge.",
+   "instructions": [
+    "Hold the bar at the thighs, knees soft.",
+    "Push the hips back, bar close to the legs.",
+    "Stand by driving the hips forward."
+   ],
+   "cues": [
+    "Bar stays close; long back."
+   ],
+   "mistakes": [
+    "Rounding the back."
+   ],
+   "safety": "Moderate weight; stop before the back rounds.",
+   "regression": "Dumbbell Romanian deadlift.",
+   "progression": "Gradual load increases."
+  },
+  {
+   "id": "bb_hip_thrust",
+   "name": "Barbell hip thrust",
+   "video": "Barbell/Legs/Barbell Hip Thrust.mp4",
+   "equipment": "barbell",
+   "kind": "strength_accessory",
+   "areas": [
+    "hip_drive"
+   ],
+   "muscles": [
+    "glutes",
+    "hamstrings"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench and bar pad",
+   "description": "Loaded hip extension.",
+   "instructions": [
+    "Upper back on a bench, padded bar over the hips.",
+    "Drive the hips up until level.",
+    "Lower with control."
+   ],
+   "cues": [
+    "Chin tucked, ribs down."
+   ],
+   "mistakes": [
+    "Over-arching at the top."
+   ],
+   "safety": "Use a pad.",
+   "regression": "Dumbbell hip thrust.",
+   "progression": "More load."
+  },
+  {
+   "id": "bb_split_squat",
+   "name": "Barbell split squat",
+   "video": "Barbell/Legs/Barbell Split Squat.mp4",
+   "equipment": "barbell",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "advanced",
+   "impact": "none",
+   "stresses": [
+    "knee",
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Split squat with a barbell.",
+   "instructions": [
+    "Bar on the upper back in a long split stance.",
+    "Lower the back knee.",
+    "Drive up. Switch sides after all reps."
+   ],
+   "cues": [
+    "Stay tall."
+   ],
+   "mistakes": [
+    "Losing balance sideways."
+   ],
+   "safety": "Use a rack; master the dumbbell version first.",
+   "regression": "Dumbbell split squat.",
+   "progression": "More load."
+  },
+  {
+   "id": "bb_landmine_front_squat",
+   "name": "Landmine front squat",
+   "video": "Barbell/Legs/Barbell Landmine Front Squat.mp4",
+   "equipment": "barbell",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A landmine attachment",
+   "description": "Front-loaded squat with a landmine.",
+   "instructions": [
+    "Hold the bar end at your chest.",
+    "Squat with the chest up.",
+    "Drive up."
+   ],
+   "cues": [
+    "Elbows down, chest up."
+   ],
+   "mistakes": [
+    "Knees caving."
+   ],
+   "safety": "Secure the bar end.",
+   "regression": "Dumbbell squat.",
+   "progression": "More load."
+  },
+  {
+   "id": "smith_back_squat",
+   "name": "Smith machine squat",
+   "video": "Smith Machine/Legs/Smith Back Squat.mp4",
+   "equipment": "smith",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee",
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Squat on a guided bar.",
+   "instructions": [
+    "Bar on the upper back, feet slightly forward.",
+    "Squat to a controlled depth.",
+    "Drive up."
+   ],
+   "cues": [
+    "Brace; knees track over toes."
+   ],
+   "mistakes": [
+    "Feet too far forward or back."
+   ],
+   "safety": "Set the safety stops.",
+   "regression": "Bodyweight squat.",
+   "progression": "More load."
+  },
+  {
+   "id": "smith_split_squat",
+   "name": "Smith machine split squat",
+   "video": "Smith Machine/Legs/Smith Split Squat.mp4",
+   "equipment": "smith",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Split squat on a guided bar.",
+   "instructions": [
+    "Bar on the upper back in a split stance.",
+    "Lower the back knee.",
+    "Drive up. Switch sides after all reps."
+   ],
+   "cues": [
+    "Front knee over mid-foot."
+   ],
+   "mistakes": [
+    "Short stance."
+   ],
+   "safety": "Set the safety stops.",
+   "regression": "Bodyweight split squat.",
+   "progression": "More load."
+  },
+  {
+   "id": "smith_hip_thrust",
+   "name": "Smith machine hip thrust",
+   "video": "Smith Machine/Legs/Smith Hip Thrust.mp4",
+   "equipment": "smith",
+   "kind": "strength_accessory",
+   "areas": [
+    "hip_drive"
+   ],
+   "muscles": [
+    "glutes",
+    "hamstrings"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench and bar pad",
+   "description": "Hip thrust on a guided bar.",
+   "instructions": [
+    "Upper back on a bench, padded bar over the hips.",
+    "Drive the hips up.",
+    "Lower with control."
+   ],
+   "cues": [
+    "Ribs down."
+   ],
+   "mistakes": [
+    "Over-arching."
+   ],
+   "safety": "Use a pad.",
+   "regression": "Glute bridge.",
+   "progression": "More load."
+  },
+  {
+   "id": "smith_rdl",
+   "name": "Smith machine Romanian deadlift",
+   "video": "Smith Machine/Legs/Smith Romanian Deadlift.mp4",
+   "equipment": "smith",
+   "kind": "strength_compound",
+   "areas": [
+    "hip_drive"
+   ],
+   "muscles": [
+    "hamstrings",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Hip hinge on a guided bar.",
+   "instructions": [
+    "Hold the bar at the thighs.",
+    "Push the hips back with a long back.",
+    "Stand tall."
+   ],
+   "cues": [
+    "Hips back."
+   ],
+   "mistakes": [
+    "Rounding the back."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Dumbbell Romanian deadlift.",
+   "progression": "More load."
+  },
+  {
+   "id": "smith_calf_raise",
+   "name": "Smith machine calf raise",
+   "video": "Smith Machine/Legs/Smith Standing Calf Raise.mp4",
+   "equipment": "smith",
+   "kind": "strength_accessory",
+   "areas": [
+    "lower_strength"
+   ],
+   "muscles": [
+    "calves"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "ankle"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Standing calf raise on a guided bar.",
+   "instructions": [
+    "Bar on the upper back.",
+    "Rise onto the balls of the feet.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Pause at the top."
+   ],
+   "mistakes": [
+    "Bouncing."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Bodyweight calf raise.",
+   "progression": "More load."
+  },
+  {
+   "id": "cable_goblet_squat",
+   "name": "Cable goblet squat",
+   "video": "Cable Machine/Legs/Cable Goblet Squat.mp4",
+   "equipment": "cable",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Squat holding a low cable handle at the chest.",
+   "instructions": [
+    "Feet about shoulder-width, toes slightly out.",
+    "Sit the hips back and down while the knees follow the toes.",
+    "Go to a depth you control, then stand up by pushing the floor away."
+   ],
+   "cues": [
+    "Chest tall, whole foot on the floor.",
+    "Knees track over the toes."
+   ],
+   "mistakes": [
+    "Knees caving inward.",
+    "Heels lifting.",
+    "Rounding the lower back."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Bodyweight squat.",
+   "progression": "More load."
+  },
+  {
+   "id": "cable_rdl",
+   "name": "Cable Romanian deadlift",
+   "video": "Cable Machine/Legs/Cable Romanian Deadlift.mp4",
+   "equipment": "cable",
+   "kind": "strength_compound",
+   "areas": [
+    "hip_drive"
+   ],
+   "muscles": [
+    "hamstrings",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Hip hinge against a low cable.",
+   "instructions": [
+    "Hold the low cable in front, knees soft.",
+    "Push the hips back with a long back.",
+    "Stand tall."
+   ],
+   "cues": [
+    "Hips back."
+   ],
+   "mistakes": [
+    "Rounding the back."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Bodyweight hip hinge.",
+   "progression": "More load."
+  },
+  {
+   "id": "cable_lunge",
+   "name": "Cable lunge",
+   "video": "Cable Machine/Legs/Cable Lunge.mp4",
+   "equipment": "cable",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Lunge holding a cable handle.",
+   "instructions": [
+    "Hold the handle, step into a lunge.",
+    "Lower under control.",
+    "Return. Finish one side, then switch."
+   ],
+   "cues": [
+    "Torso tall."
+   ],
+   "mistakes": [
+    "Knee caving."
+   ],
+   "safety": "Light weight.",
+   "regression": "Split squat.",
+   "progression": "More load."
+  },
+  {
+   "id": "cable_calf_raise",
+   "name": "Cable calf raise",
+   "video": "Cable Machine/Legs/Cable Calf Raise.mp4",
+   "equipment": "cable",
+   "kind": "strength_accessory",
+   "areas": [
+    "lower_strength"
+   ],
+   "muscles": [
+    "calves"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "ankle"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Calf raise against a low cable.",
+   "instructions": [
+    "Hold the low cable, stand tall.",
+    "Rise onto the balls of the feet.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Pause at the top."
+   ],
+   "mistakes": [
+    "Bouncing."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Bodyweight calf raise.",
+   "progression": "More load."
+  },
+  {
+   "id": "sled_leg_press",
+   "name": "Leg press",
+   "video": "Gym Machine/Legs/Sled Leg Press.mp4",
+   "equipment": "machine",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Machine leg press.",
+   "instructions": [
+    "Feet shoulder-width on the platform.",
+    "Lower under control without the hips curling up.",
+    "Press back without locking the knees hard."
+   ],
+   "cues": [
+    "Lower back stays on the pad."
+   ],
+   "mistakes": [
+    "Going so deep the hips roll up."
+   ],
+   "safety": "Use the machine's safety catches.",
+   "regression": "Lighter load.",
+   "progression": "More load."
+  },
+  {
+   "id": "lever_hip_thrust",
+   "name": "Machine hip thrust",
+   "video": "Gym Machine/Legs/Lever Hip Thrust.mp4",
+   "equipment": "machine",
+   "kind": "strength_accessory",
+   "areas": [
+    "hip_drive"
+   ],
+   "muscles": [
+    "glutes",
+    "hamstrings"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Hip thrust on a machine.",
+   "instructions": [
+    "Set up with the pad over the hips.",
+    "Drive the hips up.",
+    "Lower with control."
+   ],
+   "cues": [
+    "Ribs down."
+   ],
+   "mistakes": [
+    "Over-arching."
+   ],
+   "safety": "Moderate load.",
+   "regression": "Glute bridge.",
+   "progression": "More load."
+  },
+  {
+   "id": "lever_seated_calf_raise",
+   "name": "Seated calf raise machine",
+   "video": "Gym Machine/Legs/Lever Seated Calf Raise.mp4",
+   "equipment": "machine",
+   "kind": "strength_accessory",
+   "areas": [
+    "lower_strength"
+   ],
+   "muscles": [
+    "calves"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "ankle"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Machine seated calf raise.",
+   "instructions": [
+    "Pad over the knees.",
+    "Raise the heels.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Full range."
+   ],
+   "mistakes": [
+    "Bouncing."
+   ],
+   "safety": "Moderate load.",
+   "regression": "Bodyweight calf raise.",
+   "progression": "More load."
+  },
+  {
+   "id": "sled_hack_squat",
+   "name": "Hack squat machine",
+   "video": "Gym Machine/Legs/Sled Full Hack Squat.mp4",
+   "equipment": "machine",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Machine squat.",
+   "instructions": [
+    "Back on the pad, feet shoulder-width.",
+    "Lower under control.",
+    "Press up."
+   ],
+   "cues": [
+    "Knees track over toes."
+   ],
+   "mistakes": [
+    "Heels lifting."
+   ],
+   "safety": "Use the safety catches.",
+   "regression": "Leg press.",
+   "progression": "More load."
+  },
+  {
+   "id": "trx_squat",
+   "name": "TRX assisted squat",
+   "video": "TRX Suspension/Legs/TRX Squat.mp4",
+   "equipment": "trx",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "hip_drive"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Squat holding the straps for support.",
+   "instructions": [
+    "Hold the handles, arms straight.",
+    "Sit back into a squat using the straps lightly.",
+    "Stand up."
+   ],
+   "cues": [
+    "Use the straps for balance, not to pull."
+   ],
+   "mistakes": [
+    "Pulling with the arms."
+   ],
+   "safety": "Check the anchor first.",
+   "regression": "Smaller range.",
+   "progression": "Bodyweight squat without straps."
+  },
+  {
+   "id": "trx_lunge",
+   "name": "TRX lunge",
+   "video": "TRX Suspension/Legs/TRX Lunge.mp4",
+   "equipment": "trx",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Lunge holding the straps for balance.",
+   "instructions": [
+    "Hold the handles.",
+    "Step back into a lunge.",
+    "Return. Finish one side, then switch."
+   ],
+   "cues": [
+    "Torso tall."
+   ],
+   "mistakes": [
+    "Knee caving."
+   ],
+   "safety": "Check the anchor.",
+   "regression": "Smaller range.",
+   "progression": "Split squat without straps."
+  },
+  {
+   "id": "trx_glute_bridge",
+   "name": "TRX glute bridge",
+   "video": "TRX Suspension/Legs/TRX Glute Bridge.mp4",
+   "equipment": "trx",
+   "kind": "strength_accessory",
+   "areas": [
+    "hip_drive",
+    "core"
+   ],
+   "muscles": [
+    "glutes",
+    "hamstrings"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Glute bridge with heels in the straps.",
+   "instructions": [
+    "Lie on your back, heels in the foot cradles.",
+    "Lift the hips.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Ribs down."
+   ],
+   "mistakes": [
+    "Arching the back."
+   ],
+   "safety": "Stop if you feel it in the lower back.",
+   "regression": "Glute bridge on the floor.",
+   "progression": "Single-leg."
+  },
+  {
+   "id": "trx_calf_raise",
+   "name": "TRX calf raise",
+   "video": "TRX Suspension/Legs/TRX Calf Raise.mp4",
+   "equipment": "trx",
+   "kind": "strength_accessory",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "calves"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "ankle"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Calf raise holding the straps.",
+   "instructions": [
+    "Hold the handles.",
+    "Rise onto the balls of the feet.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Pause at the top."
+   ],
+   "mistakes": [
+    "Bouncing."
+   ],
+   "safety": "Check the anchor.",
+   "regression": "Both feet, small range.",
+   "progression": "Single leg."
+  },
+  {
+   "id": "trx_rdl",
+   "name": "TRX Romanian deadlift",
+   "video": "TRX Suspension/Legs/TRX Romanian Deadlift.mp4",
+   "equipment": "trx",
+   "kind": "balance",
+   "areas": [
+    "hip_drive",
+    "balance"
+   ],
+   "muscles": [
+    "hamstrings",
+    "glutes"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Single-leg hinge holding the straps.",
+   "instructions": [
+    "Hold the handles, stand on one leg.",
+    "Hinge forward, free leg reaching back.",
+    "Return. Finish one side, then switch."
+   ],
+   "cues": [
+    "Hips square."
+   ],
+   "mistakes": [
+    "Rounding the back."
+   ],
+   "safety": "Check the anchor.",
+   "regression": "Two-leg hinge.",
+   "progression": "Without straps."
+  },
+  {
+   "id": "trx_reverse_lunge_knee_drive",
+   "name": "TRX reverse lunge to knee drive",
+   "video": "TRX Suspension/Legs/TRX Reverse Lunge to Knee Drive.mp4",
+   "equipment": "trx",
+   "kind": "power_low",
+   "areas": [
+    "hip_drive",
+    "balance",
+    "power_low"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes",
+    "hip flexors"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Reverse lunge then drive the knee up, holding the straps.",
+   "instructions": [
+    "Hold the handles and step back into a lunge.",
+    "Drive up through the front foot and lift the back knee.",
+    "Finish one side, then switch."
+   ],
+   "cues": [
+    "Push the floor away, then drive the knee."
+   ],
+   "mistakes": [
+    "Rushing the lunge."
+   ],
+   "safety": "Check the anchor.",
+   "regression": "TRX lunge.",
+   "progression": "Slower lowering."
+  },
+  {
+   "id": "trx_pistol_squat",
+   "name": "TRX pistol squat",
+   "video": "TRX Suspension/Legs/TRX Pistol Squat.mp4",
+   "equipment": "trx",
+   "kind": "strength_compound",
+   "areas": [
+    "lower_strength",
+    "balance"
+   ],
+   "muscles": [
+    "quadriceps",
+    "glutes"
+   ],
+   "min_level": "advanced",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Assisted single-leg squat.",
+   "instructions": [
+    "Hold the handles, stand on one leg.",
+    "Squat down with the other leg forward.",
+    "Stand up. Finish one side, then switch."
+   ],
+   "cues": [
+    "Knee over the middle of the foot."
+   ],
+   "mistakes": [
+    "Knee caving."
+   ],
+   "safety": "Use the straps for support.",
+   "regression": "TRX lunge.",
+   "progression": "Less strap assistance."
+  },
+  {
+   "id": "dead_bug",
+   "name": "Dead bug",
+   "video": "Bodyweight/ABS/Dead Bug.mp4",
+   "equipment": "bodyweight",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Slow opposite arm-and-leg reaches while keeping the lower back still.",
+   "instructions": [
+    "Lie on your back, arms up, knees bent at 90°.",
+    "Slowly extend one arm and the opposite leg.",
+    "Return and alternate sides."
+   ],
+   "cues": [
+    "Lower back stays gently pressed down."
+   ],
+   "mistakes": [
+    "Arching the back.",
+    "Moving fast."
+   ],
+   "safety": "Shorten the reach if your back arches.",
+   "regression": "Move only the legs.",
+   "progression": "Slower tempo."
+  },
+  {
+   "id": "plank",
+   "name": "Front plank",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "core_static",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "wrist",
+    "shoulder"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Hold a straight line from head to heels on forearms and toes.",
+   "instructions": [
+    "Forearms under shoulders, legs straight behind.",
+    "Brace and hold a straight line."
+   ],
+   "cues": [
+    "Squeeze glutes; ribs down."
+   ],
+   "mistakes": [
+    "Hips sagging or piking."
+   ],
+   "safety": "Stop when you lose the position.",
+   "regression": "Knees down.",
+   "progression": "Longer hold."
+  },
+  {
+   "id": "side_plank",
+   "name": "Side plank",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "core_static",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "shoulder"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Hold on one forearm and the side of the feet.",
+   "instructions": [
+    "Lie on your side, elbow under the shoulder.",
+    "Lift the hips into a straight line.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Hips forward and high."
+   ],
+   "mistakes": [
+    "Hips sagging."
+   ],
+   "safety": "Knees-down version if the shoulder is sensitive.",
+   "regression": "Knees bent.",
+   "progression": "Top leg raised."
+  },
+  {
+   "id": "bird_dog",
+   "name": "Bird dog",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "wrist"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "On hands and knees, reach the opposite arm and leg while keeping the trunk still.",
+   "instructions": [
+    "Hands under shoulders, knees under hips.",
+    "Reach one arm forward and the opposite leg back.",
+    "Return and alternate."
+   ],
+   "cues": [
+    "Keep a glass of water balanced on your back."
+   ],
+   "mistakes": [
+    "Rotating the hips.",
+    "Arching the back."
+   ],
+   "safety": "Small reach if the back is sensitive.",
+   "regression": "Legs only.",
+   "progression": "Pause at full reach."
+  },
+  {
+   "id": "plank_shoulder_tap",
+   "name": "Plank shoulder taps",
+   "video": "Bodyweight/Arm and Shoulders/Plank Shoulder Tap.mp4",
+   "equipment": "bodyweight",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "wrist",
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "High plank, tapping opposite shoulders without rocking.",
+   "instructions": [
+    "High plank, feet wider than hips.",
+    "Tap one hand to the opposite shoulder.",
+    "Alternate without twisting."
+   ],
+   "cues": [
+    "Hips still."
+   ],
+   "mistakes": [
+    "Rocking side to side."
+   ],
+   "safety": "Skip if wrists or shoulders hurt.",
+   "regression": "Knees down.",
+   "progression": "Feet closer together."
+  },
+  {
+   "id": "band_dead_bug",
+   "name": "Band dead bug leg lowering",
+   "video": "Resistance Band/ABS/Band Dead Bug Leg Lowering.mp4",
+   "equipment": "band",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Dead bug variation with band tension.",
+   "instructions": [
+    "Lie on your back holding the band overhead.",
+    "Lower one leg slowly while keeping the back still.",
+    "Alternate legs."
+   ],
+   "cues": [
+    "Back stays down."
+   ],
+   "mistakes": [
+    "Arching."
+   ],
+   "safety": "Shorten the range if the back lifts.",
+   "regression": "Dead bug.",
+   "progression": "Slower lowering."
+  },
+  {
+   "id": "pallof_press_band",
+   "name": "Band Pallof press",
+   "video": null,
+   "equipment": "band",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A band anchored at chest height",
+   "description": "Press a band straight out from the chest and resist rotation.",
+   "instructions": [
+    "Stand side-on to the anchor holding the band at the chest.",
+    "Press the hands straight out and hold for a breath, resisting the twist.",
+    "Bring them back. Finish one side, then switch."
+   ],
+   "cues": [
+    "Hips and ribs face forward."
+   ],
+   "mistakes": [
+    "Letting the band rotate you."
+   ],
+   "safety": "Light band.",
+   "regression": "Lighter band or closer to the anchor.",
+   "progression": "Step further from the anchor."
+  },
+  {
+   "id": "pallof_press_cable",
+   "name": "Cable Pallof press",
+   "video": null,
+   "equipment": "cable",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Press a cable handle straight out from the chest and resist rotation.",
+   "instructions": [
+    "Stand side-on to the cable at chest height.",
+    "Press the handle out and hold for a breath.",
+    "Return. Finish one side, then switch."
+   ],
+   "cues": [
+    "Hips and ribs face forward."
+   ],
+   "mistakes": [
+    "Twisting toward the stack."
+   ],
+   "safety": "Light weight.",
+   "regression": "Lighter weight.",
+   "progression": "More weight or longer hold."
+  },
+  {
+   "id": "trx_side_bridge",
+   "name": "TRX side bridge",
+   "video": "TRX Suspension/ABS/TRX Side Bridge.mp4",
+   "equipment": "trx",
+   "kind": "core_static",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "shoulder"
+   ],
+   "mode": "time",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Side plank with feet in the straps.",
+   "instructions": [
+    "Feet in the cradles, on one forearm.",
+    "Lift the hips into a line.",
+    "Switch sides halfway."
+   ],
+   "cues": [
+    "Hips forward."
+   ],
+   "mistakes": [
+    "Sagging."
+   ],
+   "safety": "Floor side plank first.",
+   "regression": "Side plank on the floor.",
+   "progression": "Longer hold."
+  },
+  {
+   "id": "body_saw",
+   "name": "Body saw",
+   "video": "Bodyweight/Arm and Shoulders/Body Saw.mp4",
+   "equipment": "bodyweight",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "advanced",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "shoulder",
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Forearm plank, sliding the body forwards and back.",
+   "instructions": [
+    "Forearm plank on a slippery surface or sliders.",
+    "Slide the body back and forth a short distance."
+   ],
+   "cues": [
+    "Hips level."
+   ],
+   "mistakes": [
+    "Back sagging."
+   ],
+   "safety": "Small range.",
+   "regression": "Plank.",
+   "progression": "Bigger range."
+  },
+  {
+   "id": "trx_body_saw",
+   "name": "TRX body saw",
+   "video": "TRX Suspension/ABS/TRX Body Saw.mp4",
+   "equipment": "trx",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "advanced",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "shoulder",
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Forearm plank with feet in the straps, sliding forwards and back.",
+   "instructions": [
+    "Feet in the cradles, forearm plank.",
+    "Rock the body forward and back a short distance."
+   ],
+   "cues": [
+    "Hips level."
+   ],
+   "mistakes": [
+    "Back sagging."
+   ],
+   "safety": "Small range.",
+   "regression": "Plank.",
+   "progression": "Bigger range."
+  },
+  {
+   "id": "superman_alt",
+   "name": "Alternating superman",
+   "video": "Bodyweight/Back/Alternating Superman.mp4",
+   "equipment": "bodyweight",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "back extensors",
+    "glutes",
+    "upper back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Lying face down, lift the opposite arm and leg.",
+   "instructions": [
+    "Lie face down, arms forward.",
+    "Lift one arm and the opposite leg a little.",
+    "Lower and alternate."
+   ],
+   "cues": [
+    "Small, controlled lifts."
+   ],
+   "mistakes": [
+    "Cranking the neck up."
+   ],
+   "safety": "Keep lifts small if the back is sensitive.",
+   "regression": "Arms only.",
+   "progression": "Pause at the top."
+  },
+  {
+   "id": "db_renegade_row",
+   "name": "Dumbbell renegade row",
+   "video": "Dumbbell/Back/Dumbbell Renegade Row.mp4",
+   "equipment": "dumbbell",
+   "kind": "core_dynamic",
+   "areas": [
+    "core"
+   ],
+   "muscles": [
+    "upper back",
+    "deep abdominals",
+    "obliques"
+   ],
+   "min_level": "advanced",
+   "impact": "none",
+   "stresses": [
+    "floor",
+    "wrist",
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "High plank on dumbbells, rowing one at a time without rotating.",
+   "instructions": [
+    "High plank on two dumbbells, feet wide.",
+    "Row one dumbbell to the ribs.",
+    "Lower and alternate."
+   ],
+   "cues": [
+    "Hips square to the floor."
+   ],
+   "mistakes": [
+    "Twisting the hips."
+   ],
+   "safety": "Light dumbbells with flat sides.",
+   "regression": "Plank shoulder taps.",
+   "progression": "Feet closer."
+  },
+  {
+   "id": "band_external_rotation",
+   "name": "Band external rotation",
+   "video": "Resistance Band/Shoulders/Band External Rotation.mp4",
+   "equipment": "band",
+   "kind": "strength_accessory",
+   "areas": [
+    "shoulder"
+   ],
+   "muscles": [
+    "rotator cuff",
+    "rear shoulder"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Hold a light band in both hands and rotate the forearms outward, elbows at your sides.",
+   "instructions": [
+    "Hold the band in both hands, palms up, elbows tucked at your sides and bent to 90°.",
+    "Rotate both forearms outward to stretch the band.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Elbow stays glued to the side."
+   ],
+   "mistakes": [
+    "Using a band that is too heavy."
+   ],
+   "safety": "Light band; pain-free range.",
+   "regression": "Lighter band.",
+   "progression": "Slower lowering."
+  },
+  {
+   "id": "cable_external_rotation",
+   "name": "Cable external rotation",
+   "video": "Cable Machine/Shoulders/Cable External Rotation.mp4",
+   "equipment": "cable",
+   "kind": "strength_accessory",
+   "areas": [
+    "shoulder"
+   ],
+   "muscles": [
+    "rotator cuff",
+    "rear shoulder"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": true,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "External rotation against a light cable.",
+   "instructions": [
+    "Elbow at the side, bent to 90°.",
+    "Rotate the forearm outward.",
+    "Return slowly. Finish one side, then switch."
+   ],
+   "cues": [
+    "Elbow stays at the side."
+   ],
+   "mistakes": [
+    "Too much weight."
+   ],
+   "safety": "Light weight; pain-free range.",
+   "regression": "Lighter weight.",
+   "progression": "Slower lowering."
+  },
+  {
+   "id": "band_face_pull",
+   "name": "Band face pull",
+   "video": "Resistance Band/Shoulders/Band Half Kneeling Face Pull.mp4",
+   "equipment": "band",
+   "kind": "strength_accessory",
+   "areas": [
+    "shoulder"
+   ],
+   "muscles": [
+    "rear shoulders",
+    "upper back",
+    "rotator cuff"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder",
+    "knee"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Pull the band toward the face with elbows high.",
+   "instructions": [
+    "Half-kneel facing the anchor.",
+    "Pull toward your face, hands finishing beside the ears.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Lead with the elbows; squeeze shoulder blades."
+   ],
+   "mistakes": [
+    "Shrugging."
+   ],
+   "safety": "Light band.",
+   "regression": "Lighter band.",
+   "progression": "Pause at the end."
+  },
+  {
+   "id": "cable_face_pull",
+   "name": "Cable face pull",
+   "video": "Cable Machine/Shoulders/Cable Standing Face Pull.mp4",
+   "equipment": "cable",
+   "kind": "strength_accessory",
+   "areas": [
+    "shoulder"
+   ],
+   "muscles": [
+    "rear shoulders",
+    "upper back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Rope face pull on a cable.",
+   "instructions": [
+    "Rope at upper-chest height.",
+    "Pull toward your face, elbows high.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Squeeze shoulder blades."
+   ],
+   "mistakes": [
+    "Leaning back."
+   ],
+   "safety": "Light weight.",
+   "regression": "Lighter weight.",
+   "progression": "Pause at the end."
+  },
+  {
+   "id": "trx_face_pull",
+   "name": "TRX face pull",
+   "video": "TRX Suspension/Shoulders/TRX Face Pull.mp4",
+   "equipment": "trx",
+   "kind": "strength_accessory",
+   "areas": [
+    "shoulder"
+   ],
+   "muscles": [
+    "rear shoulders",
+    "upper back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Face pull with the straps.",
+   "instructions": [
+    "Hold the handles, lean back slightly.",
+    "Pull hands toward the face, elbows high.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Body stays straight."
+   ],
+   "mistakes": [
+    "Sagging hips."
+   ],
+   "safety": "Check the anchor; start upright.",
+   "regression": "Stand more upright.",
+   "progression": "Lean further back."
+  },
+  {
+   "id": "db_reverse_fly",
+   "name": "Dumbbell reverse fly",
+   "video": "Dumbbell/Back/Dumbbell Reverse Fly.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_accessory",
+   "areas": [
+    "shoulder"
+   ],
+   "muscles": [
+    "rear shoulders",
+    "upper back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder",
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Bent-over reverse fly.",
+   "instructions": [
+    "Hinge forward with a long back, light dumbbells hanging.",
+    "Raise the arms out to the sides.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Lead with the elbows."
+   ],
+   "mistakes": [
+    "Swinging."
+   ],
+   "safety": "Light weight.",
+   "regression": "Seated reverse fly.",
+   "progression": "Pause at the top."
+  },
+  {
+   "id": "band_reverse_fly",
+   "name": "Band reverse fly",
+   "video": "Resistance Band/Shoulders/Band Bent Over Reverse Fly.mp4",
+   "equipment": "band",
+   "kind": "strength_accessory",
+   "areas": [
+    "shoulder"
+   ],
+   "muscles": [
+    "rear shoulders",
+    "upper back"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder",
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Bent-over reverse fly with a band.",
+   "instructions": [
+    "Stand on the band, hinge forward.",
+    "Raise the arms out to the sides.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Squeeze shoulder blades."
+   ],
+   "mistakes": [
+    "Shrugging."
+   ],
+   "safety": "Light band.",
+   "regression": "Lighter band.",
+   "progression": "Pause at the top."
+  },
+  {
+   "id": "trx_row",
+   "name": "TRX row",
+   "video": "TRX Suspension/Back/TRX Row.mp4",
+   "equipment": "trx",
+   "kind": "strength_compound",
+   "areas": [
+    "shoulder",
+    "upper_push"
+   ],
+   "muscles": [
+    "upper back",
+    "lats",
+    "biceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Inverted row with the straps.",
+   "instructions": [
+    "Hold the handles, lean back, body straight.",
+    "Pull the chest to the hands.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Shoulder blades back and down."
+   ],
+   "mistakes": [
+    "Hips sagging."
+   ],
+   "safety": "Check the anchor.",
+   "regression": "Stand more upright.",
+   "progression": "Walk the feet forward."
+  },
+  {
+   "id": "band_seated_row",
+   "name": "Band seated row",
+   "video": "Resistance Band/Back/Band Seated Row.mp4",
+   "equipment": "band",
+   "kind": "strength_compound",
+   "areas": [
+    "shoulder",
+    "upper_push"
+   ],
+   "muscles": [
+    "upper back",
+    "lats"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "floor"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Seated row with a band around the feet.",
+   "instructions": [
+    "Sit tall, band around the feet.",
+    "Row the hands to the ribs.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Chest tall."
+   ],
+   "mistakes": [
+    "Rounding forward."
+   ],
+   "safety": "Light band.",
+   "regression": "Lighter band.",
+   "progression": "Stronger band."
+  },
+  {
+   "id": "cable_seated_row",
+   "name": "Cable seated row",
+   "video": "Cable Machine/Back/Cable Seated Row.mp4",
+   "equipment": "cable",
+   "kind": "strength_compound",
+   "areas": [
+    "shoulder",
+    "upper_push"
+   ],
+   "muscles": [
+    "upper back",
+    "lats"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Seated cable row.",
+   "instructions": [
+    "Sit tall, knees soft.",
+    "Row the handle to the ribs.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Shoulder blades back."
+   ],
+   "mistakes": [
+    "Leaning far back."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Lighter weight.",
+   "progression": "More weight."
+  },
+  {
+   "id": "lever_seated_row",
+   "name": "Seated row machine",
+   "video": "Gym Machine/Back/Lever Seated Grip Row.mp4",
+   "equipment": "machine",
+   "kind": "strength_compound",
+   "areas": [
+    "shoulder",
+    "upper_push"
+   ],
+   "muscles": [
+    "upper back",
+    "lats"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Machine seated row.",
+   "instructions": [
+    "Chest on the pad.",
+    "Row the handles back.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Shoulder blades back."
+   ],
+   "mistakes": [
+    "Jerking."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Lighter weight.",
+   "progression": "More weight."
+  },
+  {
+   "id": "db_bent_over_row",
+   "name": "Dumbbell bent-over row",
+   "video": "Dumbbell/Back/Dumbbell Bent Over Row.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_compound",
+   "areas": [
+    "shoulder",
+    "upper_push"
+   ],
+   "muscles": [
+    "upper back",
+    "lats"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Bent-over row with dumbbells.",
+   "instructions": [
+    "Hinge forward with a long back.",
+    "Row the dumbbells to the ribs.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Back stays flat."
+   ],
+   "mistakes": [
+    "Rounding the back."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Bench-supported one-arm row.",
+   "progression": "More weight."
+  },
+  {
+   "id": "smith_bent_over_row",
+   "name": "Smith machine bent-over row",
+   "video": "Smith Machine/Back/Smith Bent-Over Row.mp4",
+   "equipment": "smith",
+   "kind": "strength_compound",
+   "areas": [
+    "shoulder",
+    "upper_push"
+   ],
+   "muscles": [
+    "upper back",
+    "lats"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Bent-over row on a guided bar.",
+   "instructions": [
+    "Hinge forward under the bar.",
+    "Row it to the lower ribs.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Back flat."
+   ],
+   "mistakes": [
+    "Jerking."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Band row.",
+   "progression": "More weight."
+  },
+  {
+   "id": "bb_bent_over_row",
+   "name": "Barbell bent-over row",
+   "video": "Barbell/Back/Barbell Bent Over Row.mp4",
+   "equipment": "barbell",
+   "kind": "strength_compound",
+   "areas": [
+    "shoulder",
+    "upper_push"
+   ],
+   "muscles": [
+    "upper back",
+    "lats"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Bent-over row with a barbell.",
+   "instructions": [
+    "Hinge forward with a long back.",
+    "Row the bar to the lower ribs.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Back flat."
+   ],
+   "mistakes": [
+    "Standing up as you row."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Dumbbell row.",
+   "progression": "More weight."
+  },
+  {
+   "id": "band_tricep_pushdown",
+   "name": "Band triceps pushdown",
+   "video": "Resistance Band/Tricep/Band Tricep Pushdown.mp4",
+   "equipment": "band",
+   "kind": "strength_accessory",
+   "areas": [
+    "arm"
+   ],
+   "muscles": [
+    "triceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "wrist"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Straighten the elbows against a band anchored high.",
+   "instructions": [
+    "Elbows at your sides.",
+    "Push the band down until the arms are straight.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Only the forearms move."
+   ],
+   "mistakes": [
+    "Elbows drifting forward."
+   ],
+   "safety": "Light band.",
+   "regression": "Lighter band.",
+   "progression": "Stronger band."
+  },
+  {
+   "id": "cable_tricep_pushdown",
+   "name": "Cable triceps pushdown",
+   "video": "Cable Machine/Tricep/Cable Tricep Pushdown.mp4",
+   "equipment": "cable",
+   "kind": "strength_accessory",
+   "areas": [
+    "arm"
+   ],
+   "muscles": [
+    "triceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "wrist"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Triceps pushdown on a cable.",
+   "instructions": [
+    "Elbows at your sides.",
+    "Push down until the arms are straight.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Only the forearms move."
+   ],
+   "mistakes": [
+    "Leaning over the bar."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Lighter weight.",
+   "progression": "More weight."
+  },
+  {
+   "id": "db_tricep_kickback",
+   "name": "Dumbbell triceps kickback",
+   "video": "Dumbbell/Tricep/Dumbbell Tricep Kickback.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_accessory",
+   "areas": [
+    "arm"
+   ],
+   "muscles": [
+    "triceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "lower_back"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Bent-over kickback.",
+   "instructions": [
+    "Hinge forward, upper arms by your sides.",
+    "Straighten the elbows back.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Upper arm stays still."
+   ],
+   "mistakes": [
+    "Swinging."
+   ],
+   "safety": "Light weight.",
+   "regression": "Lighter weight.",
+   "progression": "Pause at full extension."
+  },
+  {
+   "id": "db_standing_tricep_extension",
+   "name": "Dumbbell overhead triceps extension",
+   "video": "Dumbbell/Tricep/Dumbbell Standing Tricep Extension.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_accessory",
+   "areas": [
+    "arm"
+   ],
+   "muscles": [
+    "triceps"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "shoulder",
+    "overhead"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Overhead triceps extension.",
+   "instructions": [
+    "Hold one dumbbell overhead with both hands.",
+    "Lower it behind the head by bending the elbows.",
+    "Straighten the arms."
+   ],
+   "cues": [
+    "Elbows point forward."
+   ],
+   "mistakes": [
+    "Arching the back."
+   ],
+   "safety": "Skip if overhead positions hurt.",
+   "regression": "Band pushdown.",
+   "progression": "More weight."
+  },
+  {
+   "id": "trx_tricep_extension",
+   "name": "TRX triceps extension",
+   "video": "TRX Suspension/Arms/TRX Tricep Extension.mp4",
+   "equipment": "trx",
+   "kind": "strength_accessory",
+   "areas": [
+    "arm"
+   ],
+   "muscles": [
+    "triceps"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "shoulder",
+    "wrist"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Triceps extension leaning into the straps.",
+   "instructions": [
+    "Face away from the anchor, arms forward.",
+    "Bend the elbows to lower the head toward the hands.",
+    "Straighten the arms."
+   ],
+   "cues": [
+    "Body stays straight."
+   ],
+   "mistakes": [
+    "Hips sagging."
+   ],
+   "safety": "Start upright.",
+   "regression": "Stand more upright.",
+   "progression": "Lean further."
+  },
+  {
+   "id": "incline_push_up",
+   "name": "Incline push-up",
+   "video": "Bodyweight/Chest/Incline Push Up.mp4",
+   "equipment": "bodyweight",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push"
+   ],
+   "muscles": [
+    "chest",
+    "triceps",
+    "shoulders"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "wrist",
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench, table or wall",
+   "description": "Push-up with hands raised.",
+   "instructions": [
+    "Hands on a raised surface, body straight.",
+    "Lower the chest to the edge.",
+    "Push back up."
+   ],
+   "cues": [
+    "Elbows about 45° from the body."
+   ],
+   "mistakes": [
+    "Hips sagging."
+   ],
+   "safety": "Higher surface if shoulders are sensitive.",
+   "regression": "Higher surface.",
+   "progression": "Floor push-up."
+  },
+  {
+   "id": "push_up",
+   "name": "Push-up",
+   "video": "Bodyweight/Chest/Regular Push Up.mp4",
+   "equipment": "bodyweight",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push",
+    "core"
+   ],
+   "muscles": [
+    "chest",
+    "triceps",
+    "shoulders"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "wrist",
+    "shoulder",
+    "floor"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Standard push-up.",
+   "instructions": [
+    "Hands under shoulders, body straight.",
+    "Lower until the chest is near the floor.",
+    "Push back up."
+   ],
+   "cues": [
+    "Body moves as one piece."
+   ],
+   "mistakes": [
+    "Hips sagging.",
+    "Elbows flared wide."
+   ],
+   "safety": "Use the incline version if form breaks.",
+   "regression": "Incline push-up.",
+   "progression": "Slower lowering."
+  },
+  {
+   "id": "trx_chest_press",
+   "name": "TRX chest press",
+   "video": "TRX Suspension/Chest/TRX Chest Press.mp4",
+   "equipment": "trx",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push"
+   ],
+   "muscles": [
+    "chest",
+    "triceps",
+    "shoulders"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder",
+    "wrist"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Push-up pattern leaning into the straps.",
+   "instructions": [
+    "Face away from the anchor, arms straight in front.",
+    "Lower the chest between the hands.",
+    "Press back."
+   ],
+   "cues": [
+    "Body straight."
+   ],
+   "mistakes": [
+    "Hips sagging."
+   ],
+   "safety": "Start upright.",
+   "regression": "Stand more upright.",
+   "progression": "Lean further."
+  },
+  {
+   "id": "band_chest_press",
+   "name": "Band chest press",
+   "video": "Resistance Band/Chest/Band Chest Press.mp4",
+   "equipment": "band",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push"
+   ],
+   "muscles": [
+    "chest",
+    "triceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Standing press against a band.",
+   "instructions": [
+    "Band anchored behind you at chest height.",
+    "Press the hands forward.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Ribs down."
+   ],
+   "mistakes": [
+    "Arching the back."
+   ],
+   "safety": "Check the anchor.",
+   "regression": "Lighter band.",
+   "progression": "Stronger band."
+  },
+  {
+   "id": "band_shoulder_press",
+   "name": "Band shoulder press",
+   "video": "Resistance Band/Shoulders/Band Shoulders Press.mp4",
+   "equipment": "band",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push",
+    "shoulder"
+   ],
+   "muscles": [
+    "shoulders",
+    "triceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder",
+    "overhead"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Overhead press against a band.",
+   "instructions": [
+    "Stand on the band, hands at the shoulders.",
+    "Press overhead.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Ribs down."
+   ],
+   "mistakes": [
+    "Arching the back."
+   ],
+   "safety": "Skip if overhead positions hurt.",
+   "regression": "Lighter band.",
+   "progression": "Stronger band."
+  },
+  {
+   "id": "db_shoulder_press",
+   "name": "Dumbbell seated shoulder press",
+   "video": "Dumbbell/Shoulders/Dumbbell Seated Shoulders Press.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push",
+    "shoulder"
+   ],
+   "muscles": [
+    "shoulders",
+    "triceps"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "shoulder",
+    "overhead"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench with back support",
+   "description": "Seated overhead dumbbell press.",
+   "instructions": [
+    "Sit tall, dumbbells at the shoulders.",
+    "Press overhead.",
+    "Lower slowly."
+   ],
+   "cues": [
+    "Ribs down."
+   ],
+   "mistakes": [
+    "Arching the back."
+   ],
+   "safety": "Skip if overhead positions hurt.",
+   "regression": "Band press.",
+   "progression": "More weight."
+  },
+  {
+   "id": "lever_chest_press",
+   "name": "Chest press machine",
+   "video": "Gym Machine/Chest/Lever Chest Press.mp4",
+   "equipment": "machine",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push"
+   ],
+   "muscles": [
+    "chest",
+    "triceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Machine chest press.",
+   "instructions": [
+    "Handles at chest height.",
+    "Press forward.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Shoulder blades on the pad."
+   ],
+   "mistakes": [
+    "Locking elbows hard."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Lighter weight.",
+   "progression": "More weight."
+  },
+  {
+   "id": "cable_chest_press",
+   "name": "Cable chest press",
+   "video": "Cable Machine/Chest/Cable Chest Press.mp4",
+   "equipment": "cable",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push"
+   ],
+   "muscles": [
+    "chest",
+    "triceps"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Standing cable press.",
+   "instructions": [
+    "Handles at chest height.",
+    "Press forward.",
+    "Return slowly."
+   ],
+   "cues": [
+    "Staggered stance, ribs down."
+   ],
+   "mistakes": [
+    "Arching."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Lighter weight.",
+   "progression": "More weight."
+  },
+  {
+   "id": "smith_bench_press",
+   "name": "Smith machine bench press",
+   "video": "Smith Machine/Chest/Smith Bench Press.mp4",
+   "equipment": "smith",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push"
+   ],
+   "muscles": [
+    "chest",
+    "triceps",
+    "shoulders"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A flat bench",
+   "description": "Bench press on a guided bar.",
+   "instructions": [
+    "Lie under the bar.",
+    "Lower to the chest.",
+    "Press up."
+   ],
+   "cues": [
+    "Shoulder blades back."
+   ],
+   "mistakes": [
+    "Bouncing."
+   ],
+   "safety": "Set the safety stops.",
+   "regression": "Push-up.",
+   "progression": "More weight."
+  },
+  {
+   "id": "db_bench_press",
+   "name": "Dumbbell bench press",
+   "video": "Dumbbell/Chest/Dumbbell Bench Press.mp4",
+   "equipment": "dumbbell",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push"
+   ],
+   "muscles": [
+    "chest",
+    "triceps",
+    "shoulders"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A flat bench",
+   "description": "Bench press with dumbbells.",
+   "instructions": [
+    "Lie on a bench, dumbbells over the chest.",
+    "Lower beside the chest.",
+    "Press up."
+   ],
+   "cues": [
+    "Shoulder blades back."
+   ],
+   "mistakes": [
+    "Flaring elbows wide."
+   ],
+   "safety": "Moderate weight.",
+   "regression": "Push-up.",
+   "progression": "More weight."
+  },
+  {
+   "id": "bb_bench_press",
+   "name": "Barbell bench press",
+   "video": "Barbell/Chest/Barbell Bench Press.mp4",
+   "equipment": "barbell",
+   "kind": "strength_compound",
+   "areas": [
+    "upper_push"
+   ],
+   "muscles": [
+    "chest",
+    "triceps",
+    "shoulders"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "shoulder"
+   ],
+   "mode": "reps",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A bench, rack and spotter or safeties",
+   "description": "Barbell bench press.",
+   "instructions": [
+    "Lie under the bar, grip slightly wider than shoulders.",
+    "Lower to the chest.",
+    "Press up."
+   ],
+   "cues": [
+    "Feet planted."
+   ],
+   "mistakes": [
+    "Bouncing off the chest."
+   ],
+   "safety": "Use safeties or a spotter.",
+   "regression": "Dumbbell bench press.",
+   "progression": "Small load increases."
+  },
+  {
+   "id": "step_up_intervals",
+   "name": "Step-up intervals",
+   "video": null,
+   "equipment": "bodyweight",
+   "kind": "conditioning",
+   "areas": [
+    "conditioning"
+   ],
+   "muscles": [
+    "legs",
+    "heart and lungs"
+   ],
+   "min_level": "beginner",
+   "impact": "none",
+   "stresses": [
+    "knee"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": "A sturdy low step",
+   "description": "Steady stepping up and down a low step at a conversational pace.",
+   "instructions": [
+    "Step up with one foot, then the other.",
+    "Step down the same way.",
+    "Switch the leading leg each interval."
+   ],
+   "cues": [
+    "Whole foot on the step."
+   ],
+   "mistakes": [
+    "Rushing and missing the step."
+   ],
+   "safety": "Low step; keep a pace you can talk at.",
+   "regression": "Marching in place.",
+   "progression": "Slightly faster pace."
+  },
+  {
+   "id": "burpee",
+   "name": "Burpee",
+   "video": "Bodyweight/Cardio/Burpee.mp4",
+   "equipment": "bodyweight",
+   "kind": "conditioning",
+   "areas": [
+    "conditioning"
+   ],
+   "muscles": [
+    "full body"
+   ],
+   "min_level": "advanced",
+   "impact": "high",
+   "stresses": [
+    "wrist",
+    "shoulder",
+    "knee",
+    "ankle",
+    "floor"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Squat, plank, return and jump.",
+   "instructions": [
+    "Squat and place the hands down.",
+    "Step or jump back to a plank.",
+    "Return and stand or jump."
+   ],
+   "cues": [
+    "Controlled, not sloppy."
+   ],
+   "mistakes": [
+    "Back sagging in the plank."
+   ],
+   "safety": "High impact: only if you are comfortable with jumping.",
+   "regression": "Step-back burpee without the jump.",
+   "progression": "Add the jump."
+  },
+  {
+   "id": "trx_mountain_climber",
+   "name": "TRX mountain climber",
+   "video": "TRX Suspension/ABS/TRX Mountain Climber.mp4",
+   "equipment": "trx",
+   "kind": "conditioning",
+   "areas": [
+    "conditioning",
+    "core"
+   ],
+   "muscles": [
+    "hip flexors",
+    "core",
+    "shoulders"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "wrist",
+    "shoulder",
+    "floor"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Mountain climbers with feet in the straps.",
+   "instructions": [
+    "High plank with feet in the cradles.",
+    "Drive the knees in alternately."
+   ],
+   "cues": [
+    "Hips level."
+   ],
+   "mistakes": [
+    "Hips piking up."
+   ],
+   "safety": "Check the anchor.",
+   "regression": "Slower pace.",
+   "progression": "Faster pace."
+  },
+  {
+   "id": "band_mountain_climber",
+   "name": "Band mountain climber",
+   "video": "Resistance Band/ABS/Band Mountain Climber.mp4",
+   "equipment": "band",
+   "kind": "conditioning",
+   "areas": [
+    "conditioning",
+    "core"
+   ],
+   "muscles": [
+    "hip flexors",
+    "core",
+    "shoulders"
+   ],
+   "min_level": "intermediate",
+   "impact": "none",
+   "stresses": [
+    "wrist",
+    "shoulder",
+    "floor"
+   ],
+   "mode": "time",
+   "per_side": false,
+   "phases": [
+    "main"
+   ],
+   "equipment_free": false,
+   "needs": null,
+   "description": "Mountain climbers with a band around the feet.",
+   "instructions": [
+    "High plank, band around the feet.",
+    "Drive the knees in alternately."
+   ],
+   "cues": [
+    "Hips level."
+   ],
+   "mistakes": [
+    "Hips piking up."
+   ],
+   "safety": "Slow down if the wrists hurt.",
+   "regression": "Slower pace.",
+   "progression": "Faster pace."
+  }
+ ]
+}

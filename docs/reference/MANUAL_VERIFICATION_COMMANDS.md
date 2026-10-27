@@ -304,6 +304,9 @@ python -m unittest tests/integration/test_export_dataset.py
 python -m unittest tests/integration/test_sync_split_annotations.py
 python -m unittest tests/integration/test_weights_manifest.py
 python -m unittest tests/e2e/test_web_app.py
+python -m unittest tests/unit/test_workout_planner.py
+python -m unittest tests/e2e/test_workout_api.py
+python -m unittest tests/e2e/test_workout_ui.py   # needs Playwright Chromium + ffmpeg; skipped otherwise
 
 # Synthetic pipeline benchmark
 python evaluation/evaluate_pipeline.py
@@ -554,10 +557,10 @@ curl -s -X PUT  http://127.0.0.1:8765/api/sessions/<SESSION_ID>/camera-view -H "
 
 **Deletion** now also removes the session's analysis and report rows, replay copy and keyframe folder.
 
-**DB check (schema v7):**
+**DB check (schema v7; v8 after section 16):**
 
 ```sql
-SELECT key, value FROM schema_meta WHERE key='version';          -- expect 7
+SELECT key, value FROM schema_meta WHERE key='version';          -- expect 7 (8 once the workout coach has run)
 SELECT session_id, analysis_version, computed_at FROM session_analysis ORDER BY computed_at DESC;
 SELECT shot_id, boundaries_key, analysis_version FROM attempt_analysis WHERE session_id = '<SESSION_ID>';
 SELECT session_id, report_version, generated_at FROM session_reports ORDER BY generated_at DESC;
@@ -565,7 +568,73 @@ SELECT session_id, report_version, generated_at FROM session_reports ORDER BY ge
 
 **Manual acceptance on real footage (developer):** upload a permitted side-on clip; confirm/correct attempts; check that each Coach-summary finding's timestamps show the described moment; open section 8 and confirm it states what the video shows, why it may matter, a conservative modification and what cannot be concluded, with no diagnosis; print to PDF; restart the server and reopen the report (expect `Saved report from …`). Repeat from an iPhone and an Android phone with `--lan`. The developer must do the phone checks; they were not done in the agent workspace.
 
-## 16. Pranabv1: Live camera ball tracking HUD, automated outcome, and dip-angle verification (Web App)
+## 16. 09: Personalized workout coach
+
+Full design: `docs/reference/WORKOUT_COACH.md`. Inputs: a session with a finished report, plus the demonstration videos in `workout/` (project root, not in Git, read-only). Only exercises with a demonstration video in that folder are prescribed. Without `workout/` the rest of the app works, but generating a workout returns `422`. Very restrictive choices that leave too few video exercises also return `422`, with the minutes that fit.
+
+```bash
+# macOS / Linux
+.venv-mac/bin/python web_app.py --port 8765                                   # uses ./workout
+.venv-mac/bin/python web_app.py --port 8765 --workout-dir "/path/to/workout"  # another folder
+```
+
+```powershell
+.venv\Scripts\python.exe web_app.py --port 8765 --workout-dir C:\path\to\workout
+```
+
+In the browser:
+1. Open **Report**.
+2. Select **Generate My Personalized Workout**.
+3. Choose equipment, level, duration (20–60 min) and limitations.
+4. Select **Generate My Workout**.
+5. Review the plan and select **Start workout**.
+
+Expected:
+- every main exercise shows **Why this exercise**, linked to a report finding or to your goal;
+- the total is at least 20 minutes and at least the duration you chose;
+- videos loop during work and pause during rest;
+- the voice says the exercise name once, then only the last 10% of each count;
+- reloading the page resumes paused;
+- **End workout** produces a summary that marks unfinished work as skipped or not reached.
+
+API checks (`X-Shotlab: 1` is required on POST/PUT/DELETE):
+
+```bash
+curl -s http://127.0.0.1:8765/api/sessions/<SESSION_ID>/workout-context | python3 -m json.tool | head -40
+curl -s -X POST http://127.0.0.1:8765/api/sessions/<SESSION_ID>/workouts -H "X-Shotlab: 1" -H "Content-Type: application/json" \
+     -d '{"equipment":["bodyweight","band"],"fitness_level":"beginner","duration_min":25,"avoid":[],"goals":[],"pain":false}'
+curl -s http://127.0.0.1:8765/api/workouts/<WORKOUT_ID> | python3 -m json.tool | head -20
+curl -s -o /dev/null -w "%{http_code}\n" -H "Range: bytes=0-99" http://127.0.0.1:8765/api/workout-media/running_in_place   # 206
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8765/api/workout-media/..%2F..%2Fetc%2Fpasswd                   # 404
+curl -s -X DELETE http://127.0.0.1:8765/api/workouts/<WORKOUT_ID> -H "X-Shotlab: 1"
+```
+
+Side effects:
+- creates or updates rows in `workout_plans` (schema v8 adds this table on first start);
+- deleting a session deletes its workouts;
+- video files are never written.
+
+DB check:
+
+```sql
+SELECT workout_id, session_id, status, planned_duration_s, created_at, ended_at FROM workout_plans ORDER BY created_at DESC;
+```
+
+Tests:
+
+```bash
+PYTHONPATH=src:. python3 -m pytest -q tests/unit/test_workout_planner.py tests/e2e/test_workout_api.py tests/e2e/test_workout_ui.py
+```
+
+- The catalog-to-video check runs only when `workout/` is present; otherwise it is skipped.
+- The UI test writes temporary **synthetic VP9** clips under the catalog's file names to test loop and pause logic. It does not test H.264 playback.
+
+**Manual checks (developer).** These were not done in the agent workspace:
+- H.264 demo playback in Safari and Chrome on macOS;
+- real speech output and voice choice;
+- iPhone/Android over `--lan`, including screen lock and returning to the tab.
+
+## 17. Pranabv1: Live camera ball tracking HUD, automated outcome, and dip-angle verification (Web App)
 
 **Start Web Application Server (Windows / cross-platform):**
 
@@ -583,11 +652,11 @@ Defaults: `--db shot_lab.db --upload-dir user_data/uploads --pose-cache-dir user
 2. Click **Start Camera & Tracking**.
 3. The interface renders:
    - Live video feed with overlaid `<canvas id="camera-overlay">`.
-   - Top broadcast HUD pills: Rim lock status (`PANIER VERROUILLÉ` in green or `RECHERCHE DU PANIER...` in amber), Arc peak (`SOMMET ARC`), Live knee angle (`ANGLE GENOU`), Live arm angle (`ANGLE BRAS`), and Current shot phase (`PHASE`).
+   - Top broadcast HUD pills: Rim lock status (`Rim Calibrated` in green or `Searching for rim…` in amber), Arc peak (`PEAK MAX`), Live knee angle (`KNEE`), Live arm angle (`ARM`), and Current shot phase (`PHASE`).
    - Neon orange skeleton overlay, detected basket rim box with concentric target reticle, detected basketball bounding box, and parabolic glowing trajectory trail.
-   - Bottom broadcast stats card: Shots made (`RÉUSSIS`), shots missed (`RATÉS`), and shooting percentage (`RÉUSSITE`).
-   - Recalibrate button (`↺ Recalibrer`) to reset tracker state via `POST /api/live/reset`.
-   - Dynamic popup banner when a shot outcome is detected.
+   - Bottom broadcast stats card: Shots made (`SUCCESSES`), shots missed (`FAILURES`), and shooting percentage (`SUCCESS`).
+   - Recalibrate button (`Recalibrate Rim`) to reset tracker state via `POST /api/live/reset`.
+   - Dynamic popup banner when a shot outcome is detected (`SHOT MADE!` / `SHOT MISSED!`).
 
 **Live API Endpoints (Manual verification):**
 ```powershell
@@ -615,7 +684,6 @@ py -3.12 -m unittest tests/unit/test_dip_angle_model.py
 py -3.12 -m unittest tests/unit/test_live_camera_service.py
 py -3.12 -m unittest tests/e2e/test_web_app.py
 ```
-
 ## Expected verification outputs
 
 - Annotation Lab: video window opens; edits are saved to the selected SQLite DB when saved/committed.

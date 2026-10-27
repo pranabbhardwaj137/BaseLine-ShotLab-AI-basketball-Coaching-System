@@ -36,6 +36,8 @@ python -m basketball.app.web_app --port 8000
 ```
 Open **`http://127.0.0.1:8000/`** in your browser to upload clips, view biomechanics metrics, and generate reports.
 
+**Personalized workout:** after a report is ready, select **Generate My Personalized Workout** on the Report page. The demonstration videos are read from `workout/` in the project root (not in Git); point elsewhere with `--workout-dir PATH`. Design, rules and limits: [`docs/reference/WORKOUT_COACH.md`](docs/reference/WORKOUT_COACH.md).
+
 #### Desktop HUD & Live Pose Analysis
 ```powershell
 # Analyze a sample video clip with default ball & rim tracking
@@ -207,6 +209,7 @@ python -m unittest discover tests
 - **Unit tests (`tests/unit/`)**: 92 tests verifying ball geometry, trajectory fitting, biomechanics calculations, baseline aggregation, coaching rules, and dataset export.
 - **Integration tests (`tests/integration/`)**: 31 tests verifying database workflows, video processing pipelines, annotation lab flows, and model evaluation routines.
 - **E2E tests (`tests/e2e/`)**: 17 tests verifying the web server REST API, file upload handling, job lifecycle, keyframe security, and session management.
+- **Workout coach**: `tests/unit/test_workout_planner.py` (catalog, equipment/level/pain rules, finding links, duration formula, final-10% voice rule, honest summary), `tests/e2e/test_workout_api.py` (routes, progress lock, safe media streaming) and `tests/e2e/test_workout_ui.py` (Playwright with a controlled clock and recorded speech; needs Playwright Chromium and ffmpeg, otherwise skipped).
 
 All tests are designed to run out-of-the-box on standard CPU environments without requiring optional dependencies like GPU PyTorch or cloud APIs.
 
