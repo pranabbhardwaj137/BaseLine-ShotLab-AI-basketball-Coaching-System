@@ -66,8 +66,8 @@ def validate_catalog(catalog: dict[str, Any]) -> None:
         video = exercise.get("video")
         if video is not None:
             parts = Path(video).parts
-            if (not isinstance(video, str) or Path(video).is_absolute() or ".." in parts
-                    or Path(video).suffix.lower() != ".mp4"):
+            if (not isinstance(video, str) or Path(video).is_absolute() or bool(Path(video).anchor)
+                    or ".." in parts or Path(video).suffix.lower() != ".mp4"):
                 raise CatalogError(f"{eid}: video must be a relative .mp4 path inside workout/")
         for key in ("instructions", "cues", "mistakes"):
             if not exercise.get(key):

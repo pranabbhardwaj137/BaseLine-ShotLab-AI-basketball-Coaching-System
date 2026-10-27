@@ -964,6 +964,12 @@ class AppHandler(BaseHTTPRequestHandler):
     def _handle_live_process_frame(self):
         engine = getattr(self.server, "live_engine", None)
         if engine is None:
+            try:
+                engine = LiveCameraEngine()
+                self.server.live_engine = engine
+            except Exception:
+                engine = None
+        if engine is None:
             return self._text_error(503, "Live camera engine is not available")
         try:
             content_type = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -1006,9 +1012,17 @@ class AppHandler(BaseHTTPRequestHandler):
     def _handle_live_reset(self):
         engine = getattr(self.server, "live_engine", None)
         if engine is None:
+            try:
+                engine = LiveCameraEngine()
+                self.server.live_engine = engine
+            except Exception:
+                engine = None
+        if engine is None:
             return self._text_error(503, "Live camera engine is not available")
         res = engine.reset_session()
-        return self._json(200, {"status": "ok", "stats": res})
+        payload = {"status": "ok", "stats": res}
+        payload.update(res)
+        return self._json(200, payload)
 
     def _add_manual_attempt(self, session_id):
         """Add an attempt the detector missed. Human-made, so it is approved with provenance."""
@@ -1481,7 +1495,10 @@ class LocalAppServer(ThreadingHTTPServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.auth_failures = {}
-        self.live_engine = None
+        try:
+            self.live_engine = LiveCameraEngine()
+        except Exception:
+            self.live_engine = None
 
 
 ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I to avoid typos on a phone
