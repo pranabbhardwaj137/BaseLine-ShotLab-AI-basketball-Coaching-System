@@ -63,9 +63,9 @@ def _key(*parts: Any) -> str:
 
 
 def _shot_state(shots):
-    return [(s["shot_id"], s.get("annotated_start_frame"), s.get("annotated_release_frame"), s.get("annotated_end_frame"),
-             s.get("machine_start_frame"), s.get("machine_release_frame"), s.get("machine_end_frame"),
-             s.get("review_status"), s.get("outcome")) for s in shots]
+    return [(s["shot_id"], s.get("annotated_start_frame"), s.get("annotated_dip_frame"), s.get("annotated_release_frame"), s.get("annotated_end_frame"),
+             s.get("machine_start_frame"), s.get("machine_dip_frame"), s.get("machine_release_frame"), s.get("machine_end_frame"),
+             s.get("review_status"), s.get("outcome"), s.get("automated_outcome"), s.get("automated_outcome_conf")) for s in shots]
 
 
 def _cache_stamp(path: Path):
@@ -293,8 +293,13 @@ def _shot_by_shot(analysis, focus):
         out.append({
             "attempt": attempt["attempt_index"], "shot_id": attempt["shot_id"],
             "start_s": attempt.get("start_s"), "release_s": attempt.get("release_s"), "end_s": attempt.get("end_s"),
-            "start_frame": attempt.get("start_frame"), "release_frame": attempt.get("release_frame"),
+            "dip_s": attempt.get("dip_s"),
+            "start_frame": attempt.get("start_frame"), "release_frame": attempt.get("release_frame"), "dip_frame": attempt.get("dip_frame"),
             "review_status": attempt.get("review_status"), "outcome": attempt.get("outcome"),
+            "automated_outcome": attempt.get("automated_outcome"),
+            "automated_outcome_conf": attempt.get("automated_outcome_conf"),
+            "trajectory_fit_r2": attempt.get("trajectory_fit_r2"),
+            "entry_angle_deg": attempt.get("entry_angle_deg"),
             "manually_added": attempt.get("manually_added"), "shooting_side": attempt.get("shooting_side"),
             "pose_coverage": attempt.get("pose_coverage"),
             "measurements": measurements, "strengths": evaluation["strengths"],
@@ -365,10 +370,12 @@ def build_report(db_path: str, session_id: str, pose_cache_dir: Path, keyframe_d
     keyframes = ensure_keyframes(session_id, analysis, pose_cache_dir, keyframe_dir, video_paths) \
         if analysis.get("status") == "COMPLETE" else []
 
+    has_ball = any(a.get("automated_outcome") and a.get("automated_outcome") != "unknown" for a in active)
     limitations = [
         "Measurements come from single-camera 2D pose estimation; they are estimates, not lab motion capture.",
-        "Ball and rim are not tracked in this flow, so release angle, arc and make/miss are not measured; outcomes come only from your labels.",
     ]
+    if not has_ball:
+        limitations.append("Ball and rim trajectory was inconclusive or not detected, so make/miss outcomes require human review.")
     if quality.get("issues"):
         limitations.extend(quality["issues"])
     if active and not confirmed:
@@ -408,6 +415,15 @@ def build_report(db_path: str, session_id: str, pose_cache_dir: Path, keyframe_d
                            for a in active]}
 
     used_keys = sorted({k for a in active for k, r in a["metrics"].items() if r.get("value") is not None})
+
+    trajectory_attempts = [
+        a for a in active if a.get("automated_outcome") and a.get("automated_outcome") != "unknown"
+    ]
+    if trajectory_attempts:
+        ball_traj_summary = f"{len(trajectory_attempts)} of {len(active)} attempt{'s' if len(active) != 1 else ''} tracked with advisory ball/rim trajectory."
+    else:
+        ball_traj_summary = "Ball trajectory was not detected or was inconclusive for these attempts."
+
     report = {
         "meta": {"session_id": session_id, "player_id": session["player_id"], "generated_at": generated_at,
                  "report_version": REPORT_VERSION, "analysis_version": analysis.get("analysis_version"),
@@ -435,7 +451,7 @@ def build_report(db_path: str, session_id: str, pose_cache_dir: Path, keyframe_d
         },
         "technical": _technical_rows(analysis, coaching) if active else [],
         "evidence": {"keyframes": keyframes, "observations": observations, "comparison": comparison,
-                     "ball_trajectory": "Not shown: ball and rim tracking are not run in the upload flow, so no trajectory is available."},
+                     "ball_trajectory": ball_traj_summary},
         "shots": _shot_by_shot(analysis, focus),
         "correction_plan": [{
             "finding_id": f["id"], "issue": f["title"], "category": f["category"], "evidence": f["observed"],

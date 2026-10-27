@@ -63,6 +63,12 @@ METRIC_DEFINITIONS: dict[str, dict[str, Any]] = {
         "definition": "Smallest hip–knee–ankle angle between the start of the attempt and the release (the 'dip'). 180° is a straight leg.",
         "limitation": "Image-plane projection; reads as a straighter leg than reality when the camera is not side-on. Light smoothing can round off a very sharp dip by a degree or two.",
     },
+    "knee_angle_dip_3d_deg": {
+        "label": "Deepest knee bend (3D estimate)", "category": "lower_body", "unit": "°",
+        "basis": "world_3d_estimate", "plausible": (40, 180), "views": ALL_VIEWS_FAIR,
+        "definition": "Knee flexion angle at the dip frame from MediaPipe's estimated 3D world coordinates.",
+        "limitation": "Monocular depth is inferred by the model, not measured; treat as an estimate.",
+    },
     "hip_flexion_min_deg": {
         "label": "Deepest hip bend", "category": "lower_body", "unit": "°", "basis": "image_2d",
         "plausible": (40, 180), "views": SIDE_VIEWS,
@@ -552,11 +558,32 @@ def analyze_attempt(series: PoseSeries, shot: dict[str, Any], camera_view: str, 
     elbow_series = {f: elbow_angle(f) for f in series.window(start, release + 0.5 * fps)}
 
     # Lower body ------------------------------------------------------------------
-    rise_knees = [(f, knee_series.get(f)) for f in rise if knee_series.get(f) is not None]
-    dip = min(rise_knees, key=lambda item: item[1])[0] if rise_knees else None
+    explicit_dip = boundary("dip")
+    upper_dip_bound = set_frame if set_frame is not None else release
+
+    rise_knees = [(f, knee_series.get(f)) for f in rise if knee_series.get(f) is not None and start <= f <= upper_dip_bound]
+    min_knee_frame, min_knee_val = min(rise_knees, key=lambda item: item[1]) if rise_knees else (None, None)
+
+    dip = None
+    if explicit_dip is not None and start <= explicit_dip <= upper_dip_bound:
+        deg = knee_series.get(explicit_dip)
+        if deg is not None and 40.0 <= deg <= 165.0:
+            dip = explicit_dip
+    elif min_knee_val is not None and 40.0 <= min_knee_val <= 165.0:
+        dip = min_knee_frame
+
     leg_joints = [leg["hip"], leg["knee"], leg["ankle"]]
-    put("knee_flexion_min_deg", knee_series.get(dip) if dip is not None else None, dip, [dip] if dip is not None else [],
-        leg_joints, detail=f"{leg_side} leg")
+    put("knee_flexion_min_deg", min_knee_val, min_knee_frame,
+        [min_knee_frame] if min_knee_frame is not None else [], leg_joints, detail=f"{leg_side} leg")
+
+    if dip is not None:
+        world_knee = angle_3d(series.world_point(dip, leg["hip"]), series.world_point(dip, leg["knee"]),
+                              series.world_point(dip, leg["ankle"]))
+        put("knee_angle_dip_3d_deg", world_knee, dip, [dip], leg_joints, detail=f"{leg_side} leg",
+            reason=None if series.world else "This session's pose data has no 3D estimates (analysed before 2026-10-25). Use 'Refresh pose data' to add them.")
+    else:
+        put("knee_angle_dip_3d_deg", None, None, [], leg_joints, reason="No distinct knee dip detected.")
+
     hip_values = [(f, angle_2d(series.point(f, arm["shoulder"]), series.point(f, leg["hip"]), series.point(f, leg["knee"])))
                   for f in rise]
     hip_values = [item for item in hip_values if item[1] is not None]
@@ -564,15 +591,17 @@ def analyze_attempt(series: PoseSeries, shot: dict[str, Any], camera_view: str, 
     put("hip_flexion_min_deg", hip_min[1], hip_min[0], [hip_min[0]] if hip_min[0] is not None else [],
         [arm["shoulder"], leg["hip"], leg["knee"]])
     peak_knee = None
-    if dip is not None:
+    ref_knee_frame = dip if dip is not None else min_knee_frame
+    if ref_knee_frame is not None:
         # Take-off phase only: after release the knees straighten again when you land and stand up.
-        after = [(f, knee_series.get(f)) for f in series.window(dip, release + 2) if knee_series.get(f) is not None]
+        after = [(f, knee_series.get(f)) for f in series.window(ref_knee_frame, release + 2) if knee_series.get(f) is not None]
         if after:
             peak_knee = max(after, key=lambda item: item[1])
     put("knee_extension_range_deg",
-        (peak_knee[1] - knee_series[dip]) if peak_knee and dip is not None else None,
+        (peak_knee[1] - knee_series[ref_knee_frame]) if peak_knee and ref_knee_frame is not None and knee_series.get(ref_knee_frame) is not None else None,
         peak_knee[0] if peak_knee else None,
-        series.window(dip, peak_knee[0]) if peak_knee and dip is not None else [], leg_joints)
+        series.window(ref_knee_frame, peak_knee[0]) if peak_knee and ref_knee_frame is not None else [], leg_joints,
+        reason=None if ref_knee_frame is not None else "No distinct knee dip detected.")
 
     # Arm -----------------------------------------------------------------------
     arm_joints = [arm["shoulder"], arm["elbow"], arm["wrist"]]
@@ -740,6 +769,12 @@ def _attempt_record(series, shot, attempt_index, start, release, end, side, side
         "shooting_side": side, "shooting_side_basis": side_basis,
         "review_status": shot.get("review_status") or "quarantined",
         "outcome": shot.get("outcome") or "unknown",
+        "automated_outcome": shot.get("automated_outcome"),
+        "automated_outcome_conf": shot.get("automated_outcome_conf"),
+        "trajectory_fit_r2": shot.get("trajectory_fit_r2"),
+        "entry_angle_deg": shot.get("entry_angle_deg"),
+        "ball_coverage_ratio": shot.get("ball_coverage_ratio"),
+        "ball_model_version": shot.get("ball_model_version"),
         "manually_added": shot.get("outcome_source") == "manual_attempt" or (
             shot.get("machine_start_frame") is None and shot.get("annotated_start_frame") is not None),
         "pose_coverage": round(with_pose / len(frames), 2) if len(frames) else 0.0,

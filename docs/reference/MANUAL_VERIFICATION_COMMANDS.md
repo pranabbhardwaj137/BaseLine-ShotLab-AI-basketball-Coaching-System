@@ -565,6 +565,57 @@ SELECT session_id, report_version, generated_at FROM session_reports ORDER BY ge
 
 **Manual acceptance on real footage (developer):** upload a permitted side-on clip; confirm/correct attempts; check that each Coach-summary finding's timestamps show the described moment; open section 8 and confirm it states what the video shows, why it may matter, a conservative modification and what cannot be concluded, with no diagnosis; print to PDF; restart the server and reopen the report (expect `Saved report from …`). Repeat from an iPhone and an Android phone with `--lan`. The developer must do the phone checks; they were not done in the agent workspace.
 
+## 16. Pranabv1: Live camera ball tracking HUD, automated outcome, and dip-angle verification (Web App)
+
+**Start Web Application Server (Windows / cross-platform):**
+
+```powershell
+# Using py -3.12 or python
+py -3.12 web_app.py
+# Equivalent module entry point:
+py -3.12 -m basketball.app.web_app --port 8765
+```
+
+Defaults: `--db shot_lab.db --upload-dir user_data/uploads --pose-cache-dir user_data/pose_cache --keyframe-dir user_data/keyframes --port 8765`, bound to 127.0.0.1.
+
+**Live Camera Ball & Rim Tracking (Browser):**
+1. Open `http://127.0.0.1:8765/` in Chrome or Edge and navigate to the **Live Camera** tab (`#pane-camera`).
+2. Click **Start Camera & Tracking**.
+3. The interface renders:
+   - Live video feed with overlaid `<canvas id="camera-overlay">`.
+   - Top broadcast HUD pills: Rim lock status (`PANIER VERROUILLÉ` in green or `RECHERCHE DU PANIER...` in amber), Arc peak (`SOMMET ARC`), Live knee angle (`ANGLE GENOU`), Live arm angle (`ANGLE BRAS`), and Current shot phase (`PHASE`).
+   - Neon orange skeleton overlay, detected basket rim box with concentric target reticle, detected basketball bounding box, and parabolic glowing trajectory trail.
+   - Bottom broadcast stats card: Shots made (`RÉUSSIS`), shots missed (`RATÉS`), and shooting percentage (`RÉUSSITE`).
+   - Recalibrate button (`↺ Recalibrer`) to reset tracker state via `POST /api/live/reset`.
+   - Dynamic popup banner when a shot outcome is detected.
+
+**Live API Endpoints (Manual verification):**
+```powershell
+# Health check (includes live camera engine and ball tracker readiness)
+curl -s http://127.0.0.1:8765/api/health
+
+# Reset live camera session tracker
+curl -s -X POST http://127.0.0.1:8765/api/live/reset -H "X-Shotlab: 1"
+
+# Post frame for live tracking analysis (JSON payload with base64 JPEG and client timestamp)
+curl -s -X POST http://127.0.0.1:8765/api/live/process-frame -H "X-Shotlab: 1" -H "Content-Type: application/json" -d '{"image_data":"data:image/jpeg;base64,...","timestamp_ms":1000}'
+```
+
+**Dip-Angle Localization and Omission Verification:**
+- For shots with a distinct knee dip ($40^\circ \le \text{knee} \le 165^\circ$), `machine_dip_frame` and `knee_angle_dip_3d` are persisted in `ShotLabDB`, and the review timeline renders a gold `Dip` marker and editable keyframe input.
+- For flat-footed shots or noisy landmark detections where no valid dip occurs between start and release, the pipeline sets `dip_frame = None`. In this case, the web review timeline and editor **strictly omit** the Dip marker and input controls (no blank inputs, placeholders, or guessed values).
+- Automated shot outcome (`automated_outcome`, `automated_outcome_conf`) displays as `Automatic: Made/Missed (X%)` or `Needs confirmation`, leaving human ground-truth `shots.outcome` untouched until confirmed.
+
+**Automated Test Suite Verification:**
+```powershell
+$env:PYTHONPATH="src;."
+py -3.12 -m unittest discover tests
+# Or run specific test suites:
+py -3.12 -m unittest tests/unit/test_dip_angle_model.py
+py -3.12 -m unittest tests/unit/test_live_camera_service.py
+py -3.12 -m unittest tests/e2e/test_web_app.py
+```
+
 ## Expected verification outputs
 
 - Annotation Lab: video window opens; edits are saved to the selected SQLite DB when saved/committed.

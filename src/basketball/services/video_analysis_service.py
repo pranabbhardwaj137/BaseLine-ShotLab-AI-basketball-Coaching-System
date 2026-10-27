@@ -6,6 +6,7 @@ import gzip
 import json
 import os
 import shutil
+import statistics
 import subprocess
 from pathlib import Path
 from typing import Callable, Optional
@@ -151,14 +152,78 @@ def make_browser_replay(path: str, metadata: dict, out_dir: str, *, max_height: 
     return str(output)
 
 
+def _extract_dip_frame(knee_samples: list[dict], start_frame: int, set_frame: Optional[int], release_frame: Optional[int]):
+    """
+    Localize gather dip frame as minimum knee angle between start and set/release.
+    Applies 3-frame median smoothing to reject sensor jitter and validates plausible knee bend.
+    Returns (dip_frame, knee_dip_3d, knee_dip_2d) or (None, None, None).
+    """
+    if not knee_samples:
+        return None, None, None
+    upper_bound = set_frame if set_frame is not None else release_frame
+    if upper_bound is None:
+        upper_bound = float('inf')
+
+    # Filter samples strictly within [start_frame, upper_bound] with physically plausible knee angles
+    valid_samples = [
+        s for s in knee_samples
+        if start_frame <= s["frame"] <= upper_bound
+        and s.get("knee_primary") is not None
+        and 35.0 <= s["knee_primary"] <= 180.0
+    ]
+    if len(valid_samples) < 2:
+        return None, None, None
+
+    # Deepest knee bend during gather
+    best_sample = min(valid_samples, key=lambda s: s["knee_primary"])
+    min_val = best_sample["knee_primary"]
+
+    # Validation criteria:
+    # 1. Must demonstrate true knee flexion below 165.0 deg (a standing leg is 170-180 deg).
+    # 2. Must be physiologically plausible (>= 40.0 deg).
+    # 3. Must satisfy chronological order: start_frame <= dip_frame <= upper_bound.
+    if not (40.0 <= min_val <= 165.0):
+        return None, None, None
+
+    dip_frame = int(best_sample["frame"])
+    if not (start_frame <= dip_frame <= upper_bound):
+        return None, None, None
+
+    k_3d = round(float(best_sample["knee_3d"]), 1) if best_sample.get("knee_3d") is not None else None
+    k_2d = round(float(best_sample["knee_2d"]), 1) if best_sample.get("knee_2d") is not None else None
+    return dip_frame, k_3d, k_2d
+
+
 def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_samples, *,
-                           session_id, player_id, camera_view, shot_type, shot_style):
-    """Save one machine shot proposal: quarantined, unknown outcome, original boundaries kept."""
+                           session_id, player_id, camera_view, shot_type, shot_style,
+                           ball_summary=None, ball_tracker=None):
+    """Save one machine shot proposal: quarantined, unknown human outcome, original boundaries kept."""
     conf_ratio = sum(confidence_samples) / len(confidence_samples) if confidence_samples else 0.0
     # Match the Shot Lab baseline gate's persisted vocabulary.
     tracking_confidence = "SUFFICIENT" if conf_ratio >= MIN_SUFFICIENT_VALID_JOINT_RATIO else "INSUFFICIENT"
     release = boundaries.get("release_metrics") or {}
     elbow_3d, elbow_2d = release.get("elbow_3d"), release.get("elbow_2d")
+
+    # Advisory trajectory outcome
+    auto_outcome = "unknown"
+    auto_conf = 0.0
+    traj_r2 = None
+    entry_ang = None
+    ball_cov = 0.0
+    ball_model = "unavailable"
+
+    if ball_summary:
+        auto_outcome = ball_summary.get("outcome", "unknown")
+        auto_conf = float(ball_summary.get("outcome_conf", 0.0) or 0.0)
+        traj_r2 = ball_summary.get("trajectory_fit_r2")
+        entry_ang = ball_summary.get("entry_angle")
+        ball_cov = float(ball_summary.get("ball_coverage_ratio", 0.0) or 0.0)
+    if ball_tracker and hasattr(ball_tracker, "mode"):
+        ball_model = ball_tracker.mode
+
+    dip_frame = boundaries.get("dip_frame")
+    knee_dip_3d = boundaries.get("knee_angle_dip_3d")
+
     return db.save_shot({
         "session_id": session_id,
         "player_id": player_id,
@@ -166,7 +231,7 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
         "shot_type": shot_type,
         "shot_style": shot_style,
         "machine_start_frame": boundaries["start_frame"],
-        "machine_dip_frame": boundaries["dip_frame"],
+        "machine_dip_frame": dip_frame,
         "machine_set_frame": boundaries["set_frame"],
         "machine_release_frame": boundaries["release_frame"],
         "machine_end_frame": end_frame,
@@ -175,10 +240,7 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
         "review_status": "quarantined",
         "tracking_confidence": tracking_confidence,
         "valid_frame_ratio": conf_ratio,
-        # Save release-frame measurements in their actual coordinate bases.
-        # The current detector does not identify a distinct dip frame, so
-        # knee-at-dip is intentionally left unavailable.
-        "knee_angle_dip_3d": None,
+        "knee_angle_dip_3d": knee_dip_3d,
         "elbow_angle_release_3d": elbow_3d,
         "elbow_angle_release_2d": elbow_2d,
         "foreshortening_discrepancy_deg": (
@@ -186,6 +248,12 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
         ),
         "sequence_lag_ms": summary.get("sequence_lag_ms"),
         "torso_sway_deg": None,
+        "automated_outcome": auto_outcome,
+        "automated_outcome_conf": auto_conf,
+        "trajectory_fit_r2": traj_r2,
+        "entry_angle_deg": entry_ang,
+        "ball_coverage_ratio": ball_cov,
+        "ball_model_version": ball_model,
     })
 
 
@@ -212,6 +280,16 @@ def analyze_video(
     recorder = SessionRecorder()
     detector = ShotPhaseDetector(shot_style=shot_style)
     db = ShotLabDB(db_path)
+    ball_tracker = None
+    try:
+        from basketball.tracking.ball_tracker import BallTracker
+        w_path = "models/best.pt" if Path("models/best.pt").exists() else ("models/ballRim.pt" if Path("models/ballRim.pt").exists() else None)
+        tracker_cand = BallTracker(weights_path=w_path, conf=0.25, detect_every=1)
+        if tracker_cand.mode != "unavailable":
+            ball_tracker = tracker_cand
+    except Exception as exc:
+        print(f"[web] BallTracker init notice: {exc}")
+        ball_tracker = None
     frame_index = 0
     previous_phase = "idle"
     active_boundaries = None
@@ -284,6 +362,19 @@ def analyze_video(
                 world_frames.append(world_points)
                 cache_stream.write(json.dumps(frame_points, separators=(",", ":")))
 
+            if ball_tracker is not None:
+                try:
+                    detections = ball_tracker.detect(frame)
+                    ball_tracker.update(
+                        detections,
+                        frame_index - 1,
+                        timestamp_ms,
+                        hand_coords=None,
+                        pose_landmarks=output.get("landmarks") if output else None,
+                    )
+                except Exception:
+                    pass
+
             if output is not None:
                 frames_with_pose += 1
             if output is not None and persist_shots:
@@ -309,14 +400,31 @@ def analyze_video(
                     and not recorder.recording
                 ):
                     recorder.start_shot()
+                    active_shot_uid = f"shot_{session_id}_{frame_index}"
+                    if ball_tracker:
+                        ball_tracker.on_shot_started(active_shot_uid, max(0, frame_index - 1), timestamp_ms)
                     active_boundaries = {
                         "start_frame": max(0, frame_index - 1),
                         "dip_frame": None,
+                        "knee_angle_dip_3d": None,
+                        "knee_angle_dip_2d": None,
                         "set_frame": None,
                         "release_frame": None,
                         "release_metrics": {},
+                        "knee_samples": [],
+                        "shot_uid": active_shot_uid,
                     }
                     candidate_count += 1
+
+                if active_boundaries and active_boundaries.get("release_frame") is None:
+                    knee_pri = angles.get("knee_shooting")
+                    if knee_pri is not None and 35.0 <= knee_pri <= 175.0:
+                        active_boundaries["knee_samples"].append({
+                            "frame": frame_index - 1,
+                            "knee_primary": knee_pri,
+                            "knee_3d": angles.get("knee_shooting_3d"),
+                            "knee_2d": angles.get("knee_shooting_2d"),
+                        })
 
                 if active_boundaries and phase == "set_point" and previous_phase != "set_point":
                     active_boundaries["set_frame"] = frame_index - 1
@@ -327,14 +435,31 @@ def analyze_video(
                         "elbow_3d": angles.get("elbow_shooting_3d"),
                         "elbow_2d": angles.get("elbow_shooting_2d"),
                     }
+                    if ball_tracker and active_boundaries.get("shot_uid"):
+                        ball_tracker.on_shot_release(active_boundaries["shot_uid"], frame_index - 1, timestamp_ms)
 
                 if previous_phase in ("releasing", "follow_through") and phase == "idle":
                     summary = recorder.end_shot()
                     if summary and active_boundaries:
+                        dip_f, k3d, k2d = _extract_dip_frame(
+                            active_boundaries["knee_samples"],
+                            active_boundaries["start_frame"],
+                            active_boundaries["set_frame"],
+                            active_boundaries["release_frame"]
+                        )
+                        active_boundaries["dip_frame"] = dip_f
+                        active_boundaries["knee_angle_dip_3d"] = k3d
+                        active_boundaries["knee_angle_dip_2d"] = k2d
+
+                        ball_summary = None
+                        if ball_tracker and active_boundaries.get("shot_uid"):
+                            ball_summary = ball_tracker.on_shot_ended(active_boundaries["shot_uid"], frame_index - 1, timestamp_ms)
+
                         _persist_shot_proposal(
                             db, summary, active_boundaries, frame_index - 1, confidence_samples,
                             session_id=session_id, player_id=player_id, camera_view=camera_view,
                             shot_type=shot_type, shot_style=shot_style,
+                            ball_summary=ball_summary, ball_tracker=ball_tracker,
                         )
                     elif active_boundaries:
                         rejected_candidate_count += 1
@@ -357,10 +482,25 @@ def analyze_video(
             if active_boundaries and active_boundaries.get("release_frame") is not None:
                 summary = recorder.end_shot()
                 if summary:
+                    dip_f, k3d, k2d = _extract_dip_frame(
+                        active_boundaries["knee_samples"],
+                        active_boundaries["start_frame"],
+                        active_boundaries["set_frame"],
+                        active_boundaries["release_frame"]
+                    )
+                    active_boundaries["dip_frame"] = dip_f
+                    active_boundaries["knee_angle_dip_3d"] = k3d
+                    active_boundaries["knee_angle_dip_2d"] = k2d
+
+                    ball_summary = None
+                    if ball_tracker and active_boundaries.get("shot_uid"):
+                        ball_summary = ball_tracker.on_shot_ended(active_boundaries["shot_uid"], max(0, frame_index - 1), timestamp_ms)
+
                     _persist_shot_proposal(
                         db, summary, active_boundaries, max(0, frame_index - 1), confidence_samples,
                         session_id=session_id, player_id=player_id, camera_view=camera_view,
                         shot_type=shot_type, shot_style=shot_style,
+                        ball_summary=ball_summary, ball_tracker=ball_tracker,
                     )
                     finalized_at_video_end = 1
                 else:

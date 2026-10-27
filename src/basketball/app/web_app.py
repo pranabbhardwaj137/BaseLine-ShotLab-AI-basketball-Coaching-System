@@ -24,12 +24,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PureWindowsPath
 from urllib.parse import parse_qs, unquote, urlparse
 
+import cv2
+import numpy as np
+
 from basketball.persistence.shot_lab_db import ShotLabDB
 from basketball.coaching.coaching_service import build_session_insights
 from basketball.services.history_service import build_player_history
 from basketball.coaching.llm_coach import CoachUnavailable, answer_grounded_question, summarize_findings_for_llm
 from basketball.services.video_analysis_service import (AnalysisCancelled, analyze_video, make_browser_replay,
                                     prepare_video_for_analysis)
+from basketball.services.live_service import LiveCameraEngine
 import basketball.services.report_service as report_service
 import basketball.analysis.shooting_analysis as shooting_analysis
 from basketball.services.video_analysis_service import KEY_JOINTS, MIN_SUFFICIENT_VALID_JOINT_RATIO
@@ -522,10 +526,14 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._stream_local_file(str(folder / name), self.server.keyframe_dir, allow_range=False,
                                            content_type="image/jpeg")
         if parsed.path == "/api/health":
+            ball_status = "unavailable"
+            engine = getattr(self.server, "live_engine", None)
+            if engine and engine.ball_tracker:
+                ball_status = getattr(engine.ball_tracker, "mode", "unavailable")
             return self._json(200, {
                 "status": "ok",
                 "processing": "local_pose_analysis",
-                "ball_rim_tracking": "not_enabled_in_upload_slice",
+                "ball_rim_tracking": ball_status,
                 "llm_chat_enabled": bool(self.server.llm_chat_enabled),
                 "max_upload_bytes": MAX_UPLOAD_BYTES,
                 "llm_provider": "gemini" if self.server.llm_chat_enabled else None,
@@ -693,6 +701,11 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def _do_post(self):
         path = urlparse(self.path).path
+        if path == "/api/live/process-frame":
+            return self._handle_live_process_frame()
+        if path == "/api/live/reset":
+            return self._handle_live_reset()
+
         cancel_match = re.fullmatch(r"/api/jobs/([a-f0-9]{32})/cancel", path)
         if cancel_match:
             job = self.server.job_store.get(cancel_match.group(1))
@@ -800,12 +813,20 @@ class AppHandler(BaseHTTPRequestHandler):
         if not self.server.worker_slots.acquire(blocking=False):
             return self._text_error(429, "The local analysis queue is full; wait for the current clip to finish")
 
+        def fail_upload(status_code, msg):
+            self.server.worker_slots.release()
+            try:
+                if 0 < size <= 10 * 1024 * 1024:
+                    self.rfile.read(size)
+            except Exception:
+                pass
+            return self._text_error(status_code, msg)
+
         query = parse_qs(urlparse(self.path).query)
         get_value = lambda key, default: query.get(key, [default])[0].strip()
         player_id = get_value("player_id", "player")
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", player_id):
-            self.server.worker_slots.release()
-            return self._text_error(400, "Player ID may contain only letters, numbers, underscore, or hyphen")
+            return fail_upload(400, "Player ID may contain only letters, numbers, underscore, or hyphen")
 
         camera_view = get_value("camera_view", "frontal")
         shot_type = get_value("shot_type", "catch_and_shoot")
@@ -815,19 +836,16 @@ class AppHandler(BaseHTTPRequestHandler):
         goals = get_value("goals", "")
         pain_reported = get_value("pain_reported", "0") in {"1", "true", "yes"}
         if camera_view not in VALID_CAMERA_VIEWS or shot_type not in VALID_SHOT_TYPES or shot_style not in VALID_SHOT_STYLES:
-            self.server.worker_slots.release()
-            return self._text_error(400, "Choose a supported camera view, shot type, and shot style")
+            return fail_upload(400, "Choose a supported camera view, shot type, and shot style")
         if handedness not in VALID_HANDEDNESS or skill_level not in VALID_SKILL_LEVELS or len(goals) > 500:
-            self.server.worker_slots.release()
-            return self._text_error(400, "Check handedness, skill level, and keep goals under 500 characters")
+            return fail_upload(400, "Check handedness, skill level, and keep goals under 500 characters")
 
         original_name = Path(unquote(self.headers.get("X-Upload-Filename", "session.mp4"))).name[:200] or "session.mp4"
         extension = Path(original_name).suffix.lower()
         if not extension:
             extension = MIME_EXTENSIONS.get((self.headers.get("X-Upload-Type") or "").split(";")[0].strip().lower(), "")
         if extension not in ALLOWED_EXTENSIONS:
-            self.server.worker_slots.release()
-            return self._text_error(415, "Supported video formats: MP4, MOV, M4V, AVI, MKV, and WebM")
+            return fail_upload(415, "Supported video formats: MP4, MOV, M4V, AVI, MKV, and WebM")
 
         job_id = uuid.uuid4().hex
         upload_path = self.server.upload_dir / f"{job_id}{extension}"
@@ -904,6 +922,55 @@ class AppHandler(BaseHTTPRequestHandler):
             "video": video_metadata,
             "message": "Video saved locally; pose analysis is queued on this device.",
         })
+
+    def _handle_live_process_frame(self):
+        engine = getattr(self.server, "live_engine", None)
+        if engine is None:
+            return self._text_error(503, "Live camera engine is not available")
+        try:
+            content_type = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            size = int(self.headers.get("Content-Length", "0"))
+            if size <= 0 or size > 8 * 1024 * 1024:
+                return self._text_error(400, "Live frame must be between 1 byte and 8 MB")
+
+            client_ts = None
+            if self.headers.get("X-Timestamp-Ms"):
+                try:
+                    client_ts = int(self.headers["X-Timestamp-Ms"])
+                except ValueError:
+                    pass
+
+            if content_type == "application/json":
+                payload = json.loads(self.rfile.read(size))
+                img_data = payload.get("image", "")
+                if "," in img_data:
+                    img_data = img_data.split(",", 1)[1]
+                import base64
+                frame_bytes = base64.b64decode(img_data)
+                if payload.get("timestamp_ms") is not None:
+                    client_ts = int(payload["timestamp_ms"])
+            else:
+                frame_bytes = self.rfile.read(size)
+
+            if not frame_bytes:
+                return self._text_error(400, "Empty frame data")
+
+            np_arr = np.frombuffer(frame_bytes, np.uint8)
+            frame_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                return self._text_error(400, "Could not decode frame as image")
+
+            result = engine.process_frame(frame_bgr, client_ts)
+            return self._json(200, result)
+        except Exception as exc:
+            return self._text_error(500, f"Live frame error: {exc}")
+
+    def _handle_live_reset(self):
+        engine = getattr(self.server, "live_engine", None)
+        if engine is None:
+            return self._text_error(503, "Live camera engine is not available")
+        res = engine.reset_session()
+        return self._json(200, {"status": "ok", "stats": res})
 
     def _add_manual_attempt(self, session_id):
         """Add an attempt the detector missed. Human-made, so it is approved with provenance."""
@@ -1213,6 +1280,7 @@ class LocalAppServer(ThreadingHTTPServer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.auth_failures = {}
+        self.live_engine = None
 
 
 ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I to avoid typos on a phone
@@ -1318,6 +1386,7 @@ def main():
     server.session_locks = {}
     server.llm_chat_enabled = args.enable_llm_chat
     server.llm_model = args.llm_model
+    server.live_engine = LiveCameraEngine()
     server.lan_mode = bool(args.lan)
     server.access_token = access_code
     server.tls_enabled = scheme == "https"

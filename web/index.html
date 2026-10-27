@@ -178,14 +178,104 @@
                 </div>
                 <div id="pane-camera" role="tabpanel" aria-labelledby="tab-camera" hidden>
                   <div class="camera-recorder">
-                    <video id="camera-preview" class="camera-preview" autoplay muted playsinline></video>
+                    <div class="camera-viewport" id="camera-viewport">
+                      <video id="camera-preview" class="camera-preview" autoplay muted playsinline></video>
+                      <canvas id="camera-overlay" class="camera-overlay"></canvas>
+
+                      <!-- Top Status HUD Bar (matches reference broadcast design) -->
+                      <div class="camera-hud-top" id="camera-hud-top">
+                        <!-- Top Left: Exit & Toggle Skeleton -->
+                        <div class="hud-top-left">
+                          <button type="button" class="btn-hud-round" id="hud-btn-close" title="Close camera">
+                            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" style="width:16px;height:16px;"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
+                          </button>
+                          <button type="button" class="btn-hud-round btn-hud-player active" id="hud-btn-skeleton" title="Toggle skeleton overlay">
+                            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" style="width:18px;height:18px;"><circle cx="12" cy="5" r="2.5" fill="#f97316"/><path d="M12 7.5v6M9 9.5l3 2 3-2M9.5 18l2.5-4.5 2.5 4.5" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                          </button>
+                        </div>
+
+                        <!-- Top Center: Broadcast Metrics (Rim Live, Peak Max, Knee, Arm, Phase) -->
+                        <div class="hud-pill-dual" id="hud-metrics-dual">
+                          <div class="dual-col">
+                            <small>RIM (LIVE)</small>
+                            <b id="hud-panier-live">—</b>
+                          </div>
+                          <div class="dual-sep"></div>
+                          <div class="dual-col">
+                            <small>PEAK MAX</small>
+                            <b id="hud-pic-max">—</b>
+                          </div>
+                          <div class="dual-sep"></div>
+                          <div class="dual-col">
+                            <small>KNEE</small>
+                            <b id="hud-knee-val">—</b>
+                          </div>
+                          <div class="dual-sep"></div>
+                          <div class="dual-col">
+                            <small>ARM</small>
+                            <b id="hud-elbow-val">—</b>
+                          </div>
+                          <div class="dual-sep"></div>
+                          <div class="dual-col">
+                            <small>PHASE</small>
+                            <b id="hud-phase-text">IDLE</b>
+                          </div>
+                        </div>
+
+                        <!-- Top Right: Rim Status Badge -->
+                        <div class="hud-pill-badge" id="hud-hoop-badge">
+                          <span class="hud-dot" id="hud-hoop-dot"></span>
+                          <span id="hud-hoop-text">Rim Calibrated</span>
+                        </div>
+                      </div>
+
+                      <!-- Left Vertical Level Capsule (pitch/level alignment) -->
+                      <div class="hud-vertical-level" id="hud-vertical-level" title="Camera level and alignment">
+                        <span class="hud-level-dot"></span>
+                      </div>
+
+                      <!-- Outcome Popup Banner -->
+                      <div class="hud-outcome-banner" id="hud-outcome-banner">
+                        <span id="hud-outcome-text">SHOT MADE!</span>
+                      </div>
+
+                      <!-- Bottom Live Broadcast Stats HUD Bar (matches reference image) -->
+                      <div class="camera-hud-bottom" id="camera-hud-bottom">
+                        <div class="hud-stats-card">
+                          <div class="stat-col stat-makes">
+                            <span class="stat-number" id="hud-makes-count">0</span>
+                            <span class="stat-label">SUCCESSES</span>
+                          </div>
+                          <div class="stat-col stat-misses">
+                            <span class="stat-number" id="hud-misses-count">0</span>
+                            <span class="stat-label">FAILURES</span>
+                          </div>
+                          <div class="stat-col stat-acc">
+                            <span class="stat-number" id="hud-acc-val">0%</span>
+                            <span class="stat-label">SUCCESS</span>
+                          </div>
+                        </div>
+
+                        <div class="hud-actions">
+                          <button type="button" class="btn-hud-action" id="hud-recalibrate-btn" title="Recalibrate rim / reset stats">
+                            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" style="width:16px;height:16px;"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2"/></svg>
+                            <span>Recalibrate Rim</span>
+                          </button>
+                          <button type="button" class="btn-hud-finish" id="hud-finish-btn" title="End practice session">
+                            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M4 22V2h10l1 3h5v10h-7l-1-3H6v10H4z" fill="currentColor"/></svg>
+                            <span>End Session</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     <div class="camera-controls">
                       <button id="camera-start" type="button" class="btn btn-quiet">Turn on camera</button>
                       <button id="record-start" type="button" class="btn btn-record" disabled><i aria-hidden="true"></i>Start recording</button>
                       <button id="record-stop" type="button" class="btn btn-quiet" disabled>Stop</button>
                       <button id="camera-stop" type="button" class="btn btn-quiet" disabled>Turn off camera</button>
                     </div>
-                    <p id="camera-status" class="hint" aria-live="polite">Your browser will ask for camera permission. The recording stays on this computer.</p>
+                    <p id="camera-status" class="hint" aria-live="polite">Your browser will ask for camera permission. Real-time ball & pose tracking runs locally on this computer.</p>
                   </div>
                 </div>
                 <p id="form-error" class="form-error hidden" role="alert"></p>

@@ -289,6 +289,37 @@ class WebAppCoachFeaturesTest(WebAppApiTest):
         status, _, _ = self.raw("GET", "/api/health", {"Host": "evil.example:80"})
         self.assertEqual(status, 403)
 
+    def test_live_camera_process_frame_and_reset(self):
+        import base64
+        import cv2
+        import numpy as np
+
+        img = np.zeros((120, 160, 3), dtype=np.uint8)
+        _, buf = cv2.imencode(".jpg", img)
+        data_url = "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+
+        payload = json.dumps({"image": data_url, "timestamp_ms": 1000}).encode("utf-8")
+        status, _, body = self.raw("POST", "/api/live/process-frame", {
+            "Content-Type": "application/json",
+            "X-Shotlab": "1",
+        }, payload)
+        self.assertEqual(status, 200)
+        res = json.loads(body)
+        self.assertEqual(res["status"], "ok")
+        self.assertIn("pose", res)
+        self.assertIn("ball", res)
+        self.assertIn("rim", res)
+        self.assertIn("shot", res)
+
+        status, _, body = self.raw("POST", "/api/live/reset", {
+            "Content-Type": "application/json",
+            "X-Shotlab": "1",
+        }, b"{}")
+        self.assertEqual(status, 200)
+        res_reset = json.loads(body)
+        self.assertEqual(res_reset["status"], "ok")
+        self.assertEqual(res_reset["total"], 0)
+
     def test_too_short_video_is_rejected(self):
         short = self.tmp / "short.mp4"
         _write_synthetic_clip(short, frames=3, fps=10)

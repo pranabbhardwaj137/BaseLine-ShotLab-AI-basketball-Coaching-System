@@ -43,11 +43,29 @@ const historyPlan = $('#history-plan');
 const historyList = $('#history-list');
 const historyCharts = $('#history-charts');
 const cameraPreview = $('#camera-preview');
+const cameraOverlay = $('#camera-overlay');
 const cameraStatus = $('#camera-status');
 const cameraStartButton = $('#camera-start');
 const cameraStopButton = $('#camera-stop');
 const recordStartButton = $('#record-start');
 const recordStopButton = $('#record-stop');
+const hudPanierLive = $('#hud-panier-live');
+const hudPicMax = $('#hud-pic-max');
+const hudKneeVal = $('#hud-knee-val');
+const hudElbowVal = $('#hud-elbow-val');
+const hudPhaseText = $('#hud-phase-text');
+const hudHoopDot = $('#hud-hoop-dot');
+const hudHoopText = $('#hud-hoop-text');
+const hudMakesCount = $('#hud-makes-count');
+const hudMissesCount = $('#hud-misses-count');
+const hudAccVal = $('#hud-acc-val');
+const hudRecalibrateBtn = $('#hud-recalibrate-btn');
+const hudFinishBtn = $('#hud-finish-btn');
+const hudBtnClose = $('#hud-btn-close');
+const hudBtnSkeleton = $('#hud-btn-skeleton');
+const hudOutcomeBanner = $('#hud-outcome-banner');
+const hudOutcomeText = $('#hud-outcome-text');
+let liveShowSkeleton = true;
 const cancelButton = $('#cancel-job');
 const reportRoot = $('#report-root');
 const reportEmpty = $('#report-empty');
@@ -63,6 +81,13 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let recordingSize = 0;
 let healthInfo = null;
+let liveTrackingActive = false;
+let liveProcessing = false;
+let liveLoopTimer = null;
+let liveOutcomeTimer = null;
+let lastReportedShotTotal = 0;
+const liveCaptureCanvas = document.createElement('canvas');
+const liveCaptureCtx = liveCaptureCanvas.getContext('2d');
 let reportSessionId = null;
 let currentReport = null;
 let refreshReturnJob = null;
@@ -590,6 +615,7 @@ cameraStartButton.addEventListener('click', async () => {
     cameraStopButton.disabled = false;
     recordStartButton.disabled = false;
     cameraStatus.textContent = 'Camera on. Frame your whole body and the ball, then start recording.';
+    startLiveTracking();
   } catch (error) {
     cameraStartButton.disabled = false;
     cameraStatus.textContent = `Camera unavailable (${error.message || 'permission denied'}). You can still upload a file.`;
@@ -597,6 +623,7 @@ cameraStartButton.addEventListener('click', async () => {
 });
 cameraStopButton.addEventListener('click', () => {
   if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
+  stopLiveTracking();
   cameraStream?.getTracks().forEach(track => track.stop());
   cameraStream = null;
   cameraPreview.srcObject = null;
@@ -606,6 +633,361 @@ cameraStopButton.addEventListener('click', () => {
   recordStartButton.disabled = true;
   cameraStatus.textContent = 'Camera is off.';
 });
+
+function startLiveTracking() {
+  liveTrackingActive = true;
+  liveProcessing = false;
+  scheduleLiveFrame(100);
+}
+
+function stopLiveTracking() {
+  liveTrackingActive = false;
+  liveProcessing = false;
+  if (liveLoopTimer) {
+    clearTimeout(liveLoopTimer);
+    liveLoopTimer = null;
+  }
+  if (cameraOverlay) {
+    const ctx = cameraOverlay.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, cameraOverlay.width, cameraOverlay.height);
+  }
+  if (hudHoopText) hudHoopText.textContent = 'Searching for rim…';
+  if (hudHoopDot) hudHoopDot.className = 'hud-dot';
+  if (hudPanierLive) hudPanierLive.textContent = '—';
+  if (hudPicMax) hudPicMax.textContent = '—';
+  if (hudKneeVal) hudKneeVal.textContent = '—';
+  if (hudElbowVal) hudElbowVal.textContent = '—';
+  if (hudPhaseText) hudPhaseText.textContent = 'IDLE';
+  if (hudOutcomeBanner) hudOutcomeBanner.classList.remove('is-visible', 'outcome-make', 'outcome-miss');
+}
+
+function scheduleLiveFrame(delayMs = 50) {
+  if (!liveTrackingActive) return;
+  if (liveLoopTimer) clearTimeout(liveLoopTimer);
+  liveLoopTimer = setTimeout(processLiveFrame, delayMs);
+}
+
+async function processLiveFrame() {
+  if (!liveTrackingActive) return;
+  if (!cameraPreview || cameraPreview.readyState < 2) {
+    scheduleLiveFrame(120);
+    return;
+  }
+  if (liveProcessing) {
+    scheduleLiveFrame(40);
+    return;
+  }
+
+  liveProcessing = true;
+  try {
+    const vw = cameraPreview.videoWidth || 640;
+    const vh = cameraPreview.videoHeight || 480;
+    const scale = Math.min(1, 640 / vw);
+    const cw = Math.round(vw * scale);
+    const ch = Math.round(vh * scale);
+    liveCaptureCanvas.width = cw;
+    liveCaptureCanvas.height = ch;
+    liveCaptureCtx.drawImage(cameraPreview, 0, 0, cw, ch);
+    const dataUrl = liveCaptureCanvas.toDataURL('image/jpeg', 0.65);
+    const nowMs = Date.now();
+
+    const response = await api('/api/live/process-frame', jsonBody('POST', {
+      image: dataUrl,
+      timestamp_ms: nowMs
+    }));
+
+    if (response && response.status === 'ok') {
+      renderLiveHUD(response, vw, vh);
+    }
+  } catch (err) {
+    // Network or processing hiccup; maintain live loop
+  } finally {
+    liveProcessing = false;
+    if (liveTrackingActive) {
+      scheduleLiveFrame(50);
+    }
+  }
+}
+
+function renderLiveHUD(data, vw, vh) {
+  if (!cameraOverlay) return;
+  const ctx = cameraOverlay.getContext('2d');
+  if (!ctx) return;
+
+  if (cameraOverlay.width !== vw || cameraOverlay.height !== vh) {
+    cameraOverlay.width = vw;
+    cameraOverlay.height = vh;
+  }
+  ctx.clearRect(0, 0, vw, vh);
+
+  const [fw, fh] = data.frame_size || [640, 480];
+  const sx = vw / fw;
+  const sy = vh / fh;
+
+  // 1. Draw Rim / Basket Box & Target Reticle
+  if (data.rim && data.rim.detected && data.rim.box) {
+    const [rx1, ry1, rx2, ry2] = data.rim.box;
+    const x = rx1 * sx;
+    const y = ry1 * sy;
+    const w = (rx2 - rx1) * sx;
+    const h = (ry2 - ry1) * sy;
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+
+    ctx.save();
+    ctx.strokeStyle = '#ff6b00';
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = 'rgba(255, 107, 0, 0.8)';
+    ctx.shadowBlur = 10;
+    ctx.strokeRect(x, y, w, h);
+
+    const targetR = Math.min(w, h) * 0.35;
+    ctx.beginPath();
+    ctx.arc(cx, cy, targetR, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255, 107, 0, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(cx - targetR * 1.3, cy);
+    ctx.lineTo(cx + targetR * 1.3, cy);
+    ctx.moveTo(cx, cy - targetR * 1.3);
+    ctx.lineTo(cx, cy + targetR * 1.3);
+    ctx.strokeStyle = 'rgba(255, 107, 0, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    const rimConfPct = Math.round((data.rim.conf || 0.89) * 100);
+    const tagText = `RIM ${rimConfPct}%`;
+    ctx.font = 'bold 12px Inter, system-ui, sans-serif';
+    const tagW = ctx.measureText(tagText).width + 14;
+    ctx.fillStyle = '#ff6b00';
+    ctx.fillRect(x, Math.max(0, y - 20), tagW, 20);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(tagText, x + 7, Math.max(14, y - 6));
+    ctx.restore();
+  }
+
+  // 2. Draw Ball & Parabolic Flight Trail
+  if (data.ball) {
+    const trail = data.ball.flight_trail || [];
+    if (trail.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = '#ff8c00';
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = 'rgba(255, 140, 0, 0.9)';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      for (let i = 0; i < trail.length; i++) {
+        const tx = trail[i][0] * sx;
+        const ty = trail[i][1] * sy;
+        if (i === 0) ctx.moveTo(tx, ty);
+        else ctx.lineTo(tx, ty);
+      }
+      ctx.stroke();
+
+      for (let i = 0; i < trail.length; i++) {
+        const tx = trail[i][0] * sx;
+        const ty = trail[i][1] * sy;
+        ctx.beginPath();
+        ctx.arc(tx, ty, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    if (data.ball.detected && data.ball.box) {
+      const [bx1, by1, bx2, by2] = data.ball.box;
+      const x = bx1 * sx;
+      const y = by1 * sy;
+      const w = (bx2 - bx1) * sx;
+      const h = (by2 - by1) * sy;
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+
+      ctx.save();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(56, 189, 248, 0.8)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(w, h) / 2, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const ballConfPct = Math.round((data.ball.conf || 0.9) * 100);
+      const tagText = `BALL ${ballConfPct}%`;
+      ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+      const tagW = ctx.measureText(tagText).width + 12;
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(x, Math.max(0, y - 18), tagW, 18);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillText(tagText, x + 6, Math.max(13, y - 5));
+      ctx.restore();
+    }
+  }
+
+  // 3. Draw Pose Skeleton (glowing orange broadcast aesthetic)
+  if (liveShowSkeleton && data.pose && data.pose.landmarks && data.pose.landmarks.length >= 33) {
+    const lm = data.pose.landmarks;
+    const POSE_PAIRS = [
+      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+      [11, 23], [12, 24], [23, 24],
+      [23, 25], [25, 27], [27, 29], [29, 31],
+      [24, 26], [26, 28], [28, 30], [30, 32],
+    ];
+
+    ctx.save();
+    ctx.strokeStyle = '#ff6b00';
+    ctx.lineWidth = 3.5;
+    ctx.shadowColor = 'rgba(255, 107, 0, 0.8)';
+    ctx.shadowBlur = 10;
+
+    for (const [i, j] of POSE_PAIRS) {
+      const p1 = lm[i];
+      const p2 = lm[j];
+      if (!p1 || !p2 || (p1[2] < 0.3 && p2[2] < 0.3)) continue;
+      ctx.beginPath();
+      ctx.moveTo(p1[0] * vw, p1[1] * vh);
+      ctx.lineTo(p2[0] * vw, p2[1] * vh);
+      ctx.stroke();
+    }
+
+    for (let i = 11; i < 33; i++) {
+      const pt = lm[i];
+      if (!pt || pt[2] < 0.3) continue;
+      const jx = pt[0] * vw;
+      const jy = pt[1] * vh;
+
+      ctx.beginPath();
+      ctx.arc(jx, jy, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff6b00';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(jx, jy, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 4. Update HUD Pills
+  const rimDetected = Boolean(data.rim && data.rim.detected);
+  if (hudHoopText) {
+    hudHoopText.textContent = rimDetected ? 'Rim Calibrated' : 'Searching for rim…';
+  }
+  if (hudHoopDot) {
+    hudHoopDot.className = rimDetected ? 'hud-dot active' : 'hud-dot';
+  }
+  if (hudPanierLive) {
+    hudPanierLive.textContent = rimDetected ? '100%' : '—';
+  }
+
+  if (hudPicMax) {
+    if (data.shot?.arc_peak != null) {
+      hudPicMax.textContent = `${Number(data.shot.arc_peak).toFixed(1)} m`;
+    } else if (data.ball?.flight_trail?.length > 2) {
+      hudPicMax.textContent = 'IN FLIGHT';
+    } else {
+      hudPicMax.textContent = '—';
+    }
+  }
+
+  if (hudKneeVal) {
+    hudKneeVal.textContent = data.pose?.knee_angle != null ? `${Math.round(data.pose.knee_angle)}°` : '—';
+  }
+
+  if (hudElbowVal) {
+    hudElbowVal.textContent = data.pose?.elbow_angle != null ? `${Math.round(data.pose.elbow_angle)}°` : '—';
+  }
+
+  if (hudPhaseText) {
+    const phaseNames = {
+      idle: 'IDLE',
+      gathering: 'DIP',
+      dip: 'DIP',
+      set_point: 'SET POINT',
+      releasing: 'RELEASE',
+      follow_through: 'FOLLOW THROUGH',
+    };
+    const p = data.shot?.phase || data.pose?.phase || 'idle';
+    hudPhaseText.textContent = phaseNames[p] || p.toUpperCase().replaceAll('_', ' ');
+  }
+
+  // 5. Update Broadcast Stats
+  if (data.shot) {
+    if (hudMakesCount) hudMakesCount.textContent = String(data.shot.makes || 0);
+    if (hudMissesCount) hudMissesCount.textContent = String(data.shot.misses || 0);
+    if (hudAccVal) {
+      const acc = data.shot.total > 0 ? Math.round(data.shot.accuracy) : 0;
+      hudAccVal.textContent = `${acc}%`;
+    }
+
+    if (data.shot.outcome && data.shot.total !== lastReportedShotTotal) {
+      lastReportedShotTotal = data.shot.total;
+      flashOutcomeBanner(data.shot.outcome, data.shot.outcome_conf);
+    }
+  }
+}
+
+function flashOutcomeBanner(outcome, conf) {
+  if (!hudOutcomeBanner) return;
+  clearTimeout(liveOutcomeTimer);
+  const isMake = outcome === 'make';
+  if (hudOutcomeText) {
+    hudOutcomeText.textContent = isMake
+      ? `SHOT MADE! (${Math.round((conf || 0.85) * 100)}%)`
+      : `SHOT MISSED! (${Math.round((conf || 0.85) * 100)}%)`;
+  }
+  hudOutcomeBanner.className = `hud-outcome-banner is-visible ${isMake ? 'outcome-make' : 'outcome-miss'}`;
+  liveOutcomeTimer = setTimeout(() => {
+    hudOutcomeBanner.className = 'hud-outcome-banner';
+  }, 3200);
+}
+
+if (hudRecalibrateBtn) {
+  hudRecalibrateBtn.addEventListener('click', async () => {
+    hudRecalibrateBtn.disabled = true;
+    try {
+      await api('/api/live/reset', {method: 'POST'});
+      lastReportedShotTotal = 0;
+      if (hudMakesCount) hudMakesCount.textContent = '0';
+      if (hudMissesCount) hudMissesCount.textContent = '0';
+      if (hudAccVal) hudAccVal.textContent = '0%';
+      if (cameraOverlay) {
+        const ctx = cameraOverlay.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, cameraOverlay.width, cameraOverlay.height);
+      }
+      toast('Rim and trajectory recalibrated');
+    } catch (err) {
+      toast('Recalibration failed: ' + err.message);
+    } finally {
+      hudRecalibrateBtn.disabled = false;
+    }
+  });
+}
+
+if (hudBtnClose) {
+  hudBtnClose.addEventListener('click', () => {
+    if (cameraStopButton && !cameraStopButton.disabled) cameraStopButton.click();
+  });
+}
+
+if (hudFinishBtn) {
+  hudFinishBtn.addEventListener('click', () => {
+    if (cameraStopButton && !cameraStopButton.disabled) cameraStopButton.click();
+    toast('Practice session ended');
+  });
+}
+
+if (hudBtnSkeleton) {
+  hudBtnSkeleton.addEventListener('click', () => {
+    liveShowSkeleton = !liveShowSkeleton;
+    hudBtnSkeleton.classList.toggle('active', liveShowSkeleton);
+    toast(liveShowSkeleton ? 'Skeleton overlay enabled' : 'Skeleton overlay hidden');
+  });
+}
 recordStartButton.addEventListener('click', () => {
   if (!cameraStream) return;
   const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(type => MediaRecorder.isTypeSupported(type));
@@ -946,7 +1328,9 @@ function renderResults(result, jobId) {
       }, el('span', {text: index + 1}));
       timelineMarks.append(seg);
       const release = frameOf(shot, 'release');
-      if (release != null) timelineMarks.append(el('div', {class: 'timeline-release', style: `left:${(release / frameCount) * 100}%`}));
+      const dip = frameOf(shot, 'dip');
+      if (dip != null) timelineMarks.append(el('div', {class: 'timeline-dip', style: `left:${(dip / frameCount) * 100}%`, title: `Dip: frame ${dip}`}));
+      if (release != null) timelineMarks.append(el('div', {class: 'timeline-release', style: `left:${(release / frameCount) * 100}%`, title: `Release: frame ${release}`}));
     });
     // Coach notes often fall within a few frames of each other, which would stack their dots
     // on top of one another and leave most of them unreachable. Notes closer than one hit
@@ -1008,13 +1392,19 @@ function renderResults(result, jobId) {
     shots.forEach((shot, index) => {
       const status = shot.review_status || 'quarantined';
       const release = frameOf(shot, 'release');
+      let outcomeLabel = 'Needs confirmation';
+      if (shot.outcome && shot.outcome !== 'unknown') {
+        outcomeLabel = `${LABELS.outcome[shot.outcome]} (Confirmed)`;
+      } else if (shot.automated_outcome && shot.automated_outcome !== 'unknown' && (shot.automated_outcome_conf || 0) >= 0.70 && (shot.trajectory_fit_r2 || 0) >= 0.70) {
+        outcomeLabel = `Automatic: ${LABELS.outcome[shot.automated_outcome]} (${Math.round((shot.automated_outcome_conf || 0) * 100)}%)`;
+      }
       list.append(el('li', {}, el('button', {
         type: 'button', class: 'attempt', 'aria-pressed': String(index === selected), onclick: () => selectAttempt(index, true),
       },
       el('span', {class: 'attempt-num', text: index + 1}),
       el('span', {class: 'attempt-meta'},
         el('strong', {text: `${mmss((frameOf(shot, 'start') ?? 0) / fps)}${release == null ? ' · release not marked' : ` · release ${mmss(release / fps)}`}`}),
-        el('span', {text: `${LABELS.outcome[shot.outcome] || 'Outcome unknown'}, ${shot.tracking_confidence === 'SUFFICIENT' ? 'body well tracked' : 'body partly tracked'}`})),
+        el('span', {text: `${outcomeLabel}, ${shot.tracking_confidence === 'SUFFICIENT' ? 'body well tracked' : 'body partly tracked'}`})),
       el('span', {class: `chip chip-${status}`, text: shot.outcome_source === 'manual_attempt' ? 'Added by you' : (LABELS.review_status[status] || status)}))));
     });
     const pending = shots.filter(shot => (shot.review_status || 'quarantined') === 'quarantined').length;
@@ -1031,9 +1421,14 @@ function renderResults(result, jobId) {
     if (!shot) return;
     for (const [key, label] of PHASES) {
       const value = frameOf(shot, key);
+      if (key === 'dip' && value == null) {
+        // Enforce user rule: Show Dip only when pipeline produced a valid frame.
+        // If no valid dip exists, omit the Dip control completely.
+        continue;
+      }
       phaseJumps.append(el('button', {
         type: 'button', class: 'btn btn-quiet btn-small', disabled: value == null,
-        title: value == null ? (key === 'dip' ? 'The current detector does not mark a dip' : 'Not marked') : `Frame ${value}`,
+        title: value == null ? 'Not marked' : `Frame ${value}`,
         onclick: () => seekToFrame(value),
       }, value == null ? `${label}: not marked` : `${label} ${value}`));
     }
@@ -1052,9 +1447,14 @@ function renderResults(result, jobId) {
     editor.append(el('h3', {text: `Review attempt ${selected + 1}`}));
     const inputs = {};
     for (const [key, label] of PHASES) {
-      const input = el('input', {type: 'number', min: '0', max: String(frameCount - 1), step: '1', inputmode: 'numeric',
-        placeholder: key === 'dip' ? 'Not detected' : 'Not marked'});
       const value = frameOf(shot, key);
+      if (key === 'dip' && value == null) {
+        // Enforce user rule: Omit Dip control if pipeline produced no valid dip.
+        // Do not show a blank input, ask player to guess, or fabricate a value.
+        continue;
+      }
+      const input = el('input', {type: 'number', min: '0', max: String(frameCount - 1), step: '1', inputmode: 'numeric',
+        placeholder: 'Not marked'});
       input.value = value == null ? '' : value;
       input.addEventListener('change', () => { if (input.value !== '') seekToFrame(Number(input.value)); });
       inputs[key] = input;
@@ -1077,13 +1477,42 @@ function renderResults(result, jobId) {
     };
     const outcomeGroup = radioGroup('outcome', 'Outcome you saw', [['unknown', 'Not sure'], ['make', 'Make'], ['miss', 'Miss']], shot.outcome || 'unknown');
     const statusGroup = radioGroup('status', 'Decision', [['quarantined', 'Leave for later'], ['approved', 'Approve'], ['discarded', 'Not a shot']], shot.review_status || 'quarantined');
+
+    // Advisory automated outcome banner
+    let autoOutcomeBanner = null;
+    if (shot.automated_outcome && shot.automated_outcome !== 'unknown') {
+      const isHighConf = (shot.automated_outcome_conf || 0) >= 0.70 && (shot.trajectory_fit_r2 || 0) >= 0.70;
+      const confPct = Math.round((shot.automated_outcome_conf || 0) * 100);
+      const r2Text = shot.trajectory_fit_r2 != null ? Number(shot.trajectory_fit_r2).toFixed(2) : '—';
+      if (isHighConf) {
+        const confirmBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', onclick: () => {
+          const radio = outcomeGroup.querySelector(`input[value="${shot.automated_outcome}"]`);
+          if (radio) radio.checked = true;
+          const approveRadio = statusGroup.querySelector('input[value="approved"]');
+          if (approveRadio) approveRadio.checked = true;
+        }}, `Confirm prediction (${LABELS.outcome[shot.automated_outcome]})`);
+        autoOutcomeBanner = el('div', {class: 'auto-outcome-banner is-high-conf span-all'},
+          el('span', {text: `Automatic trajectory: ${LABELS.outcome[shot.automated_outcome]} (${confPct}% conf, R² ${r2Text})`}),
+          confirmBtn
+        );
+      } else {
+        autoOutcomeBanner = el('div', {class: 'auto-outcome-banner is-low-conf span-all'},
+          el('span', {text: `Trajectory uncertain (${LABELS.outcome[shot.automated_outcome]} ${confPct}%, R² ${r2Text}). Needs confirmation.`})
+        );
+      }
+    } else {
+      autoOutcomeBanner = el('div', {class: 'auto-outcome-banner is-none span-all'},
+        el('span', {text: 'No automated ball tracking outcome available. Needs confirmation.'})
+      );
+    }
+
     const notes = el('textarea', {rows: '2', maxlength: '2000', placeholder: 'Optional, e.g. ball hidden at release'});
     notes.value = shot.review_notes || '';
     const saveStatus = el('p', {class: 'review-save-status', 'aria-live': 'polite'});
     const saveButton = el('button', {type: 'button', class: 'btn btn-primary'}, 'Save review');
     const nextButton = el('button', {type: 'button', class: 'btn btn-quiet', disabled: selected >= shots.length - 1,
       onclick: () => selectAttempt(selected + 1, true)}, 'Next attempt');
-    editor.append(outcomeGroup, statusGroup, el('label', {class: 'field span-all'}, 'Notes', notes),
+    editor.append(autoOutcomeBanner, outcomeGroup, statusGroup, el('label', {class: 'field span-all'}, 'Notes', notes),
       el('div', {class: 'review-actions'}, saveButton, nextButton), saveStatus,
       el('div', {class: 'attempt-measures span-all'}));
     renderEditorMeasurements();
@@ -1099,11 +1528,15 @@ function renderResults(result, jobId) {
     editor.append(el('details', {class: 'review-history'},
       el('summary', {text: `Change history (${historyItems.length})`}),
       historyItems.length ? historyLog : el('p', {class: 'hint', text: 'No human edits yet. The machine proposal is unchanged.'}),
-      el('p', {class: 'hint', text: `Machine proposal kept separately: frames ${frameOrDash(shot.machine_start_frame)} to ${frameOrDash(shot.machine_end_frame)}, release ${frameOrDash(shot.machine_release_frame)}.`})));
+      el('p', {class: 'hint', text: `Machine proposal kept separately: frames ${frameOrDash(shot.machine_start_frame)} to ${frameOrDash(shot.machine_end_frame)}${shot.machine_dip_frame != null ? `, dip ${shot.machine_dip_frame}` : ''}, release ${frameOrDash(shot.machine_release_frame)}.`})));
 
     saveButton.addEventListener('click', async () => {
       const boundaries = {};
       for (const [key] of PHASES) {
+        if (!inputs[key]) {
+          boundaries[`${key}_frame`] = null;
+          continue;
+        }
         const raw = inputs[key].value.trim();
         if (raw !== '' && !/^\d+$/.test(raw)) { saveStatus.textContent = 'Frame numbers must be whole numbers.'; inputs[key].focus(); return; }
         boundaries[`${key}_frame`] = raw === '' ? null : Number(raw);
