@@ -1,0 +1,46 @@
+{
+  "report_version": "1.1.0",
+  "timestamp": "2026-10-10T08:04:04.316739+00:00",
+  "synthetic": false,
+  "evaluation_split": "val",
+  "clips_evaluated": 3,
+  "total_intervals_in_split": 36,
+  "evaluable_gt_releases": 3,
+  "ground_truth_negatives": 14,
+  "max_frames_per_clip": null,
+  "match_tolerance_ms": 500.00000000000006,
+  "detectors": {
+    "uncalibrated_heuristic": {
+      "true_positives": 3,
+      "false_positives": 14,
+      "false_negatives": 0,
+      "precision": 0.1765,
+      "recall": 1.0,
+      "f1_score": 0.3,
+      "release_timing_mae_ms": 155.6,
+      "false_positives_per_min": 9.88
+    },
+    "calibrated_fsm": {
+      "true_positives": 2,
+      "false_positives": 38,
+      "false_negatives": 1,
+      "precision": 0.05,
+      "recall": 0.6667,
+      "f1_score": 0.093,
+      "release_timing_mae_ms": 150.0,
+      "false_positives_per_min": 26.81
+    },
+    "ml_sequence": {
+      "true_positives": 1,
+      "false_positives": 6,
+      "false_negatives": 2,
+      "precision": 0.1429,
+      "recall": 0.3333,
+      "f1_score": 0.2,
+      "release_timing_mae_ms": 33.3,
+      "false_positives_per_min": 4.23
+    }
+  },
+  "phase_6_gate_verdict": "EXPLORATORY",
+  "recommended_detector": "ml_sequence"
+}

@@ -1,0 +1,38 @@
+{
+  "_comment": "Explicit clip-to-split mapping. When new clips are added to raw_clips/, they can be mapped here. If unmapped, they default to 'train'.",
+  "lavish_1_90deg": "train",
+  "lavish_1": "train",
+  "lavish_2_90deg": "train",
+  "lavish_2": "train",
+  "lavish_3_mix": "val",
+  "lavish_4_0deg": "test",
+  "lavish_5_0deg": "test",
+
+  "sid_1": "train",
+  "sid_2": "train",
+  "sid_3_mult": "train",
+  "sid_3": "train",
+  "sid_4_97deg_wrim": "val",
+  "sid_4": "val",
+  "sid_5_0deg": "test",
+  "sid_5": "test",
+  "sid_6_0deg": "test",
+
+  "mikedunn": "train",
+  "mikeddunnstud1": "val",
+  "mikedunn_stud1": "val",
+  "mikeddunnstud2": "test",
+
+  "klay_vid": "train",
+  "klay_01": "train",
+  "klay_test_auto": "train",
+
+  "mixkit-basketball-player-shot-at-goal-2278-hd-ready": "train",
+  "mixkit-experienced-basketball-player-making-a-basket-44445-hd-ready": "train",
+  "mixkit-basketball-player-shooting-baskets-while-training-alone-44447-hd-ready": "val",
+  "mixkit-skilled-basketball-player-shooting-baskets-training-alone-44448-hd-ready": "val",
+  "mixkit-talented-basketball-player-practicing-shots-44444-hd-ready": "test",
+  "20521284-uhd_2160_3840_60fps": "train",
+  "4964842-hd_1080_1920_25fps": "val",
+  "5275080-uhd_2160_4096_25fps": "test"
+}

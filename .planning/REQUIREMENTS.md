@@ -58,6 +58,29 @@
 - Publish failures and confidence intervals or other uncertainty summaries when sample size permits.
 - Do not claim general accuracy based on synthetic fixtures or a tiny convenience sample.
 
+### PR-8 — Player-facing coaching experience
+
+- Guide onboarding with handedness, experience/skill level, goals, and camera setup; collect only profile data needed for the experience.
+- Support video upload and, where the selected platform permits, recording; show asynchronous processing progress, completion, errors, and recovery actions.
+- Provide a session summary and shot-by-shot replay with phase markers, available pose/ball overlays, confidence/unknown states, and review corrections.
+- Show biomechanics in defined units with validity and confidence; charts must not conceal missing or low-confidence measurements.
+- Present at most one primary evidence-linked cue and a suitable drill at a time; abstain when the evidence gate fails.
+- Provide history and trends only from review-approved sessions with comparable player, shot style, and camera view; display sample counts and provenance.
+- Keep ball/rim outcomes visibly experimental until their separate held-out evaluation gate passes.
+
+### PR-9 — API, jobs, and session lifecycle
+
+- Expose versioned API contracts for capabilities, session creation, upload, processing status, results, corrections, export, and deletion.
+- Run long video analysis asynchronously with persistent job state and actionable failure status.
+- Preserve model/config versions and source provenance in results; keep original machine predictions distinct from user corrections.
+- Keep video assets outside the relational database and follow an explicit retention and deletion policy.
+
+### PR-10 — Optional grounded coach chat and engagement
+
+- LLM coach chat is optional and must retrieve only the current user's authorized session evidence and approved coaching content.
+- Chat answers must cite the metrics used, state uncertainty, and abstain when evidence is insufficient; chat must not invent measurements or alter labels/outcomes.
+- Gamification and PDF reports are optional extensions; streaks/goals use explicit rules, while reports include provenance, confidence, sample sizes, and limitations.
+
 ## Non-functional requirements
 
 - **NFR-1 Reproducibility:** document exact commands, dependency versions, model assets, and evaluation data manifest.
@@ -66,6 +89,8 @@
 - **NFR-4 Robustness:** handle missing models, unsupported video, bad framing, occlusion, and optional dependency failures with useful messages.
 - **NFR-5 Maintainability:** keep vision, analysis, persistence, coaching, and UI boundaries separate.
 - **NFR-6 Honest reporting:** every metric has a definition, unit, source, validity rule, and status (prototype or validated).
+- **NFR-7 API compatibility:** version inference and job schemas; clients must handle unknown, unavailable, and failed states without treating them as successful analysis.
+- **NFR-8 User data control:** explain video handling and support deletion/export according to the approved local or hosted retention policy.
 
 ## Validation gates
 

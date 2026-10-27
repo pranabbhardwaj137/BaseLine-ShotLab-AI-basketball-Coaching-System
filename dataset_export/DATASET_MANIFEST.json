@@ -1,0 +1,141 @@
+{
+  "manifest_version": "1.0.0",
+  "created_at": "2026-10-10T06:08:35.489076+00:00",
+  "synthetic": false,
+  "total_clips": 15,
+  "total_intervals": 53,
+  "splits": {
+    "train": {
+      "file": "train.jsonl",
+      "sha256": "b9a82789afe788dbcf9d2bc85bd27e90ff12f302f2fbdf4a68c75cb9b4d9e068",
+      "clip_count": 7,
+      "interval_count": 37
+    },
+    "val": {
+      "file": "val.jsonl",
+      "sha256": "e06aa99002918ac9cab27346259e8dd00fb30ab12213f0aec8319dc2b37a5f37",
+      "clip_count": 3,
+      "interval_count": 11
+    },
+    "test": {
+      "file": "test.jsonl",
+      "sha256": "6541e1b365b1632a4982cfc7bf3f01c4dbd161ce8ebd17d29ec22dd59cc08d4f",
+      "clip_count": 5,
+      "interval_count": 5
+    }
+  },
+  "taxonomy": {
+    "action_classes": {
+      "shot_event": 31,
+      "dribble_drive": 1,
+      "gather_no_shot": 5,
+      "pass": 3,
+      "pump_fake": 3,
+      "rebound": 3,
+      "defensive_contest": 3,
+      "catch_and_hold": 2,
+      "idle_reset": 2
+    },
+    "outcomes": {
+      "make": 21,
+      "miss": 10,
+      "unknown": 0,
+      "none": 22
+    }
+  },
+  "player_split_mapping": {
+    "train": [
+      "sid",
+      "mike_dunn",
+      "klay_thompson",
+      "lavish"
+    ],
+    "val": [
+      "lavish",
+      "mike_dunn",
+      "sid"
+    ],
+    "test": [
+      "lavish",
+      "mike_dunn",
+      "sid"
+    ]
+  },
+  "referenced_files": [
+    {
+      "clip_id": "sid_1",
+      "file_path": "raw_clips/sid_1.mp4",
+      "file_sha256": "4c239734e5febe0388508900b2ed5d4fc950237e85b7cbca44d9aa0d010ec5e1"
+    },
+    {
+      "clip_id": "mikedunn",
+      "file_path": "raw_clips/Mikedunn.mp4",
+      "file_sha256": "6176e3442b4659ee31c6e659c3521c91f8c1dfb82c9c0d66f7818a23b63b1c84"
+    },
+    {
+      "clip_id": "klay_vid",
+      "file_path": "raw_clips/klay_vid.mp4",
+      "file_sha256": "4ddbe477bd54bca521d7f1316db11f25dc56ec05d947d257fa5a4c1d1aa9d585"
+    },
+    {
+      "clip_id": "lavish_1_90deg",
+      "file_path": "raw_clips/lavish_1_90deg.mp4",
+      "file_sha256": "aef473e3d12b925c84dd495d832211f8ba3ae97bcf04584a77ce89604be073f9"
+    },
+    {
+      "clip_id": "lavish_2_90deg",
+      "file_path": "raw_clips/lavish_2_90deg.mp4",
+      "file_sha256": "d389755c7571240c113efb3a2bec32107a776f1b4facc7266dc93670ba5f3c43"
+    },
+    {
+      "clip_id": "lavish_3_mix",
+      "file_path": "raw_clips/lavish_3_mix.mp4",
+      "file_sha256": "7115b0ff83488b0818c5a7de01de615d28fa8cb49bfab09b954dba8db5567710"
+    },
+    {
+      "clip_id": "lavish_4_0deg",
+      "file_path": "raw_clips/lavish_4_0deg.mp4",
+      "file_sha256": "8fb078b5f2d068312751ffe8dcf9908e5c9873f0b7a3c29115cab058f2a825fe"
+    },
+    {
+      "clip_id": "lavish_5_0deg",
+      "file_path": "raw_clips/lavish_5_0deg.mp4",
+      "file_sha256": "4c06f3b66c8301f4d3898a2fa837debe15768b5cfa82e14cfda7cc434fd1688c"
+    },
+    {
+      "clip_id": "mikeddunnstud1",
+      "file_path": "raw_clips/mikeddunnstud1.mp4",
+      "file_sha256": "a1604cd264e37aec54b425910db5723ee2f5907ed5550bbc3487ac9a79011ce6"
+    },
+    {
+      "clip_id": "mikeddunnstud2",
+      "file_path": "raw_clips/mikeddunnstud2.mp4",
+      "file_sha256": "39c8c1c94e5c82e3f764499e808f95638974fa65f371a54cb4fca27253d22e6b"
+    },
+    {
+      "clip_id": "sid_2",
+      "file_path": "raw_clips/sid_2.mp4",
+      "file_sha256": "24e828910c0effc4e46c339273a8f4902b254f9d158bd6da438bd8862212eddb"
+    },
+    {
+      "clip_id": "sid_3_mult",
+      "file_path": "raw_clips/sid_3_mult.mp4",
+      "file_sha256": "dbaac42ccc1f2255a241d4a6dbbc427d25c5793df00daa0347e01fb0dee5be5b"
+    },
+    {
+      "clip_id": "sid_4_97deg_wrim",
+      "file_path": "raw_clips/sid_4_97deg_wrim.mp4",
+      "file_sha256": "a908fa8c72732f10dea5f9ddfd63dbf4d428be3bb0b54847e6bf7dfd53087d51"
+    },
+    {
+      "clip_id": "sid_5_0deg",
+      "file_path": "raw_clips/sid_5_0deg.mp4",
+      "file_sha256": "cdc194007b5242d844459a9b5c3fa0cc4d23948bbf6a336c7ddab7f91f29b33a"
+    },
+    {
+      "clip_id": "sid_6_0deg",
+      "file_path": "raw_clips/sid_6_0deg.mp4",
+      "file_sha256": "c304c2ed31aec316e816e7cb10e68ab5b54c4d643189344eedd33a9bb4a76825"
+    }
+  ]
+}

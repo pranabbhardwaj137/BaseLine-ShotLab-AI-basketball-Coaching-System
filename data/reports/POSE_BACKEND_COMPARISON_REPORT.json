@@ -1,0 +1,286 @@
+{
+  "benchmark": "MediaPipe_vs_YOLOv8_Pose_Comparative_Study",
+  "timestamp": "2026-10-10 16:59:17",
+  "mediapipe_model": "pose_landmarker.task (Heavy)",
+  "yolo_pose_model": "models/yolov8m-pose.pt",
+  "evaluation_scope": "12 shared joints (shoulders, elbows, wrists, hips, knees, ankles)",
+  "methodology_note": "Mutual estimate-to-estimate agreement evaluation. Neither model is treated as absolute ground truth.",
+  "clips_evaluated": [
+    {
+      "clip_path": "raw_clips/mikeddunnstud1.mp4",
+      "total_frames_evaluated": 80,
+      "frames_with_both_models": 79,
+      "overall_mean_normalized_joint_distance": 0.0863,
+      "per_joint_metrics": {
+        "left_shoulder": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 93.8,
+          "mean_norm_distance": 0.0477,
+          "p90_norm_distance": 0.1437,
+          "compared_frames": 74
+        },
+        "right_shoulder": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0721,
+          "p90_norm_distance": 0.1481,
+          "compared_frames": 79
+        },
+        "left_elbow": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 83.8,
+          "mean_norm_distance": 0.0755,
+          "p90_norm_distance": 0.181,
+          "compared_frames": 66
+        },
+        "right_elbow": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0924,
+          "p90_norm_distance": 0.1979,
+          "compared_frames": 79
+        },
+        "left_wrist": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 80.0,
+          "mean_norm_distance": 0.0884,
+          "p90_norm_distance": 0.2296,
+          "compared_frames": 63
+        },
+        "right_wrist": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.1068,
+          "p90_norm_distance": 0.258,
+          "compared_frames": 79
+        },
+        "left_hip": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0683,
+          "p90_norm_distance": 0.1956,
+          "compared_frames": 79
+        },
+        "right_hip": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0801,
+          "p90_norm_distance": 0.1749,
+          "compared_frames": 79
+        },
+        "left_knee": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0785,
+          "p90_norm_distance": 0.1856,
+          "compared_frames": 79
+        },
+        "right_knee": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0947,
+          "p90_norm_distance": 0.211,
+          "compared_frames": 79
+        },
+        "left_ankle": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 96.2,
+          "mean_norm_distance": 0.1041,
+          "p90_norm_distance": 0.2156,
+          "compared_frames": 76
+        },
+        "right_ankle": {
+          "mediapipe_detection_rate_pct": 98.8,
+          "yolo_pose_detection_rate_pct": 98.8,
+          "mean_norm_distance": 0.1241,
+          "p90_norm_distance": 0.2712,
+          "compared_frames": 78
+        }
+      }
+    },
+    {
+      "clip_path": "raw_clips/lavish_3_mix.mp4",
+      "total_frames_evaluated": 80,
+      "frames_with_both_models": 80,
+      "overall_mean_normalized_joint_distance": 0.0054,
+      "per_joint_metrics": {
+        "left_shoulder": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0045,
+          "p90_norm_distance": 0.0089,
+          "compared_frames": 80
+        },
+        "right_shoulder": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.004,
+          "p90_norm_distance": 0.007,
+          "compared_frames": 80
+        },
+        "left_elbow": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0062,
+          "p90_norm_distance": 0.0095,
+          "compared_frames": 80
+        },
+        "right_elbow": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.006,
+          "p90_norm_distance": 0.0102,
+          "compared_frames": 80
+        },
+        "left_wrist": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0082,
+          "p90_norm_distance": 0.0138,
+          "compared_frames": 80
+        },
+        "right_wrist": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0092,
+          "p90_norm_distance": 0.0174,
+          "compared_frames": 80
+        },
+        "left_hip": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0042,
+          "p90_norm_distance": 0.0073,
+          "compared_frames": 80
+        },
+        "right_hip": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0045,
+          "p90_norm_distance": 0.0082,
+          "compared_frames": 80
+        },
+        "left_knee": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0041,
+          "p90_norm_distance": 0.0078,
+          "compared_frames": 80
+        },
+        "right_knee": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0039,
+          "p90_norm_distance": 0.0076,
+          "compared_frames": 80
+        },
+        "left_ankle": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0046,
+          "p90_norm_distance": 0.0091,
+          "compared_frames": 80
+        },
+        "right_ankle": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0048,
+          "p90_norm_distance": 0.0077,
+          "compared_frames": 80
+        }
+      }
+    },
+    {
+      "clip_path": "raw_clips/sid_4_97deg_wrim.mp4",
+      "total_frames_evaluated": 80,
+      "frames_with_both_models": 80,
+      "overall_mean_normalized_joint_distance": 0.006,
+      "per_joint_metrics": {
+        "left_shoulder": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0048,
+          "p90_norm_distance": 0.0113,
+          "compared_frames": 80
+        },
+        "right_shoulder": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0064,
+          "p90_norm_distance": 0.0117,
+          "compared_frames": 80
+        },
+        "left_elbow": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0074,
+          "p90_norm_distance": 0.0188,
+          "compared_frames": 80
+        },
+        "right_elbow": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0071,
+          "p90_norm_distance": 0.019,
+          "compared_frames": 80
+        },
+        "left_wrist": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0097,
+          "p90_norm_distance": 0.0227,
+          "compared_frames": 80
+        },
+        "right_wrist": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0097,
+          "p90_norm_distance": 0.0185,
+          "compared_frames": 80
+        },
+        "left_hip": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0044,
+          "p90_norm_distance": 0.0098,
+          "compared_frames": 80
+        },
+        "right_hip": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0045,
+          "p90_norm_distance": 0.0095,
+          "compared_frames": 80
+        },
+        "left_knee": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0046,
+          "p90_norm_distance": 0.0082,
+          "compared_frames": 80
+        },
+        "right_knee": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0046,
+          "p90_norm_distance": 0.01,
+          "compared_frames": 80
+        },
+        "left_ankle": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0046,
+          "p90_norm_distance": 0.0104,
+          "compared_frames": 80
+        },
+        "right_ankle": {
+          "mediapipe_detection_rate_pct": 100.0,
+          "yolo_pose_detection_rate_pct": 100.0,
+          "mean_norm_distance": 0.0044,
+          "p90_norm_distance": 0.0096,
+          "compared_frames": 80
+        }
+      }
+    }
+  ]
+}

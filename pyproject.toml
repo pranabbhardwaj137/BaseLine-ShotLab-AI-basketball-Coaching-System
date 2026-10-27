@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "basketball-shot-lab"
+version = "1.0.0"
+description = "Intelligent Basketball Shooting Analysis and Biomechanics System"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "mediapipe>=0.10.13",
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+    "matplotlib>=3.7.0",
+    "tqdm>=4.65.0",
+    "scipy>=1.10.0",
+    "scikit-learn>=1.3.0",
+    "imageio-ffmpeg>=0.5.1",
+]
+
+[project.optional-dependencies]
+yolo = [
+    "ultralytics>=8.0.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+]
+dev = [
+    "pytest>=7.4.0",
+    "playwright>=1.40",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+basketball = "basketball.app.main:main"
+basketball-web = "basketball.app.web_app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

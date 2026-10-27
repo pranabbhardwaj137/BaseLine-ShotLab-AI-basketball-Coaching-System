@@ -1,0 +1,85 @@
+{
+  "benchmark": "Phase_7_Ball_Rim_and_Trajectory_Verification",
+  "timestamp": "2026-10-10 17:44:09",
+  "model_file": "models/best.pt",
+  "model_sha256": "d3a52414eb0970661d98473663a858ce7c05db6d8a6e107a413d2c714231d43f",
+  "gate_verdict": "QUALIFIED_AS_ADVISORY",
+  "advisory_governance": {
+    "automated_outcomes_advisory_only": true,
+    "human_ground_truth_overwritten": false,
+    "baseline_admission_allowed": false,
+    "governance_note": "Automated ball/rim tracking and make/miss classifications are shadow/advisory. Human M/X/U ground truth is immutable."
+  },
+  "part_a_dataset_object_detection": {
+    "dataset_yaml": "Basketball.v1i.yolov8/data.yaml",
+    "split_evaluated": "test",
+    "total_test_images": 472,
+    "mean_precision": 0.7687,
+    "mean_recall": 0.709,
+    "map50": 0.7283,
+    "map50_95": 0.4856,
+    "per_class_metrics": {
+      "basketball": {
+        "precision": 0.9713,
+        "recall": 0.938,
+        "map50": 0.9613
+      },
+      "rim": {
+        "precision": 0.5661,
+        "recall": 0.48,
+        "map50": 0.4954
+      }
+    }
+  },
+  "part_b_video_tracking_continuity": {
+    "pooled_ball_coverage_ratio": 0.749,
+    "pooled_rim_coverage_ratio": 0.287,
+    "clips": [
+      {
+        "clip_path": "raw_clips/sid_4_97deg_wrim.mp4",
+        "total_frames_evaluated": 150,
+        "ball_coverage_ratio": 0.753,
+        "rim_coverage_ratio": 0.0,
+        "mean_ball_confidence": 0.656,
+        "mean_rim_confidence": 0.0,
+        "trajectory_fit_r2": 0.14,
+        "release_angle_deg": 87.3,
+        "entry_angle_deg": null,
+        "advisory_outcome": "unknown",
+        "advisory_reason": "RIM_NOT_DETECTED",
+        "human_ground_truth_outcome": "make",
+        "human_ground_truth_intervals_total": 14
+      },
+      {
+        "clip_path": "raw_clips/lavish_3_mix.mp4",
+        "total_frames_evaluated": 150,
+        "ball_coverage_ratio": 0.94,
+        "rim_coverage_ratio": 0.033,
+        "mean_ball_confidence": 0.745,
+        "mean_rim_confidence": 0.39,
+        "trajectory_fit_r2": 0.11,
+        "release_angle_deg": 77.0,
+        "entry_angle_deg": 66.8,
+        "advisory_outcome": "unknown",
+        "advisory_reason": "POOR_TRAJECTORY_FIT",
+        "human_ground_truth_outcome": "none",
+        "human_ground_truth_intervals_total": 11
+      },
+      {
+        "clip_path": "raw_clips/mikeddunnstud1.mp4",
+        "total_frames_evaluated": 150,
+        "ball_coverage_ratio": 0.553,
+        "rim_coverage_ratio": 0.827,
+        "mean_ball_confidence": 0.775,
+        "mean_rim_confidence": 0.602,
+        "trajectory_fit_r2": 0.82,
+        "release_angle_deg": 84.1,
+        "entry_angle_deg": 82.3,
+        "advisory_outcome": "miss",
+        "advisory_reason": "MISSED_TRAJECTORY_ALIGNMENT",
+        "human_ground_truth_outcome": "make",
+        "human_ground_truth_intervals_total": 11
+      }
+    ]
+  }
+}

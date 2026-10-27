@@ -1,133 +1,233 @@
-# Project Roadmap — Basketball Coach
+# Project Roadmap — Basketball Shot Lab to User App
 
-## Milestone
+## Product milestone
 
-**Reliable, evidence-backed personal shot analysis.** Finish a reproducible review-quality prototype before expanding into a broad platform.
+**Build a transparent basketball shot-analysis product from a verified data workflow:** developers curate and label video in an internal Model Lab; shot-event and ball/rim models are trained and evaluated on that data; end users later upload or record video and receive evidence-linked analysis, suggestions, and history.
 
-### Status meanings
+The internal **Developer Model Lab** and final **User App** are separate products with separate goals. The scrubber/annotation tool creates verified training and evaluation data. The User App consumes versioned inference outputs; it is not the place to label the training set.
 
-- **Implemented prototype:** feature exists in source; correctness/generalization not established.
-- **Active:** current work; must meet listed exit criteria before next phase claims depend on it.
-- **Planned:** future scope.
+## Planning language
+
+- **Manual developer work:** collection, licensing, consent, labeling decisions, annotation QA, and acceptance of results. The coding agent cannot invent these inputs or approve its own predictions.
+- **Coding-agent work:** software, data schemas, model/evaluation plumbing, reports, interfaces, and reproducible tests using supplied inputs.
+- **Joint gate:** evidence the developer reviews before a phase can claim success.
+- Synthetic fixtures test software logic only. They are never real-video accuracy results.
 
 ## Phase sequence
 
 | Phase | Focus | Status | Exit gate |
 |---|---|---|---|
-| 1 | Capture and core vision | Implemented prototype | Fresh setup can run pose analysis; required and optional assets documented. |
-| 2 | Shot events, kinematics, ball/hand analysis, illustrative comparisons | Implemented prototype | Deterministic behavior covered; every value has a clear definition and coordinate basis. |
-| 3 | Measurement integrity and real-video validation | **Completed & Verified** | Reproducible multi-player event evaluation meets documented gate (80.0% recall, zero baseline contamination via human-gated quarantine, per-player/view spread in `DATASET_EVAL_REPORT.json`). |
-| 4 | Personal Shot Lab and evidence-gated coaching | **Implemented prototype — effectiveness unvalidated** | Baselines and cues use reviewed, valid shots; end-to-end software tests do not establish coaching or detector accuracy. |
-| 5 | Durable sessions, reports, coach UX | Active (Human-confirmed sessions ready) | Prioritize durable schema/report integrity; use human-confirmed shot records for baseline and coaching reports. |
-| 6 | Advanced research, release, and defense | Planned | Optional advanced model/multi-view work beats a baseline or is explicitly reported as exploratory; clean release and defense package ready. |
+| 1 | Capture and core vision | Implemented prototype | Clean setup and supported input behavior are reproducible. |
+| 2 | Shot analysis foundations | Implemented prototype | Metrics and event behavior have defined units, coordinate bases, and limits. |
+| 3 | Measurement integrity and real-video evaluation | **Pilot infrastructure exists; accuracy gate remains open** | Labeled coverage, event errors, and subgroup results are sufficient to justify claims; report audit issues are resolved. |
+| 4 | Personal Shot Lab and coaching workflow | **Software prototype implemented; coaching effectiveness unvalidated** | Human review, baseline admission, and follow-up behavior are clear and evidence-gated. |
+| 5 | Developer Model Lab and annotation dataset | **Completed and verified** | Tooling, persistence, QA validator, manifest exporter, and test suites delivered; ready for developer labeling. |
+| 6 | Shot-event model and verification | **Tooling implemented; gate verdict `EXPLORATORY`** (only 3 evaluable held-out releases; see `SHOT_MODEL_EVAL_REPORT.json`) | A trained or selected detector beats the agreed heuristic baseline on held-out players/sessions, or remains explicitly experimental. |
+| 7 | Ball/rim tracking and outcome evidence | **Implemented; detector `QUALIFIED_AS_ADVISORY`** (test mAP@50 0.728; rim class weaker than ball); outcomes advisory only | Ball/rim tracking is measured on held-out footage and linked to shot IDs; automated outcomes remain unknown until separately qualified. |
+| 8 | Final user-facing video analysis app | **Local app complete with AI coach report, PDF and phone access over Wi-Fi (2026-10-25); real-phone UAT still open** | User can upload/record, inspect analysis and evidence, receive cautious guidance, and revisit persistent history. |
+| 9 | Release, academic review, and maintenance | Planned | A clean install, reproducible evaluation, data/model provenance, limitations, and demo are ready for review. |
+
+## Current evidence and limits
+
+- The raw-clips harness processed 15 videos and 12,394 decoded frames. This establishes processing coverage reported by that run, not shot-detection accuracy on every clip.
+- The current human event annotations cover three clips and five shots. Clips without event labels cannot count as true positives or false positives.
+- The raw report's 95.9% pose figure is an unweighted average of clip rates; pooled frame coverage is about 95.05% for that report.
+- The raw report's “admitted/quarantined” counts are computed from annotation matches. They do not prove those shots were written to SQLite or passed through the actual baseline gate.
+- The current event detector still produces substantial false positives and timing error in practice footage. Keep machine proposals reviewable; do not present detector output as verified shot truth.
+- 2D versus MediaPipe world-landmark differences are disagreement between estimates. Without independent ground truth, neither is known to be closer to reality.
+- Camera angle matters. Record the view and evaluate per view. A model must abstain or warn when capture falls outside supported conditions.
 
 ## Phase 1 — Capture and core vision
 
-**Scope:** webcam/video capture, MediaPipe Tasks pose, frame rendering, setup and model asset handling.
+**Goal:** capture video, estimate pose, render useful landmarks, and make model-asset requirements understandable.
 
-**Review note:** pose capture/rendering exists. Cross-platform and clean-environment readiness still need a fresh setup walkthrough; implementation is not the same as packaging validation.
+**Existing implementation:** OpenCV video/webcam loop, MediaPipe Tasks pose landmarks, 2D and estimated world coordinates, smoothing, and display.
 
-**Exit evidence:** install/run instructions verified on a clean environment; sample clip processed; dependency and model download behavior documented.
+**Manual developer work:** verify setup on a clean machine; provide example footage that may legally be used; record hardware and capture conditions for performance measurements.
+
+**Coding-agent work:** maintain setup/asset checks, handle missing or unsupported inputs clearly, preserve timestamps and missing-data states, and document performance only from measured hardware runs.
+
+**Exit evidence:** clean setup instructions verified; sample video and webcam paths exercised; required and optional assets and failure behavior documented.
 
 ## Phase 2 — Shot analysis foundations
 
-**Scope:** shot-phase state machine, joint-angle calculations, session summaries, optional hands and ball tracking, DTW/pro reference display.
+**Goal:** produce explainable pose-based observations and candidate shot phases.
 
-**Review note:** shot-state, kinematic, comparator, and 2D/world-estimate code exists. Pro curves are illustrative, not NBA ground truth. MediaPipe world landmarks are monocular estimates, not measured 3D capture. “Calibrated DTW” is not calibration against a labeled benchmark.
+**Existing implementation:** `ShotPhaseDetector`, `SessionRecorder`, joint-angle and kinetic-sequencing calculations, optional hands/ball modules, and illustrative DTW/pro comparisons.
 
-**Exit evidence:** targeted regression coverage for shot lifecycle and missing data; every metric named and unit-labeled; ball/rim availability shown honestly.
+**Manual developer work:** choose and document supported camera framing and shot contexts; review metric definitions against project intent.
 
-## Phase 3 — Measurement integrity and validation (Completed & Verified)
+**Coding-agent work:** preserve coordinate-basis separation, units, timestamps, validity and confidence metadata; label pro profiles as illustrative; keep missing values missing rather than fabricating measurements.
 
-**Goal:** know when outputs can be trusted, quantify error on real video, and abstain when they cannot.
+**Exit evidence:** targeted regression coverage exists; every surfaced metric has a definition and limitation; no score is presented as validated without real reference data.
 
-**Work packages & Verified Implementation:**
+## Phase 3 — Measurement integrity and real-video evaluation
 
-1. **Coordinate use audit:** Image-plane angles and MediaPipe 3D world estimates are strictly separated in `analyzer.py` and `pose_engine.py`. Zero mixing. Metric dictionary in `METRIC_DICTIONARY.md`.
-2. **Confidence & temporal validity:** Per-joint confidence and validity masks propagated through angle, event, and kinetic-chain code. Documented short gap interpolation limit ($\le 2$ frames) strictly enforced.
-3. **Framing & abstention states:** Explicit `HIGH`, `MODERATE`, `INSUFFICIENT` confidence states with diagnostic breakdown.
-4. **Deterministic synthetic regression:** Five passing synthetic scenarios in `evaluate_pipeline.py` / `EVAL_REPORT.json` strictly labeled as synthetic regression.
-5. **Human-annotated real-video dataset:** Protocol in `VIDEO_ANNOTATION_PROTOCOL.md` and labels in `ground_truth_annotations.json` across development (`klay_vid.mp4`) and held-out (`mikeddunnstud1.mp4`, `mikeddunnstud2.mp4`) splits.
-6. **Full-length video benchmark:** Evaluated 100% of frames across all clips (2,667 total frames) with zero artificial truncation. Report in `DATASET_EVAL_REPORT.json`.
-7. **Honest ball/rim degradation:** In `ball_tracker.py`, pose owns shot lifecycle (`on_shot_started`, `on_shot_release`, `on_shot_ended`). Missing custom rim weights triggers `rim_status="UNAVAILABLE_NO_WEIGHTS"` and locks automated outcomes to `"unknown"`.
-8. **Configurable shot-event gates:** In `analyzer.py` (`ShotPhaseDetector`), configurable `shot_style` (`jump_shot` vs `set_shot`), upward vertical velocity gate ($v_y < -0.06$), dip-to-rise kinetic ordering, and duration sanity windows ($150-1200$ms prep, $100-450$ms release).
-9. **Human review & baseline protection:** In `baseline_engine.py`, strict `require_human_confirmed=True` gate quarantines all unconfirmed machine detections, preventing baseline contamination.
+**Goal:** measure what the current heuristic pipeline gets right and wrong before training a replacement.
 
-**Benchmark Evidence (`DATASET_EVAL_REPORT.json` — 2,667 Total Frames):**
-- **Overall:** 80.0% Recall (4/5 shots detected), Precision 22.2% (4 TP, 14 FP across 2,667 continuous frames), F1 Score 0.348, Release Timing MAE: 227.8 $\pm$ 170.1 ms.
-- **Development Split (Klay):** 100.0% Precision, 100.0% Recall (F1: 1.000), Release Timing MAE: 133.5 ms.
-- **Held-Out Split (Mike Dunn):** 75.0% Recall (3/4 shots detected), F1: 0.286.
-  - `mikeddunnstud1.mp4` (Oblique 45°): 2/2 TP (100.0% Recall), Timing MAE: 83.3 ms (spread 66.7–100.0 ms), F1: 0.571.
-  - `mikeddunnstud2.mp4` (Side 90°): 1/2 TP (50.0% Recall, 11 FP during continuous dribbling/gathers), Timing MAE: 466.7 ms, F1: 0.143.
-- **2D vs 3D Disagreement:** Mean $\pm 19.7^\circ$ ($\pm 22.9^\circ$ Dev, $\pm 18.1^\circ$ Held-Out).
-- **Baseline Integrity:** All 14 unconfirmed false machine detections quarantined with zero baseline contamination.
+**Manual developer work:** annotate complete shot-event timelines for representative clips; include missed machine detections, non-shot actions, camera view, shot style, FPS, and annotation uncertainty. Preserve held-out players/sessions. Resolve annotation disagreements and confirm clip rights/consent.
 
-**Exit criteria satisfied:**
-- [x] No coordinate-basis mixing in angle calculations.
-- [x] Confidence gates tested for occlusion, out-of-frame joints, and long gaps.
-- [x] Real-video evaluation is reproducible from documented instructions and has per-view/per-player results.
-- [x] Shot-event performance evaluated on complete labeled coverage with reported sample counts, per-player/per-view spread, and justified matching tolerance.
-- [x] Machine shot events are quarantined and required to be human-confirmed before entering personal baselines.
-- [x] Synthetic benchmark is explicitly labeled synthetic; missing labels cannot produce a perfect timing score.
-- [x] README, requirements, roadmap, and state agree with current code and results.
+**Coding-agent work:** audit evaluator frame coverage and matching; produce per-clip/player/view precision, recall, F1, release timing distributions, sample counts, and abstention/coverage. Keep synthetic reports separate from real footage. Record exact input IDs, annotation source, split, thresholds, and software/model versions.
+
+**Exit evidence:** annotation coverage is sufficient for the stated evaluation; matching tolerance is justified; reported aggregates can be independently recomputed; held-out results and failure cases are visible. Processing every frame of an unlabeled clip does not satisfy this gate.
 
 ## Phase 4 — Personal Shot Lab and evidence-gated coaching
 
-**Goal:** turn available measurements into an individualized practice experiment. Phase 4 can start with review/storage scaffolding while Phase 3 closes; personalized coaching cues must remain experimental until their inputs pass validation.
+**Goal:** let a player review attempts, label outcomes, build personal summaries, and receive one cautious, evidence-linked cue.
 
-**Work packages:**
+**Existing implementation:** versioned SQLite Shot Lab, M/X/U labels, review CLI, baseline engine, one-cue coach engine, and follow-up summaries.
 
-1. [x] Build a shot review queue with detected boundaries, keyframes, make/miss/unknown labels, and user corrections.
-2. [x] Preserve original machine output, corrected labels, and provenance.
-3. [x] Form a player baseline only from at least five confidence-gated, human-confirmed shots per matched context; N≥5 is a sample-size floor, not a safeguard against false event detections. Shot styles (jump_shot vs set_shot) strictly isolated.
-4. [x] Show made-versus-missed differences as descriptive associations, with sample sizes and uncertainty; contrast sub-gated until N_makes >= 5 and N_misses >= 5.
-5. [x] Generate one cue at a time triggered by repeating mechanics thresholds against baselines. Each cue links to frames and metrics, carries measurement uncertainty, and offers a shot-style matched drill.
-6. [x] Run a follow-up set and show whether the chosen measurement changed; purely observational reporting with explicit sample sizes, pre/post distributions, and make fractions without causal claims.
+**Manual developer work:** verify that a shot is real and its boundaries are acceptable before baseline admission; use M/X for known outcomes and U for unclear outcomes; decide which coaching language and drills are appropriate for the project.
 
-**Exit criteria satisfied:**
-- [x] Complete local practice workflow: clip/session → review/correct → baseline comparison → cue/drill → follow-up.
-- [x] Insufficient data produces a clear "Baseline Pending: requires at least 5 reviewed shots" and "Make-versus-miss contrast pending: requires at least 5 reviewed makes and 5 reviewed misses".
-- [x] Batch approval explicitly rejected (`--batch-approve` returns exit code 1) to safeguard baseline integrity.
-- [x] Full test suite (18/18 tests) passing across DB provenance, baseline engine, coach engine, and end-to-end integration flow.
+**Coding-agent work:** preserve machine output separately from edits; enforce approval and confidence gates; match baselines by player, view, and shot style; show sample counts and uncertainty; avoid causal claims and unsupported universal thresholds.
 
-## Phase 5 — Durable sessions, reports, and coach experience (deferred)
+**Exit evidence:** the actual DB review-to-baseline path is tested; outcome source and review status are distinguishable; small or invalid samples produce “not enough evidence.” Software tests do not prove cue effectiveness.
 
-**Goal:** make reliable analysis easy to use across sessions and by a coach.
+## Phase 5 — Developer Model Lab and annotation dataset
 
-**Entry gate:** Phase 3 has reproducible multi-player/view event metrics and an agreed reliability threshold, or every shot feeding a report is human-confirmed. Until then, prioritize detector diagnosis and review instrumentation over dashboard, roster, and presentation polish.
+**Goal:** give developers a visual, auditable way to create ground truth for training and evaluation. This phase builds the internal labeling product, not the final user experience.
 
-**Work packages:**
+### Manual developer work
 
-1. Stabilize a versioned SQLite or JSON session schema before building UI.
-2. Add migration/export paths and model/config metadata.
-3. Produce a concise session report with valid-shot counts, trends, confidence, sample frames, and limitations.
-4. Add an interactive scrubber/timeline for preparation, release, flight, and follow-through.
-5. Add coach annotations and player consent/privacy controls.
-6. Build Streamlit/dashboard only around validated, stable data fields.
+1. Collect permitted videos from varied players, shot styles, venues, and supported camera views; record provenance, consent/rights, FPS, resolution, and capture metadata.
+2. Define annotation instructions and event schema before labeling: shot/no-shot interval, start, dip, set point, release, follow-through, outcome (`make` / `miss` / `unknown`), visibility/occlusion, and reviewer certainty.
+3. Label clips that contain no detected shot as well as clips with machine proposals. Reviewers must be able to add missed shots and mark hard negatives such as dribbles, gathers, passes, and pump fakes.
+4. Independently review a subset of labels, reconcile disagreements, and freeze player/session-separated train, validation, and test splits. Do not split adjacent frames from one clip across these sets.
+5. Supply clips and annotation decisions. Do not ask the coding agent to guess missing labels or invent dataset contents.
 
-**Exit criteria:** sessions survive app restarts; reports can be traced back to source shots; dashboard never hides invalid/unknown data.
+### Coding-agent work
 
-## Phase 6 — Advanced research and review release
+1. Build a local developer review tool with video playback, frame-accurate scrubbing, timeline/keyframe markers, pause/step controls, and machine predictions shown separately from human labels.
+2. Support add-shot, mark non-shot interval, correct event boundaries, label outcome/occlusion, undo edits, reviewer notes, and per-clip completion state. No blind approve-all operation.
+3. Store source video references/fingerprints, timestamps, original predictions, human annotations, edits/provenance, reviewer and schema versions. Keep large video files outside SQLite; store durable references and structured annotations.
+4. Export/import documented JSONL or equivalent annotation records with manifest, class/event definitions, split, license/provenance fields, and validation that labels point to existing frames.
+5. Add annotation QA views: missing labels, impossible event order, duplicate events, coverage by class/player/view, and inter-reviewer disagreement where multiple reviews exist.
+6. Add deterministic fixture tests clearly marked synthetic; never emit them as real dataset results.
 
-**Goal:** add only research features with a measurable reason to exist, then prepare a reproducible academic release.
+**Exit evidence:** a developer can open a supplied clip, inspect the whole timeline, add both detected and missed attempts, label boundaries/outcomes, save/reopen work without losing provenance, and export a validated dataset. A reviewed dataset manifest and split are supplied by the developer.
 
-**Candidate experiments:**
+## Phase 6 — Shot-event model and verification
 
-- Optional two-camera synchronization/calibration for a multi-view estimate; compare against single-view and report setup cost.
-- Court geometry, automatic shot-distance detection, and multi-camera extrinsic calibration benchmarking using the EPFL SportCenter camera-pose dataset (archived from Phase 3 scope).
-- Compare simple event/feature baselines with DTW or a learned temporal model using player-separated held-out evaluation.
-- Add confidence calibration and personalized cue ranking if enough reviewed examples exist.
-- Explore a coach-in-the-loop annotation set that captures corrections and cue usefulness.
+**Goal:** improve shot proposal and event timing using the Phase 5 labels, with measured benefit over the current heuristic.
 
-**Release work:** fresh install, model licensing/attribution check, latency/FPS benchmark on named hardware, demo script, mathematical definitions, failure examples, limitations, and final graph/document sync.
+### Manual developer work
 
-**Exit criteria:** advanced method demonstrably improves a predefined metric over baseline or is excluded from product claims; review package is reproducible and candid.
+1. Confirm annotation quality and dataset splits before training.
+2. Set acceptance metrics and thresholds before comparing models; select held-out players/sessions that remain untouched during tuning.
+3. Review error samples, especially false shots during gathers/dribbles, missed shots, low-release set shots, occlusion, and unseen camera views.
+4. Decide whether results justify replacing, supplementing, or retaining the current heuristic.
 
-## Ordering and scope guardrails
+### Coding-agent work
 
-- Phase 3 blocks claims and features that depend on accurate measurements. The current event pilot is weak (F1 0.308; timing MAE 283.4 ms) and does not support an accuracy claim.
-- Phase 4 is the product differentiator: player-specific Shot Lab, not a generic pro-match score.
-- Phase 5 UX follows the Phase 3 entry gate; durable provenance and correction metrics can be developed earlier, but dashboard-first work is deferred.
-- The 19.7° image-plane/world-landmark difference is disagreement between two estimates. Without independent ground truth, neither estimate can be described as closer to reality.
-- Phase 6 models are optional experiments, never assumed deliverables.
-- Do not use universal “optimal” angles without context and evidence.
+1. Build a reproducible training/evaluation pipeline from manifest-driven inputs; fail clearly if clips or required labels are missing.
+2. Compare the existing heuristic with simple pose-sequence baselines before adding a larger learned model. Treat wrist height/velocity, dip-to-rise order, duration, and optional ball-hand proximity as features to evaluate—not assumed truths.
+3. Train only on the training split; use validation for model/threshold selection; evaluate once on player/session-held-out test data.
+4. Report precision, recall, F1, timing error and spread, per-view/player performance, false positives per video-minute, and confidence/abstention behavior.
+5. Save model artifact, input manifest, code/config version, class/event schema, and evaluation report together. Keep human review and correction available.
+
+**Exit evidence:** model beats the agreed baseline on held-out data without hiding subgroup failures, or the system retains heuristic proposals and labels learned results exploratory. Do not permit fully automatic baseline admission solely because a model emits high confidence until confidence is calibrated and the gate is validated.
+
+## Phase 7 — Ball/rim tracking and outcome evidence
+
+**Goal:** measure ball flight and rim interaction within a known pose-shot window; qualify automated outcomes separately from shot-event detection.
+
+### Manual developer work
+
+1. Collect permitted clips where ball and hoop are visible, covering makes, misses, occlusions, motion blur, and supported viewpoints.
+2. Annotate ball/rim boxes on representative frames and verify shot outcomes independently. Define whether the target is rim, hoop opening, backboard, or multiple classes before training.
+3. Reserve entire clips/venues/camera views for held-out evaluation where feasible; document dataset licenses and model-weight provenance.
+
+### Coding-agent work
+
+1. Build frame sampling, YOLO-format annotation validation, training, and held-out evaluation tools. Do not assume a public hoop model or its published scores transfer to project footage.
+2. Match detections to pose-owned shot IDs and timestamps; preserve skipped/missing detections as unknown and never carry tracks across shots.
+3. Persist ball/rim coverage, trajectory-fit quality, release alignment, outcome, confidence, source, and model version in the shot record/export. Keep automated outcome separate from human M/X/U labels.
+4. Evaluate ball detection coverage and box metrics, track continuity, release alignment, and make/miss precision/recall on labeled held-out footage.
+5. Keep automatic make/miss disabled or advisory until its separately documented acceptance gate passes. Human labels remain available for correction.
+
+**Exit evidence:** reproducible held-out ball/rim results exist; every observation is attached to the correct shot; missing rim weights/detections yield explicit unavailable/unknown states; outcomes cannot silently overwrite human labels.
+
+## Phase 8 — Final user-facing video analysis app
+
+**Status:** Local app implementation complete; upload/summary and replay/review were confirmed by user. History/trends, drill follow-up, printable report, and optional AI chat are implemented. On 2026-10-17 the player UI was redesigned (work package 08-06: three-view layout, clip timeline, attempt list, session reopening) and reliability fixes plus an automated API test suite (`test_web_app.py`) were added. Manual UAT on eligible real records is still required. Hosted deployment remains Phase 9/release work.
+
+**Goal:** make the player’s coaching experience the centerpiece: guide setup, accept a recording or uploaded session, show processing progress, then return an understandable shot-by-shot review, cautious coaching, and progress over time. This app consumes the Developer Model Lab’s versioned schemas and inference services; it does not replace developer annotation work.
+
+### Player journey
+
+1. **Onboarding:** collect handedness, experience/skill level, practice goals, and preferred shot style. Provide a camera setup guide based on evaluated framing/view limits; save only the profile data needed for personalization.
+2. **Capture or upload:** support a video upload first and recording where the selected platform supports it. Ask for session metadata and camera view; explain unsupported framing before processing when possible.
+3. **Processing:** submit work through a stable API, show queued/running/complete/failed states and useful recovery guidance. Long video analysis must not block the UI request.
+4. **Session summary:** show detected/reviewed shot counts, confidence/unknown counts, a small set of valid metrics, and clearly labeled experimental ball/rim results.
+5. **Shot replay:** provide a scrubber with pose/ball overlays where available and phase markers for load, set, release, and follow-through. Let the player inspect or correct machine proposals; preserve original predictions and human edits separately.
+6. **Coaching:** show one primary, evidence-linked cue at a time with the supporting frame/metric, confidence, limitation, and a concrete drill. Do not display a cue when the evidence gate fails.
+7. **Progress/history:** compare review-approved sessions for the same player, shot style, and camera view. Show sample sizes and view changes; distinguish consistency trends from shot outcome or causal claims.
+
+### Delivery order and feature gates
+
+1. **Pipeline API and job contract:** wrap the existing Python pipeline behind FastAPI endpoints for health/capabilities, upload/session creation, job status, results, and deletion. Keep CV inference in a worker boundary. Start with a simple local worker and persistent job state; add Celery/Redis only if measured concurrency or deployment needs justify the operational cost.
+2. **Web/PWA vertical slice:** build onboarding/profile, upload, progress, and a usable results page against the API. Prefer a responsive web/PWA prototype unless user testing or required device APIs justify Flutter/React Native.
+3. **Replay and evidence UI:** add shot timeline, phase markers, skeleton replay, confidence/unknown states, and human correction. A radar chart may summarize a small set of normalized metrics only when definitions, validity, and missing-data behavior are clear; also provide readable per-metric values.
+4. **Coaching and session trends:** connect the existing rule-based coach to reviewed evidence, then add drill completion and longitudinal history. Define consistency and fatigue-drift measures before exposing scores; do not label ordinary within-session variation as fatigue without supporting evidence.
+5. **Optional LLM coach:** implemented as an explicit opt-in requiring `OPENAI_API_KEY` and `--enable-llm-chat`. It receives only approved metric summaries, the rule-based cue, source references, and the user's question; it never receives video/raw landmarks and does not persist chat. Manual API-backed verification remains open.
+6. **Optional engagement and sharing:** implemented weekly session goal and activity streak with a documented approved-shot activity rule; consistency is per-metric sample spread rather than a composite score. Browser print-to-PDF export includes evidence counts and limitations. Manual UI verification remains open.
+7. **Polish and demo:** accessibility, loading/error states, privacy/data deletion, responsive layout, and a recorded walkthrough that includes one successful flow and one abstention/failure case.
+
+### Candidate architecture (implementation choice remains evidence-driven)
+
+| Layer | Planned responsibility | Candidate implementation |
+|---|---|---|
+| Player UI | Onboarding, upload/record, processing state, replay, coaching, history | Responsive PWA/web app first; Flutter/React Native only if platform needs justify it |
+| API | Stable session, upload, job, result, correction, and deletion contracts | FastAPI with documented OpenAPI/Swagger endpoints |
+| Job execution | Run long CV analysis without blocking requests | Existing Python CV pipeline behind a worker; Celery + Redis only if deployment/concurrency requires it |
+| Vision and analysis | Pose, shot events, optional ball/rim, metrics | OpenCV + MediaPipe; YOLO remains optional/experimental until its per-view gates pass |
+| Coaching | Transparent rules first; optional grounded chat later | Existing rule-based engine; later LLM retrieval over authorized session evidence |
+| Persistence | Profiles, sessions, shots, job state, model provenance | SQLite for local prototype; PostgreSQL for multi-user deployment; videos stored separately with explicit retention/deletion policy |
+| Delivery | Reproducible install and deployment | Docker and CI after the local vertical slice is stable; no deployment claim until exercised |
+
+These are roadmap targets, not claims about the current implementation. Each layer must be implemented and verified before it is described as present in a demo or defense.
+
+### Manual developer work
+
+1. Decide initial target platform and local-first/cloud privacy behavior; get player/coach feedback on upload, review, and coaching language.
+2. Define supported camera conditions and user-facing abstention/framing guidance from evaluation results.
+3. Validate prototype workflows with real users and report usability issues without converting anecdotes into accuracy claims.
+4. Supply onboarding defaults and coaching/drill wording; review whether profile fields and goals are understandable and necessary.
+5. Decide video retention, deletion, and sharing rules before any hosted upload path. Confirm any external LLM provider/privacy terms before enabling coach chat.
+6. Review visual summaries and progress measures for misleading interpretations; approve the rules behind streaks, goals, and any consistency score.
+
+### Coding-agent work
+
+1. Define and version API request/response and job-state schemas before UI coupling. Expose pipeline/model availability, progress, structured errors, and cancellation/deletion behavior.
+2. Build onboarding and camera guide, upload/record entry, session metadata, asynchronous processing progress, retry/failure handling, and session summary.
+3. Build shot-by-shot replay with frame-accurate scrubbing, phase timeline, available pose/ball overlays, machine confidence, and review corrections with full provenance.
+4. Build the biomechanics dashboard from validity-gated measurements. Include charts such as a radar-style profile only with documented normalization and missing-value handling; keep raw values, units, and confidence visible.
+5. Connect one-cue coaching and drills to evidence in the current shot/session. Add personal-best/ghost comparison only when aligned clips or comparable phase sequences exist; clearly mark illustrative references.
+6. Persist profiles, job state, sessions, shot results, model/config versions, and user corrections. Add history/trend views only from review-approved records and matching view/style cohorts.
+7. Define consistency and fatigue-drift formulas, minimum sample sizes, and abstention behavior before surfacing these scores. Keep results descriptive and avoid causal claims.
+8. Add optional LLM chat only behind a feature flag after evidence retrieval, privacy, grounding, and abstention behavior are tested. Cite the exact session metrics used in each answer; do not let chat create or modify ground truth.
+9. Add optional streaks/goals/badges and PDF export after core analysis/replay works. PDF output must include provenance, sample counts, confidence, and limitations.
+10. Add Docker/CI and hosted deployment only after local install and privacy/deletion workflows are verified. Keep video storage separate from the relational database and enforce the approved retention policy.
+
+**Exit evidence:** an end user can complete onboarding, upload, follow processing status, inspect/correct shots in replay, understand confidence and evidence, receive an appropriate cue/drill or a clear abstention, revisit comparable approved history, set a practice target, compare an eligible follow-up, print/save an evidence report, and delete a local session with its managed media/cache files. The local vertical slice works without developer-only annotation tools exposed to players. LLM chat is optional and disabled unless explicitly configured. Hosted deployment, authentication, retention policy for external hosting, and recorded user feedback remain release gates; Phase 8 should not be called user-validated until the manual acceptance checks in `08-PLAN.md` are completed.
+
+## Phase 9 — Release and academic review
+
+**Goal:** package a defensible project that another person can install, run, inspect, and evaluate.
+
+**Manual developer work:** secure clip/model permissions; prepare demonstration footage, project defense narrative, limitations, and reviewer responses.
+
+**Coding-agent work:** clean-install check, dependency and model setup, command documentation, reproducible reports, privacy/data deletion checks, model card and dataset manifest, and consistency audit across README, roadmap, state, and implementation.
+
+**Exit evidence:** setup and demo work on a clean environment; no unlicensed media/weights are redistributed; real/synthetic evidence is clearly separated; metrics, failure cases, supported views, and limitations are reviewable.
+
+## Global guardrails
+
+- Manual labels and source clips are user/developer inputs. Never fabricate or hard-code them.
+- Keep machine predictions immutable; save human edits with provenance and timestamps.
+- Train/test splits must prevent player, session, or near-duplicate frame leakage.
+- Distinguish event detection, pose measurement, ball/rim detection, outcome classification, and coaching usefulness as separate claims and evaluation tasks.
+- Use machine output as a proposal until its relevant gate passes; support abstention and human correction.
+- A user-facing app may be prototyped in parallel against a versioned API contract, but real predictions and advice must wait for validated model outputs.
+- Do not claim universal performance across camera angles. Publish supported views and per-view limitations.
+- Never claim causal coaching benefit from make/miss associations or a simple pre/post comparison.

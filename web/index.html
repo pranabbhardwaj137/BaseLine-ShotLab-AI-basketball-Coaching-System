@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f5f4f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0d10" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Local basketball shot lab: upload a practice clip, review machine-proposed attempts, and get evidence-gated feedback.">
+  <title>Baseline Shot Lab</title>
+  <link rel="preload" href="/assets/fonts/archivo-variable.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/app.css">
+  <!-- Loaded in <head> (not deferred) so the saved light/dark preference is applied before
+       the first paint. It only defines window.Motion and window.ShotLabReport; no DOM work. -->
+  <script src="/assets/report.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <!-- Shared icon sprite (decorative; every control also has a text label) -->
+  <svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-new" viewBox="0 0 24 24"><rect x="2.75" y="6" width="13" height="12" rx="2.5"/><path d="M15.75 10.2 21.25 7v10l-5.5-3.2"/><path d="M9.25 9.5v5M6.75 12h5"/></symbol>
+    <symbol id="i-review" viewBox="0 0 24 24"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><path d="m10 8.8 5.2 3.2-5.2 3.2Z"/></symbol>
+    <symbol id="i-report" viewBox="0 0 24 24"><path d="M7 3h7.5L19 7.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5M9.5 12.5h6M9.5 16.5h4"/></symbol>
+    <symbol id="i-progress" viewBox="0 0 24 24"><path d="M3.5 17.5 9 12l4 4 7.5-7.5"/><path d="M15 8.5h5.5V14"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.6A8.2 8.2 0 0 1 9.4 4a8.2 8.2 0 1 0 10.6 10.6Z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 19 6v5.2c0 4.4-2.9 7.9-7 9.8-4.1-1.9-7-5.4-7-9.8V6Z"/><path d="m9 12 2.2 2.2L15.5 10"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5"/><path d="M4 14.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.5"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 9V3.5h10V9"/><rect x="3.5" y="9" width="17" height="8" rx="2"/><path d="M7 14h10v6.5H7z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></symbol>
+    <symbol id="i-empty-review" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="m10 8.5 4.5 2.5-4.5 2.5Z"/><path d="M7 20.5h10"/></symbol>
+  </svg>
+
+  <div class="app">
+    <!-- Sidebar on desktop, icon rail on tablets, bottom tab bar on phones -->
+    <aside class="sidebar" aria-label="Main">
+      <a class="brand" href="#new" aria-label="Baseline Shot Lab, new session">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14.5"/><path d="M1.5 16h29M16 1.5v29M5.5 5.8c4.6 4 4.6 16.4 0 20.4M26.5 5.8c-4.6 4-4.6 16.4 0 20.4"/></svg>
+        <span class="brand-name">Baseline<small>Shot Lab</small></span>
+      </a>
+      <p class="sidebar-label" aria-hidden="true">Workspace</p>
+      <nav class="view-nav" aria-label="App sections">
+        <a href="#new" data-nav="new"><svg class="icon" aria-hidden="true"><use href="#i-new"/></svg><span class="nav-text">New<span class="nav-long"> session</span></span></a>
+        <a href="#review" data-nav="review"><svg class="icon" aria-hidden="true"><use href="#i-review"/></svg><span class="nav-text">Review</span> <span id="nav-review-count" class="nav-count hidden"></span></a>
+        <a href="#report" data-nav="report"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg><span class="nav-text">Report</span></a>
+        <a href="#progress" data-nav="progress"><svg class="icon" aria-hidden="true"><use href="#i-progress"/></svg><span class="nav-text">Progress</span></a>
+        <span class="nav-indicator" aria-hidden="true"></span>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="local-card">
+          <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
+          <div><strong>Runs on this computer</strong><span>Video and pose data never leave it.</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-col">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <a class="brand brand-compact" href="#new" aria-label="Baseline Shot Lab, new session">
+            <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14.5"/><path d="M1.5 16h29M16 1.5v29M5.5 5.8c4.6 4 4.6 16.4 0 20.4M26.5 5.8c-4.6 4-4.6 16.4 0 20.4"/></svg>
+            <span class="brand-name">Baseline</span>
+          </a>
+          <p class="crumbs" aria-hidden="true"><span>Shot Lab</span><span class="crumb-sep">/</span><span id="topbar-title">New session</span></p>
+          <span class="local-pill" title="Video and analysis stay on this computer"><i aria-hidden="true"></i>Runs on this computer</span>
+          <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch to dark theme">
+            <svg class="icon icon-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+            <svg class="icon icon-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <main id="main" class="shell">
+        <!-- ============================ NEW SESSION ============================ -->
+        <section id="view-new" class="view" data-view="new" aria-labelledby="new-title">
+          <div class="hero monitor">
+            <div class="hero-copy">
+              <p class="eyebrow eyebrow-on-dark"><span class="live-dot" aria-hidden="true"></span>New session</p>
+              <h1 id="new-title">Film the rep.<br>Review the evidence.<br><em>Fix one thing.</em></h1>
+              <p>Upload a practice clip. The app estimates your pose on this computer, proposes each shot attempt, and waits for you to confirm what really happened before it gives any feedback.</p>
+              <ol class="flow-steps" aria-label="How a session works">
+                <li class="is-current"><b>1</b> Set up</li>
+                <li><b>2</b> Analyze</li>
+                <li><b>3</b> Review</li>
+              </ol>
+            </div>
+            <figure class="hero-stage" aria-hidden="true">
+              <svg class="hero-court" viewBox="0 0 480 340">
+                <defs>
+                  <linearGradient id="floor-fade" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" class="floor-stop-a"/>
+                    <stop offset="1" class="floor-stop-b"/>
+                  </linearGradient>
+                  <linearGradient id="fade-x-g" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+                    <stop offset=".2" stop-color="#fff"/>
+                    <stop offset=".82" stop-color="#fff"/>
+                    <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+                  </linearGradient>
+                  <mask id="fade-x" maskUnits="userSpaceOnUse" x="-20" y="0" width="520" height="360"><rect x="-20" y="0" width="520" height="360" fill="url(#fade-x-g)"/></mask>
+                </defs>
+                <g class="hero-layer layer-back" data-depth="0.35" mask="url(#fade-x)">
+                  <rect x="0" y="232" width="480" height="108" fill="url(#floor-fade)"/>
+                  <path class="court-line" d="M0 302H480M300 302L330 246H470M330 246L338 232"/>
+                  <path class="court-line faint" d="M0 262H480M0 246H480"/>
+                  <path class="court-line faint" d="M200 302C220 270 290 250 360 246"/>
+                </g>
+                <g class="hero-layer layer-mid" data-depth="0.6">
+                  <path class="court-pole" d="M440 302V176M440 176h-14"/>
+                  <rect class="court-board" x="418" y="88" width="10" height="92" rx="2"/>
+                  <path class="court-net" d="M376 152l6 28h22l6-28M386 180l-3-28M400 180l3-28"/>
+                  <path class="court-rim" d="M372 152h40"/>
+                </g>
+                <g class="hero-layer layer-front" data-depth="1">
+                  <path id="hero-arc" class="court-arc" d="M128 84C200 -36 330 -24 388 146"/>
+                  <g class="court-marks" id="hero-marks"></g>
+                  <g class="court-shooter">
+                    <path class="limb" d="M96 150L120 120L126 96M96 150L110 120L118 94M96 150L95 220M95 220L108 262L97 300M95 220L84 262L78 300"/>
+                    <circle class="head" cx="97" cy="128" r="12"/>
+                    <g class="joints"><circle cx="96" cy="150" r="4"/><circle cx="120" cy="120" r="4"/><circle cx="126" cy="96" r="4"/><circle cx="95" cy="220" r="4"/><circle cx="108" cy="262" r="4"/><circle cx="84" cy="262" r="4"/><circle cx="97" cy="300" r="4"/><circle cx="78" cy="300" r="4"/></g>
+                  </g>
+                  <g class="hero-tags">
+                    <g class="hero-tag" transform="translate(116 252)"><rect width="42" height="18" rx="9"/><text x="21" y="12.5">knee</text></g>
+                    <g class="hero-tag" transform="translate(132 124)"><rect width="46" height="18" rx="9"/><text x="23" y="12.5">elbow</text></g>
+                    <g class="hero-tag" transform="translate(150 70)"><rect width="56" height="18" rx="9"/><text x="28" y="12.5">release</text></g>
+                  </g>
+                  <circle id="hero-ball" class="court-ball" cx="128" cy="84" r="11"/>
+                </g>
+              </svg>
+              <figcaption><span class="rec" aria-hidden="true"></span>Pose, release and arc: what the camera measures</figcaption>
+            </figure>
+          </div>
+
+          <form id="upload-form" class="setup-grid" novalidate>
+            <div class="setup-main">
+              <section class="card setup-card form-step" aria-labelledby="profile-title">
+                <header class="step-head">
+                  <span class="step-num" aria-hidden="true">01</span>
+                  <div><h2 id="profile-title">Player and session</h2><p>Sessions are grouped by player, camera view, shot type and style, so only like-for-like practice is compared.</p></div>
+                </header>
+                <div class="field-grid">
+                  <label class="field">Player ID<input name="player_id" value="player" maxlength="64" required pattern="[A-Za-z0-9_\-]{1,64}" autocomplete="off"><small>Letters, numbers, - or _. Keeps this player's history together.</small></label>
+                  <label class="field">Shooting hand<select name="handedness"><option value="unspecified">Not set</option><option value="right">Right</option><option value="left">Left</option><option value="ambidextrous">Both</option></select></label>
+                  <label class="field">Experience<select name="skill_level"><option value="beginner">Just getting started</option><option value="intermediate">Developing consistency</option><option value="advanced">Experienced player</option><option value="coach">Coach or reviewer</option></select></label>
+                  <label class="field">Camera view<select name="camera_view"><option value="side_90">Side (90°)</option><option value="oblique_45">Angled (45°)</option><option value="frontal">Front</option><option value="rear">Behind the shooter</option></select></label>
+                  <label class="field">Shot style<select name="shot_style"><option value="jump_shot">Jump shot</option><option value="set_shot">Set shot</option></select></label>
+                  <label class="field">Shot type<select name="shot_type"><option value="catch_and_shoot">Catch and shoot</option><option value="off_dribble">Off the dribble</option><option value="free_throw">Free throw</option></select></label>
+                  <label class="field field-wide"><span>What are you working on? <span class="optional">(optional)</span></span><textarea name="goals" rows="2" maxlength="500" placeholder="For example: a repeatable release, landing balanced"></textarea></label>
+                  <label class="check-field field-wide"><input type="checkbox" name="pain_reported" value="1"><span>I have pain, discomfort, a previous injury or restricted movement that affects my shooting<small>The report will put safety advice first. It does not assess injuries.</small></span></label>
+                </div>
+              </section>
+
+              <section class="card source-card form-step" aria-labelledby="source-title">
+                <header class="step-head">
+                  <span class="step-num" aria-hidden="true">02</span>
+                  <div><h2 id="source-title">Practice video</h2><p>MP4, MOV, AVI, MKV or WebM, up to 250 MB.</p></div>
+                </header>
+                <div class="segmented" role="tablist" aria-label="Video source">
+                  <button type="button" role="tab" id="tab-file" aria-selected="true" aria-controls="pane-file" data-source="file"><svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>Upload a file</button>
+                  <button type="button" role="tab" id="tab-camera" aria-selected="false" aria-controls="pane-camera" data-source="camera"><svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg>Record with camera</button>
+                  <span class="segmented-thumb" aria-hidden="true"></span>
+                </div>
+                <div id="pane-file" role="tabpanel" aria-labelledby="tab-file">
+                  <label class="dropzone" id="dropzone">
+                    <input id="video-file" type="file" accept="video/*,.mp4,.mov,.m4v,.avi,.mkv,.webm">
+                    <span class="drop-visual" aria-hidden="true">
+                      <svg class="drop-icon" viewBox="0 0 40 40"><rect x="5" y="9" width="30" height="22" rx="3"/><path d="M17 15.5v9l7.5-4.5z"/></svg>
+                    </span>
+                    <strong id="file-title">Drop a clip here or browse</strong>
+                    <span id="file-caption">On a phone this opens your photo and video library</span>
+                  </label>
+                </div>
+                <div id="pane-camera" role="tabpanel" aria-labelledby="tab-camera" hidden>
+                  <div class="camera-recorder">
+                    <video id="camera-preview" class="camera-preview" autoplay muted playsinline></video>
+                    <div class="camera-controls">
+                      <button id="camera-start" type="button" class="btn btn-quiet">Turn on camera</button>
+                      <button id="record-start" type="button" class="btn btn-record" disabled><i aria-hidden="true"></i>Start recording</button>
+                      <button id="record-stop" type="button" class="btn btn-quiet" disabled>Stop</button>
+                      <button id="camera-stop" type="button" class="btn btn-quiet" disabled>Turn off camera</button>
+                    </div>
+                    <p id="camera-status" class="hint" aria-live="polite">Your browser will ask for camera permission. The recording stays on this computer.</p>
+                  </div>
+                </div>
+                <p id="form-error" class="form-error hidden" role="alert"></p>
+                <button id="submit-button" class="btn btn-primary btn-block" type="submit">Analyze this session<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+                <p class="privacy-note">Video is saved to <code>user_data/uploads</code> on this computer and never sent to a cloud service. Delete a session in Progress to remove its video and pose data.</p>
+              </section>
+            </div>
+
+            <div class="setup-aside">
+              <aside class="card guide-card" aria-labelledby="guide-title">
+                <p class="eyebrow">Before you film</p>
+                <h2 id="guide-title">Camera setup that measures well</h2>
+                <figure class="framing">
+                  <svg viewBox="0 0 200 130" role="img" aria-label="Phone on a tripod, side-on to the shooter, with the whole body and ball in frame">
+                    <rect class="fr-frame" x="62" y="8" width="128" height="114" rx="6"/>
+                    <g class="fr-player"><circle cx="126" cy="30" r="7"/><path d="M126 37v34M126 46l-14 -10M126 46l12-18M126 71l-10 34M126 71l10 34"/><circle class="fr-ball" cx="139" cy="23" r="5"/></g>
+                    <path class="fr-tripod" d="M22 70h14v-8H22zM29 70v40M29 80l-10 30M29 80l10 30"/>
+                    <path class="fr-ray" d="M36 66L62 30M36 66L62 104"/>
+                  </svg>
+                </figure>
+                <ul class="checklist">
+                  <li>Steady camera, side-on or at 45°</li>
+                  <li>Head to feet and the ball stay in frame</li>
+                  <li>Good light, no one crossing in front</li>
+                  <li>One shooter per clip</li>
+                </ul>
+                <p class="guide-note">Single-camera pose is an estimate. The app proposes attempts; you confirm them. It does not decide makes or misses for you.</p>
+              </aside>
+
+              <section id="phone-card" class="card phone-card hidden" aria-labelledby="phone-title">
+                <header class="phone-head"><span class="icon-badge" aria-hidden="true"><svg class="icon"><use href="#i-phone"/></svg></span><h2 id="phone-title">Use it from your phone</h2></header>
+                <div id="phone-body"></div>
+              </section>
+            </div>
+          </form>
+        </section>
+
+        <!-- ============================== REVIEW ============================== -->
+        <section id="view-review" class="view" data-view="review" aria-labelledby="review-title" hidden>
+          <div id="review-empty" class="empty-state">
+            <span class="empty-icon" aria-hidden="true"><svg class="icon"><use href="#i-empty-review"/></svg></span>
+            <h1 id="review-title">No session open</h1>
+            <p>Analyze a clip, or open a past session from Progress.</p>
+            <div class="empty-actions"><a class="btn btn-primary" href="#new">Start a session</a><a class="btn btn-quiet" href="#progress">See past sessions</a></div>
+          </div>
+
+          <div id="job-panel" class="hidden">
+            <header class="session-head page-head">
+              <div>
+                <p class="eyebrow">Session review</p>
+                <h1 id="job-title">Preparing your session</h1>
+                <p id="session-context" class="session-context"></p>
+              </div>
+              <span id="job-badge" class="status-badge" data-state="queued">Queued</span>
+            </header>
+            <div id="job-progress" class="job-progress" aria-live="polite">
+              <div class="progress-track" role="progressbar" aria-labelledby="progress-label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progress-bar"></div></div>
+              <p id="progress-label" class="progress-label">Waiting for the analysis worker</p>
+              <p id="job-message" class="hint">Your video is saved locally. Pose analysis runs on this computer.</p>
+            </div>
+            <div class="job-actions"><button id="cancel-job" type="button" class="btn btn-quiet btn-small hidden">Cancel analysis</button></div>
+            <p id="job-error" class="form-error hidden" role="alert"></p>
+            <div id="results" class="results hidden"></div>
+          </div>
+        </section>
+
+        <!-- ============================== REPORT ============================== -->
+        <section id="view-report" class="view" data-view="report" aria-label="Coaching report" hidden>
+          <div class="report-toolbar no-print">
+            <a class="btn btn-quiet btn-small" href="#review"><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"/></svg>Back to review</a>
+            <span id="report-status" class="hint" aria-live="polite"></span>
+            <button id="report-refresh" type="button" class="btn btn-quiet btn-small"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg>Rebuild report</button>
+            <button id="report-print" type="button" class="btn btn-primary btn-small" disabled><svg class="icon" aria-hidden="true"><use href="#i-print"/></svg>Print or save as PDF</button>
+          </div>
+          <div id="report-empty" class="empty-state">
+            <span class="empty-icon" aria-hidden="true"><svg class="icon"><use href="#i-report"/></svg></span>
+            <h1>No report open</h1>
+            <p>Open a session in Review, or pick one in Progress, to see its coaching report.</p>
+            <div class="empty-actions"><a class="btn btn-primary" href="#progress">Choose a session</a></div>
+          </div>
+          <article id="report-root" class="report"></article>
+        </section>
+
+        <!-- ============================= PROGRESS ============================= -->
+        <section id="view-progress" class="view" data-view="progress" aria-labelledby="progress-title" hidden>
+          <header class="page-head">
+            <div>
+              <p class="eyebrow">Practice history</p>
+              <h1 id="progress-title">Practice progress</h1>
+              <p>Only shots you approved, with enough body tracking, count toward goals, trends and drills.</p>
+            </div>
+            <div class="page-head-controls">
+              <label class="field field-inline">Player<input id="progress-player" maxlength="64" autocomplete="off"></label>
+              <label class="field field-inline">Weekly goal<select id="weekly-target" aria-label="Weekly practice session goal"><option value="1">1 session</option><option value="2">2 sessions</option><option value="3" selected>3 sessions</option><option value="4">4 sessions</option><option value="5">5 sessions</option><option value="6">6 sessions</option><option value="7">7 sessions</option></select></label>
+            </div>
+          </header>
+          <div id="history-panel">
+            <div id="history-overview" class="overview"></div>
+            <p id="history-summary" class="hint history-summary" aria-live="polite">Loading practice history…</p>
+            <div id="history-plan"></div>
+            <div class="section-head"><h2 class="section-title">Trends in comparable sessions</h2><span class="section-rule" aria-hidden="true"></span></div>
+            <div id="history-charts" class="chart-grid"></div>
+            <div class="section-head"><h2 class="section-title">Sessions</h2><span class="section-rule" aria-hidden="true"></span></div>
+            <div id="history-list" class="session-list"></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer"><div class="footer-inner"><span>Baseline Shot Lab, a local research prototype</span><span>Pose estimates are not ground truth. Your reviews are.</span></div></footer>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+  <div id="confirm-dialog" class="dialog-root" hidden>
+    <div class="dialog-overlay" data-dialog-cancel></div>
+    <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="dialog-title" aria-describedby="dialog-desc">
+      <div class="dialog-media" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg></div>
+      <h2 id="dialog-title">Delete this session?</h2>
+      <p id="dialog-desc"></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-quiet" data-dialog-cancel>Cancel</button>
+        <button type="button" class="btn btn-destructive" id="dialog-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

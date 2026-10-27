@@ -19,28 +19,42 @@ __pycache__/
 *.sqlite
 *.sqlite3
 
-# Model checkpoints and binary weights
-hand_landmarker.task
-pose_landmarker.task
+# External datasets & downloads
+Basketball.v1i.yolov8/
+Claude outputs/
+
+# User data & transient uploads/caches
+user_data/
+
+# Model checkpoints & tasks (retained essential assets un-ignored for zero-download onboarding)
 *.task
-yolov8n.pt
-weights/*.pt
 *.pt
 *.onnx
+!pose_landmarker.task
+!hand_landmarker.task
+!models/
+!models/*.pt
 
 # External clones and vendored repos
 clones/
 
-# Video footage and raw clips (per AGENTS.md data integrity & licensing rules)
+# Video footage and raw clips: allow tracked clips, ignore untracked
 raw_clips/
-*.mp4
 *.mov
 *.avi
 *.mkv
+!raw_clips/Mikedunn.mp4
+!raw_clips/klay_vid.mp4
+!raw_clips/mikeddunnstud1.mp4
+!raw_clips/mikeddunnstud2.mp4
 
 # Session recordings and exported CSVs
 session_*.csv
 sessions_csv/
+
+# Local HTTPS certificates for phone access (never commit private keys)
+*.pem
+certs/
 
 # Generated benchmark and evaluation reports
 EVAL_REPORT.json
@@ -55,6 +69,7 @@ scratch_*.py
 # Graphify transient caches and interpreter bookkeeping
 graphify-out/cache/
 graphify-out/[0-9]*/
+graphify-out/202*
 graphify-out/.vocab.txt
 graphify-out/.graphify_python
 graphify-out/.graphify_root
@@ -66,6 +81,8 @@ graphify-out/.graphify_analysis.json
 graphify-out/.graphify_chunk_*.json
 graphify-out/.needs_update
 graphify-out/last_query_stamp
+graphify-out/.fuse_hidden*
+graphify-out/*.pending.json
 
 # Paper drafts and presentations
 /reports_for_paper
