@@ -12,7 +12,7 @@ import time
 import contextlib
 import json
 import mimetypes
-import os
+import os; os.environ.setdefault("GLOG_minloglevel", "2")
 import statistics
 import re
 import sqlite3
@@ -712,15 +712,18 @@ class AppHandler(BaseHTTPRequestHandler):
         if content_encoding:
             self.send_header("Content-Encoding", content_encoding)
         self.end_headers()
-        with path.open("rb") as source:
-            source.seek(start)
-            remaining = length
-            while remaining:
-                chunk = source.read(min(1024 * 1024, remaining))
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-                remaining -= len(chunk)
+        try:
+            with path.open("rb") as source:
+                source.seek(start)
+                remaining = length
+                while remaining:
+                    chunk = source.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass
 
     def _read_json(self, limit):
         try:

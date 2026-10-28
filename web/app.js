@@ -1269,7 +1269,10 @@ function renderResults(result, jobId) {
   const anglesToggle = el('input', {type: 'checkbox'});
   anglesToggle.checked = true;
   const anglesLabel = el('label', {class: 'overlay-toggle'}, anglesToggle, 'Angles');
-  frame.append(video, canvas, el('div', {class: 'overlay-toggles'}, overlayLabel, anglesLabel));
+  const ballToggle = el('input', {type: 'checkbox'});
+  ballToggle.checked = true;
+  const ballLabel = el('label', {class: 'overlay-toggle'}, ballToggle, 'Ball & Rim');
+  frame.append(video, canvas, el('div', {class: 'overlay-toggles'}, overlayLabel, anglesLabel, ballLabel));
   playerCard.append(frame);
 
   const timelineTrack = el('div', {class: 'timeline-track', role: 'slider', tabindex: '0', 'aria-label': 'Clip timeline. Use arrow keys to step frames.', 'aria-valuemin': '0', 'aria-valuemax': String(frameCount - 1), 'aria-valuenow': '0'});
@@ -1403,10 +1406,16 @@ function renderResults(result, jobId) {
       const status = shot.review_status || 'quarantined';
       const release = frameOf(shot, 'release');
       let outcomeLabel = 'Needs confirmation';
-      if (shot.outcome && shot.outcome !== 'unknown') {
+      if ((shot.review_status || 'quarantined') === 'approved' && shot.outcome && shot.outcome !== 'unknown') {
         outcomeLabel = `${LABELS.outcome[shot.outcome]} (Confirmed)`;
-      } else if (shot.automated_outcome && shot.automated_outcome !== 'unknown' && (shot.automated_outcome_conf || 0) >= 0.70 && (shot.trajectory_fit_r2 || 0) >= 0.70) {
-        outcomeLabel = `Automatic: ${LABELS.outcome[shot.automated_outcome]} (${Math.round((shot.automated_outcome_conf || 0) * 100)}%)`;
+      } else if (shot.outcome_source === 'automated_trajectory' || (shot.automated_outcome && shot.automated_outcome !== 'unknown')) {
+        const auto = shot.automated_outcome || shot.outcome;
+        const conf = Math.round((shot.automated_outcome_conf || 0) * 100);
+        if (auto && auto !== 'unknown') {
+          outcomeLabel = `Automatic: ${LABELS.outcome[auto] || auto} (${conf}%)`;
+        }
+      } else if (shot.outcome && shot.outcome !== 'unknown') {
+        outcomeLabel = `${LABELS.outcome[shot.outcome]} (Confirmed)`;
       }
       list.append(el('li', {}, el('button', {
         type: 'button', class: 'attempt', 'aria-pressed': String(index === selected), onclick: () => selectAttempt(index, true),
@@ -1485,34 +1494,49 @@ function renderResults(result, jobId) {
       }
       return el('fieldset', {class: 'choice-group'}, el('legend', {text: legend}), row);
     };
-    const outcomeGroup = radioGroup('outcome', 'Outcome you saw', [['unknown', 'Not sure'], ['make', 'Make'], ['miss', 'Miss']], shot.outcome || 'unknown');
+    const autoOutcome = shot.automated_outcome || (shot.outcome_source === 'automated_trajectory' ? shot.outcome : null);
+    const defaultOutcome = (shot.outcome && shot.outcome !== 'unknown')
+      ? shot.outcome
+      : ((autoOutcome && autoOutcome !== 'unknown' && (shot.automated_outcome_conf || 0) >= 0.70)
+          ? autoOutcome
+          : 'unknown');
+
+    const outcomeGroup = radioGroup('outcome', 'Outcome you saw', [['unknown', 'Not sure'], ['make', 'Make'], ['miss', 'Miss']], defaultOutcome);
     const statusGroup = radioGroup('status', 'Decision', [['quarantined', 'Leave for later'], ['approved', 'Approve'], ['discarded', 'Not a shot']], shot.review_status || 'quarantined');
 
     // Advisory automated outcome banner
     let autoOutcomeBanner = null;
-    if (shot.automated_outcome && shot.automated_outcome !== 'unknown') {
+    if (autoOutcome && autoOutcome !== 'unknown') {
       const isHighConf = (shot.automated_outcome_conf || 0) >= 0.70 && (shot.trajectory_fit_r2 || 0) >= 0.70;
       const confPct = Math.round((shot.automated_outcome_conf || 0) * 100);
       const r2Text = shot.trajectory_fit_r2 != null ? Number(shot.trajectory_fit_r2).toFixed(2) : '—';
+      const label = LABELS.outcome[autoOutcome] || autoOutcome;
       if (isHighConf) {
         const confirmBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', onclick: () => {
-          const radio = outcomeGroup.querySelector(`input[value="${shot.automated_outcome}"]`);
+          const radio = outcomeGroup.querySelector(`input[value="${autoOutcome}"]`);
           if (radio) radio.checked = true;
           const approveRadio = statusGroup.querySelector('input[value="approved"]');
           if (approveRadio) approveRadio.checked = true;
-        }}, `Confirm prediction (${LABELS.outcome[shot.automated_outcome]})`);
-        autoOutcomeBanner = el('div', {class: 'auto-outcome-banner is-high-conf span-all'},
-          el('span', {text: `Automatic trajectory: ${LABELS.outcome[shot.automated_outcome]} (${confPct}% conf, R² ${r2Text})`}),
+        }}, `Confirm prediction (${label})`);
+        autoOutcomeBanner = el('div', {class: 'auto-outcome-banner span-all'},
+          el('div', {style: 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;'},
+            el('span', {class: 'auto-outcome-pill', text: `Trajectory: ${label}`}),
+            el('span', {class: 'auto-outcome-conf', text: `${confPct}% conf · R² ${r2Text}`})
+          ),
           confirmBtn
         );
       } else {
-        autoOutcomeBanner = el('div', {class: 'auto-outcome-banner is-low-conf span-all'},
-          el('span', {text: `Trajectory uncertain (${LABELS.outcome[shot.automated_outcome]} ${confPct}%, R² ${r2Text}). Needs confirmation.`})
+        autoOutcomeBanner = el('div', {class: 'auto-outcome-banner span-all'},
+          el('div', {style: 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;'},
+            el('span', {class: 'auto-outcome-pill neutral', text: `Uncertain: ${label}`}),
+            el('span', {class: 'auto-outcome-conf', text: `${confPct}% conf · R² ${r2Text} (Needs review)`})
+          )
         );
       }
     } else {
-      autoOutcomeBanner = el('div', {class: 'auto-outcome-banner is-none span-all'},
-        el('span', {text: 'No automated ball tracking outcome available. Needs confirmation.'})
+      autoOutcomeBanner = el('div', {class: 'auto-outcome-banner span-all'},
+        el('span', {class: 'auto-outcome-pill neutral', text: 'No ball tracking prediction'}),
+        el('span', {class: 'auto-outcome-conf', text: 'Confirm outcome manually'})
       );
     }
 
@@ -1591,13 +1615,20 @@ function renderResults(result, jobId) {
   let poseData = null;
   const redraw = () => {
     const side = attemptAnalysis[shots[selected]?.shot_id]?.shooting_side;
-    drawPoseOverlay(video, canvas, overlayToggle.checked ? poseData : null, result.video, {angles: anglesToggle.checked, side});
+    drawPoseOverlay(video, canvas, poseData, result.video, {
+      pose: overlayToggle.checked,
+      angles: anglesToggle.checked,
+      ball: ballToggle.checked,
+      side,
+      selectedShot: shots[selected],
+    });
     updatePlayhead();
   };
   api(`/api/jobs/${jobId}/pose`).then(data => { poseData = data; redraw(); })
     .catch(() => { overlayLabel.replaceChildren('Pose overlay unavailable'); overlayToggle.checked = false; });
   overlayToggle.addEventListener('change', redraw);
   anglesToggle.addEventListener('change', redraw);
+  ballToggle.addEventListener('change', redraw);
   for (const eventName of ['timeupdate', 'seeked', 'loadedmetadata']) video.addEventListener(eventName, redraw);
   let rafId = null;
   video.addEventListener('play', () => {
@@ -2155,52 +2186,203 @@ function drawPoseOverlay(video, canvas, poseData, videoMetadata, options = {}) {
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
-  if (!poseData?.frames?.length || !video.videoWidth) return;
-  const frame = Math.min(poseData.frames.length - 1, Math.max(0, Math.round(video.currentTime * Number(videoMetadata.fps || 30))));
-  const points = framePoints(poseData, frame);
-  if (!points || !points.length) return;
-  const byJoint = new Map(poseData.landmark_indices.map((joint, index) => [joint, points[index]]));
-  const displayedWidth = Math.min(width, (height * video.videoWidth) / video.videoHeight);
-  const displayedHeight = Math.min(height, (width * video.videoHeight) / video.videoWidth);
+  if (!poseData || !video.videoWidth) return;
+
+  const vw = video.videoWidth || Number(videoMetadata.width) || 1280;
+  const vh = video.videoHeight || Number(videoMetadata.height) || 720;
+  const displayedWidth = Math.min(width, (height * vw) / vh);
+  const displayedHeight = Math.min(height, (width * vh) / vw);
   const offsetX = (width - displayedWidth) / 2, offsetY = (height - displayedHeight) / 2;
-  const visible = point => point && point[3] && point[2] >= 0.25;
-  const px = point => [offsetX + point[0] * displayedWidth, offsetY + point[1] * displayedHeight];
-  ctx.lineCap = 'round';
-  for (const [a, b] of CONNECTIONS) {
-    const p1 = byJoint.get(a), p2 = byJoint.get(b);
-    if (!visible(p1) || !visible(p2)) continue;
-    ctx.beginPath(); ctx.moveTo(...px(p1)); ctx.lineTo(...px(p2));
-    ctx.strokeStyle = 'rgba(16,21,29,.55)'; ctx.lineWidth = 6; ctx.stroke();
-    ctx.strokeStyle = '#f2b705'; ctx.lineWidth = 3; ctx.stroke();
+  const sx = displayedWidth / vw;
+  const sy = displayedHeight / vh;
+  const mapX = px => offsetX + px * sx;
+  const mapY = py => offsetY + py * sy;
+
+  const totalFrames = (poseData.frames?.length) || (poseData.ball_rim?.length) || 1;
+  const frame = Math.min(totalFrames - 1, Math.max(0, Math.round(video.currentTime * Number(videoMetadata.fps || 30))));
+
+  // 1. Ball & Rim Overlay
+  if (options.ball !== false && poseData.ball_rim && poseData.ball_rim.length > 0) {
+    const trk = poseData.ball_rim[frame];
+
+    // Rim box & Target Reticle
+    const rimBox = trk?.rim || poseData._lastRim;
+    const rimConf = trk?.rim ? trk.rim_conf : poseData._lastRimConf;
+    if (trk?.rim) {
+      poseData._lastRim = trk.rim;
+      poseData._lastRimConf = trk.rim_conf;
+    }
+    if (rimBox) {
+      const [rx1, ry1, rx2, ry2] = rimBox;
+      const rx = mapX(rx1);
+      const ry = mapY(ry1);
+      const rw = (rx2 - rx1) * sx;
+      const rh = (ry2 - ry1) * sy;
+      const rcx = rx + rw / 2;
+      const rcy = ry + rh / 2;
+
+      ctx.save();
+      ctx.strokeStyle = '#ff6b00';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(255, 107, 0, 0.8)';
+      ctx.shadowBlur = 10;
+      ctx.strokeRect(rx, ry, rw, rh);
+
+      const targetR = Math.min(rw, rh) * 0.35;
+      ctx.beginPath();
+      ctx.arc(rcx, rcy, targetR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 107, 0, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(rcx - targetR * 1.3, rcy);
+      ctx.lineTo(rcx + targetR * 1.3, rcy);
+      ctx.moveTo(rcx, rcy - targetR * 1.3);
+      ctx.lineTo(rcx, rcy + targetR * 1.3);
+      ctx.strokeStyle = 'rgba(255, 107, 0, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      const rimConfPct = Math.round((rimConf || 0.89) * 100);
+      const tagText = `RIM ${rimConfPct}%`;
+      ctx.font = 'bold 12px Inter, system-ui, sans-serif';
+      const tagW = ctx.measureText(tagText).width + 14;
+      ctx.fillStyle = '#ff6b00';
+      ctx.fillRect(rx, Math.max(0, ry - 20), tagW, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(tagText, rx + 7, Math.max(14, ry - 6));
+      ctx.restore();
+    }
+
+    // Parabolic Flight Arc / Trail
+    let trail = null;
+    const shot = options.selectedShot;
+    if (shot && poseData.ball_rim) {
+      const relFrame = frameOf(shot, 'release') ?? frameOf(shot, 'start') ?? 0;
+      const endFrame = Math.min(poseData.ball_rim.length - 1, (frameOf(shot, 'end') ?? relFrame) + 60);
+      const shotTrail = [];
+      for (let f = relFrame; f <= endFrame; f++) {
+        const b = poseData.ball_rim[f]?.ball;
+        if (b) shotTrail.push([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]);
+      }
+      if (shotTrail.length > 1) {
+        trail = shotTrail;
+      }
+    }
+    if (!trail && poseData.ball_rim) {
+      const recent = [];
+      const startF = Math.max(0, frame - 25);
+      for (let f = startF; f <= frame; f++) {
+        const b = poseData.ball_rim[f]?.ball;
+        if (b) recent.push([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]);
+      }
+      if (recent.length > 1) trail = recent;
+    }
+
+    if (trail && trail.length > 1) {
+      ctx.save();
+      ctx.strokeStyle = '#ff8c00';
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = 'rgba(255, 140, 0, 0.9)';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      for (let i = 0; i < trail.length; i++) {
+        const tx = mapX(trail[i][0]);
+        const ty = mapY(trail[i][1]);
+        if (i === 0) ctx.moveTo(tx, ty);
+        else ctx.lineTo(tx, ty);
+      }
+      ctx.stroke();
+
+      for (let i = 0; i < trail.length; i++) {
+        const tx = mapX(trail[i][0]);
+        const ty = mapY(trail[i][1]);
+        ctx.beginPath();
+        ctx.arc(tx, ty, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Ball Detection Circle & Badge
+    if (trk && trk.ball) {
+      const [bx1, by1, bx2, by2] = trk.ball;
+      const bx = mapX(bx1);
+      const by = mapY(by1);
+      const bw = (bx2 - bx1) * sx;
+      const bh = (by2 - by1) * sy;
+      const bcx = bx + bw / 2;
+      const bcy = by + bh / 2;
+
+      ctx.save();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(56, 189, 248, 0.8)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(bcx, bcy, Math.max(bw, bh) / 2, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const ballConfPct = Math.round((trk.ball_conf || 0.9) * 100);
+      const tagText = `BALL ${ballConfPct}%`;
+      ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+      const tagW = ctx.measureText(tagText).width + 12;
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(bx, Math.max(0, by - 18), tagW, 18);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillText(tagText, bx + 6, Math.max(13, by - 5));
+      ctx.restore();
+    }
   }
-  for (const [joint, point] of byJoint.entries()) {
-    if (joint < 11 || !visible(point)) continue;
-    ctx.beginPath(); ctx.arc(...px(point), 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff'; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = '#10151d'; ctx.stroke();
+
+  // 2. Pose Skeleton & Joint Angles
+  if (options.pose !== false && poseData.frames?.length) {
+    const points = framePoints(poseData, frame);
+    if (points && points.length) {
+      const byJoint = new Map(poseData.landmark_indices.map((joint, index) => [joint, points[index]]));
+      const visible = point => point && point[3] && point[2] >= 0.25;
+      const px = point => [offsetX + point[0] * displayedWidth, offsetY + point[1] * displayedHeight];
+      ctx.lineCap = 'round';
+      for (const [a, b] of CONNECTIONS) {
+        const p1 = byJoint.get(a), p2 = byJoint.get(b);
+        if (!visible(p1) || !visible(p2)) continue;
+        ctx.beginPath(); ctx.moveTo(...px(p1)); ctx.lineTo(...px(p2));
+        ctx.strokeStyle = 'rgba(16,21,29,.55)'; ctx.lineWidth = 6; ctx.stroke();
+        ctx.strokeStyle = '#f2b705'; ctx.lineWidth = 3; ctx.stroke();
+      }
+      for (const [joint, point] of byJoint.entries()) {
+        if (joint < 11 || !visible(point)) continue;
+        ctx.beginPath(); ctx.arc(...px(point), 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff'; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = '#10151d'; ctx.stroke();
+      }
+      if (options.angles) {
+        const side = options.side || (() => {
+          const l = byJoint.get(15), r = byJoint.get(16);
+          return visible(l) && visible(r) && l[1] < r[1] ? 'left' : 'right';
+        })();
+        const label = (joints, name) => {
+          const [a, b, c] = joints.map(j => byJoint.get(j));
+          if (![a, b, c].every(visible)) return;
+          const angle = jointAngle(a, b, c, vw, vh);
+          if (angle == null) return;
+          const [x, y] = px(b);
+          const text = `${name} ${Math.round(angle)}°`;
+          ctx.font = '600 13px Archivo, system-ui, sans-serif';
+          const w = ctx.measureText(text).width + 10;
+          ctx.fillStyle = 'rgba(16,21,29,.82)';
+          ctx.fillRect(Math.min(width - w - 2, x + 10), y - 11, w, 22);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(text, Math.min(width - w - 2, x + 10) + 5, y + 5);
+        };
+        label(ARM[side], 'Elbow');
+        const legSide = [LEG.left, LEG.right].map(js => js.reduce((sum, j) => sum + (byJoint.get(j)?.[2] || 0), 0));
+        label(legSide[0] > legSide[1] ? LEG.left : LEG.right, 'Knee');
+      }
+    }
   }
-  if (!options.angles) return;
-  const side = options.side || (() => {
-    const l = byJoint.get(15), r = byJoint.get(16);
-    return visible(l) && visible(r) && l[1] < r[1] ? 'left' : 'right';
-  })();
-  const label = (joints, name) => {
-    const [a, b, c] = joints.map(j => byJoint.get(j));
-    if (![a, b, c].every(visible)) return;
-    const angle = jointAngle(a, b, c, video.videoWidth, video.videoHeight);
-    if (angle == null) return;
-    const [x, y] = px(b);
-    const text = `${name} ${Math.round(angle)}°`;
-    ctx.font = '600 13px Archivo, system-ui, sans-serif';
-    const w = ctx.measureText(text).width + 10;
-    ctx.fillStyle = 'rgba(16,21,29,.82)';
-    ctx.fillRect(Math.min(width - w - 2, x + 10), y - 11, w, 22);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(text, Math.min(width - w - 2, x + 10) + 5, y + 5);
-  };
-  label(ARM[side], 'Elbow');
-  const legSide = [LEG.left, LEG.right].map(js => js.reduce((sum, j) => sum + (byJoint.get(j)?.[2] || 0), 0));
-  label(legSide[0] > legSide[1] ? LEG.left : LEG.right, 'Knee');
 }
 
 /* ------------------------------------------------------------------- report */

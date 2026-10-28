@@ -273,6 +273,7 @@ class BallTracker:
             "outcome_reason": outcome_reason,
             "outcome_conf": outcome_conf,
             "flight_points_count": len(pts),
+            "flight_centers": [[round(float(p[0]), 1), round(float(p[1]), 1)] for p in pts],
         }
 
         self.last_shot = summary

@@ -381,6 +381,11 @@ Start the local browser app from the repository root:
 python web_app.py --host 127.0.0.1 --port 8765 --db shot_lab.db --upload-dir user_data\uploads --pose-cache-dir user_data\pose_cache
 # Equivalent module entry point:
 python -m basketball.app.web_app --host 127.0.0.1 --port 8765 --db shot_lab.db --upload-dir user_data\uploads --pose-cache-dir user_data\pose_cache
+
+# Start with mobile phone access enabled over Wi-Fi:
+python web_app.py --lan
+# Or with a custom fixed access code:
+python web_app.py --lan --access-code BASKETBALL2026
 ```
 
 macOS/Linux equivalent:
@@ -407,15 +412,15 @@ Requires the existing `shot_lab.db`; the copy preserves real labels/metrics but 
 
 Open `http://127.0.0.1:8765`, complete the profile/session fields, choose a permitted real video, and start analysis. The app accepts MP4, MOV, AVI, MKV, and WebM uploads up to 250 MB. Keep the server bound to loopback; this prototype rejects non-loopback bind addresses.
 
-**Required inputs/assets:** installed project requirements, `pose_landmarker.task`, and a permitted, readable video file with visible player footage. The full clip is processed. YOLO weights are not used by this upload flow.
+**Required inputs/assets:** installed project requirements, `pose_landmarker.task`, and a permitted, readable video file with visible player footage. The full clip is processed. When custom YOLO weights (`models/best.pt` or `models/ballRim.pt`) are present, ball & rim tracking runs automatically during video analysis.
 
 **In-app camera recording:** on `http://127.0.0.1:8765`, in **Practice video** choose **Record with camera**, select **Turn on camera** and allow browser permission, then **Start recording** and **Stop**. A recorded WebM file is placed into the same upload control; choose **Analyze this session** to process it. Browser camera permission and MediaRecorder support are required; the app does not expose the camera to other devices over the network. Recordings are capped at 250 MB, held in browser memory until submitted, then stored under the local upload directory. The app first tries OpenCV directly. If the installed OpenCV build cannot decode the browser's WebM, it uses FFmpeg locally to create a temporary MP4 for analysis; the original WebM is retained for browser replay and the temporary converted file is removed after processing. Install the fallback decoder once if needed: `.venv\Scripts\python.exe -m pip install imageio-ffmpeg`. Check that **Turn off camera** stops its tracks.
 
 **Existing desktop OpenCV camera workflow:** this is a separate live-analysis path, not a browser recording upload. Run `.venv\Scripts\python.exe main.py --player player --camera-view side_90 --shot-type catch_and_shoot --shot-style jump_shot --db shot_lab.db --no-ball --windowed`; OpenCV opens the computer's camera, analyzes frames live, and saves detected shot records to SQLite. Press `Q` to end the live run. It does not save the original webcam video or create the web app's replay job, so use the browser recorder above when you need a saved video and seekable replay. This prototype is local testing; a production website will need a separate recording/job/history design.
 
-**Expected behavior:** the page switches to Review; the upload returns a session/job ID; the page polls queued/running/complete/failed status with a progress bar; on completion it shows attempts proposed, attempts needing review, attempts approved and frames analyzed. The uploaded clip is shown with frame seeking and the cached MediaPipe skeleton overlay (toggle **Pose**; **Angles** adds live elbow/knee angles) even when no attempt was proposed. For the selected attempt, phase buttons jump to the load/set/release/follow-through frames. If a clip ends after an observed release but before the detector returned to idle, that attempt is still proposed (quarantined, unknown outcome) with the last frame as its follow-through and the page says so; a candidate with no observed release is reported as incomplete and not proposed. Replay needs a browser that can decode the uploaded codec (Chrome/Safari/Edge play H.264 MP4; some open-source Chromium builds do not, and the page then says replay is unavailable while frame-number review still works). The current detector does not identify a distinct dip frame, so the UI labels it unavailable instead of inventing one. Below the replay, the **Coach summary** (section 15) reports findings from all non-discarded attempts with confidence labels, and the **Personal drill plan** card keeps the strict rule: it gives at most one trackable drill cue from matched, approved, sufficient-confidence history (five or more measurements) or explicitly abstains. A clean clip with no accepted shots may show zero proposals. This is a software workflow check, not a detector-accuracy result.
+**Expected behavior:** the page switches to Review; the upload returns a session/job ID; the page polls queued/running/complete/failed status with a progress bar; on completion it shows attempts proposed, attempts needing review, attempts approved and frames analyzed. The uploaded clip is shown with frame seeking, cached MediaPipe skeleton overlay (toggle **Pose**; **Angles** adds live elbow/knee angles), and YOLO ball & rim overlay (toggle **Ball & Rim** renders neon rim box, circular target reticle, crosshair, cyan ball circle, RIM/BALL % confidence badges, and glowing parabolic flight trajectory with waypoint dots) even when no attempt was proposed. For the selected attempt, phase buttons jump to the load/set/release/follow-through frames. If a clip ends after an observed release but before the detector returned to idle, that attempt is still proposed (quarantined, unknown outcome) with the last frame as its follow-through and the page says so; a candidate with no observed release is reported as incomplete and not proposed. Replay needs a browser that can decode the uploaded codec (Chrome/Safari/Edge play H.264 MP4; some open-source Chromium builds do not, and the page then says replay is unavailable while frame-number review still works). The current detector does not identify a distinct dip frame, so the UI labels it unavailable instead of inventing one. Below the replay, the **Coach summary** (section 15) reports findings from all non-discarded attempts with confidence labels, and the **Personal drill plan** card keeps the strict rule: it gives at most one trackable drill cue from matched, approved, sufficient-confidence history (five or more measurements) or explicitly abstains. A clean clip with no accepted shots may show zero proposals. This is a software workflow check, not a detector-accuracy result.
 
-**Manual replay/review workflow:** choose an attempt in the list or on the clip timeline, jump to each phase, compare the machine event to the visible movement, edit frame numbers when needed (**Set as release frame** copies the replay's current frame), choose **Outcome you saw** (Not sure / Make / Miss) and a **Decision** (Leave for later = `quarantined`, Approve = `approved`, Not a shot = `discarded`), optionally add notes, and select **Save review**. **Next attempt** moves on. Make/miss labels require Approve; the page explains this before sending. Saving writes only `annotated_*_frame`, human outcome/review fields, and an append-only `shot_review_history` entry; `machine_*_frame` fields stay unchanged. Open **Change history** under the editor after saving; it lists each saved edit with before/after values, and the machine proposal frames. Refresh the page to confirm it restores the latest job from this browser and reloads corrections. The endpoint rejects out-of-video frames and non-chronological phase boundaries.
+**Manual replay/review workflow:** choose an attempt in the list or on the clip timeline, jump to each phase, compare the machine event to the visible movement, edit frame numbers when needed (**Set as release frame** copies the replay's current frame). The review editor automatically pre-selects high-confidence automated make/miss predictions (`automated_outcome_conf` >= 0.70 and `trajectory_fit_r2` >= 0.70) while keeping `review_status: quarantined`. An advisory trajectory banner indicates the detected outcome, confidence, and $R^2$, with a **Confirm prediction** button that sets both outcome and Approve. The reviewer can confirm, adjust (**Outcome you saw**: Not sure / Make / Miss), or choose a **Decision** (Leave for later = `quarantined`, Approve = `approved`, Not a shot = `discarded`), optionally add notes, and select **Save review**. **Next attempt** moves on. Make/miss labels require Approve; the page explains this before sending. Saving writes only `annotated_*_frame`, human outcome/review fields, and an append-only `shot_review_history` entry; `machine_*_frame` fields stay unchanged. Open **Change history** under the editor after saving; it lists each saved edit with before/after values, and the machine proposal frames. Refresh the page to confirm it restores the latest job from this browser and reloads corrections. The endpoint rejects out-of-video frames and non-chronological phase boundaries.
 
 **Manual coaching-evidence workflow:** first inspect the abstention state with fewer than five approved, `SUFFICIENT` shots or fewer than five non-missing samples for a metric. To check the eligible state, manually review and approve at least five real shots with the same player ID, camera view, shot type, and shot style, where at least five have the same stored mechanic (for example, sequence lag or 3D elbow release angle). Use the same DB containing those approved records; a fresh disposable DB will abstain until it has enough eligible data. The dashboard may show a cue only when its matched metric has at least five values. It shows threshold evidence and source shot/frame references. These are prototype starting thresholds, not validated clinical standards. Viewing insights does not write a baseline or remediation.
 
@@ -448,7 +453,7 @@ Expected: edited event frames appear in `annotated_*_frame`; corresponding `mach
 
 **Side effects and privacy:** creates/updates the selected Shot Lab DB with a session, machine-proposed shots, human corrections, schema-v6 `shot_review_history`, and player weekly-goal settings; creates `<db>.web_jobs.sqlite3` for persistent job status; saves the uploaded source under `user_data\uploads\<generated-id>.<ext>` and a compressed per-frame pose cache under `user_data\pose_cache\<session-id>.json.gz`. Both user-data folders are ignored by Git. Source videos and pose caches remain local and are not automatically deleted. Remove individual files manually when no longer needed. Jobs interrupted by server restart are marked failed; re-submit the clip to retry.
 
-**Known scope limits:** outcomes begin as human `unknown` and shots begin quarantined; the reviewer may manually label and approve them. The app does not infer makes/misses or run YOLO. Coaching supports only metrics actually saved by the current upload pipeline; unavailable knee-at-dip and torso-sway measures are not estimated. The pose overlay is a cached MediaPipe estimate, not ground truth. Use review-approved data only where the existing baseline gates allow it.
+**Known scope limits:** when YOLO weights (`models/best.pt` or `models/ballRim.pt`) are available, the upload pipeline automatically runs ball & rim tracking, post-release flight trajectory fitting, and advisory make/miss qualification (`automated_outcome`, `automated_outcome_conf`, `trajectory_fit_r2`, `entry_angle_deg`), pre-selecting high-confidence predictions in the review UI while keeping proposals quarantined until human confirmation. When weights are missing, outcomes default to `unknown` and `ball_rim_tracking` reports `unavailable`. Coaching supports only metrics actually saved by the current upload pipeline; unavailable knee-at-dip and torso-sway measures are not estimated. The pose overlay is a cached MediaPipe estimate, not ground truth. Use review-approved data only where the existing baseline gates allow it.
 
 ### Phase 8 history, weekly goal, drill follow-up, and PDF report
 
@@ -509,31 +514,68 @@ Stop the server with `Ctrl+C`. Use another unused port if `8765` is already occu
 
 ## 15. 08-07: AI shooting coach report, phone access over Wi-Fi, and review tools
 
-**Start (Mac only, default):**
+### Starting the server
 
-```bash
-.venv-mac/bin/python web_app.py
+**Default (this computer only, bound to 127.0.0.1):**
+
+Windows PowerShell:
+```powershell
+python web_app.py
 ```
 
-Defaults: `--db shot_lab.db --upload-dir user_data/uploads --pose-cache-dir user_data/pose_cache --keyframe-dir user_data/keyframes --port 8765`, bound to 127.0.0.1. Requests whose Host header is not `127.0.0.1`/`localhost` are refused (403), and every POST/PUT/DELETE needs the header `X-Shotlab: 1` (the page sends it; curl examples below include it).
-
-**Start with phone access (same Wi-Fi):**
-
+macOS/Linux:
 ```bash
-.venv-mac/bin/python web_app.py --lan                       # random 10-character access code each start
-.venv-mac/bin/python web_app.py --lan --access-code MYCODE2026   # or a fixed code (≥ 8 letters/digits)
+python web_app.py
+# or: .venv-mac/bin/python web_app.py
 ```
 
-Expected terminal output: the Mac URL, `Phone access over Wi-Fi is ON`, one `Open on your phone: http://<Wi-Fi IP>:8765/` line per private address, the access code, and a one-tap link with `?token=`. `--lan` binds to 0.0.0.0 by default; `--host` must then be a private/loopback IP (a public IP is refused). Without `--lan`, a non-loopback `--host` is refused. On the phone: open the URL → access page → enter the code → 303 redirect with an HttpOnly, SameSite=Strict cookie (30 days) → the app. Ten wrong codes from one device lock it out for 10 minutes (HTTP 429). Requests from non-private addresses get 403. `GET /api/connection` shows the address and code only to the Mac itself.
+Defaults: `--db shot_lab.db --upload-dir user_data/uploads --pose-cache-dir user_data/pose_cache --keyframe-dir user_data/keyframes --port 8765`, bound to `127.0.0.1`. Requests whose `Host` header is not `127.0.0.1`/`localhost` are refused (403), and every `POST`/`PUT`/`DELETE` needs the header `X-Shotlab: 1` (the page sends it; curl examples below include it).
 
-**HTTPS for phone camera recording (optional):**
+### Running on a mobile phone (same Wi-Fi network)
 
-```bash
-mkcert -cert-file certs/shotlab.pem -key-file certs/shotlab-key.pem <Mac Wi-Fi IP> localhost 127.0.0.1
-.venv-mac/bin/python web_app.py --lan --tls-cert certs/shotlab.pem --tls-key certs/shotlab-key.pem
+**Start with phone access:**
+
+Windows PowerShell:
+```powershell
+python web_app.py --lan                       # random 10-character access code each start
+python web_app.py --lan --access-code MYCODE2026   # or a fixed code (>= 8 letters/digits)
 ```
 
-Both flags are required together. The access cookie gets the `Secure` flag. Install and trust the mkcert root CA on the phone. `certs/` and `*.pem` are git-ignored.
+macOS/Linux:
+```bash
+python web_app.py --lan                       # random 10-character access code each start
+python web_app.py --lan --access-code MYCODE2026   # or a fixed code (>= 8 letters/digits)
+```
+
+**Mobile phone setup and verification workflow:**
+
+1. **Wi-Fi requirement:** Connect both your computer and your phone to the **same Wi-Fi network**.
+2. **Firewall permission (Windows):** If Windows Defender Firewall displays a prompt, check **Private networks** and click **Allow access**.
+3. **Expected terminal output:**
+   - Displays the local address: `Basketball Shot Lab web app on this computer: http://127.0.0.1:8765`
+   - Confirms LAN mode: `Phone access over Wi-Fi is ON (private network only, access code required).`
+   - Prints the LAN URL: `  Open on your phone: http://<Wi-Fi IP>:8765/`
+   - Prints the generated code: `  Access code: <10-CHAR-CODE>`
+   - Prints a direct link: `  One-tap link (keep private): http://<Wi-Fi IP>:8765/?token=<CODE>`
+4. **Connecting on your phone:**
+   - Open your mobile browser (Safari, Chrome, etc.).
+   - Either tap/navigate directly to the **one-tap link** with `?token=...`, or navigate to `http://<Wi-Fi IP>:8765/`, enter the access code on the access prompt screen, and submit.
+   - On success, the server issues a 30-day `HttpOnly`, `SameSite=Strict` authentication cookie, redirecting to the Shot Lab dashboard.
+   - Ten wrong access codes from one device triggers a 10-minute rate limit lockout (HTTP 429). Requests from non-private addresses get 403. `GET /api/connection` shows the address and code only to the host computer itself.
+5. **Mobile video uploads:**
+   - You can upload shooting clips directly from your phone's photo library/camera roll over plain `http://`.
+   - The backend automatically handles mobile formats, including iPhone HEVC (`.mov`/`.mp4`), generating an H.264 replay proxy when needed.
+6. **In-browser camera recording on phones (HTTPS):**
+   - Mobile browsers require **HTTPS** (secure context) for WebRTC / `navigator.mediaDevices.getUserMedia` physical camera hardware access.
+   - To use in-browser recording directly from your phone's browser, generate local certificates (e.g., using `mkcert`) and pass `--tls-cert` and `--tls-key`:
+     ```powershell
+     # Generate local certificates
+     mkcert -cert-file certs/shotlab.pem -key-file certs/shotlab-key.pem <Computer Wi-Fi IP> localhost 127.0.0.1
+     # Start server with HTTPS
+     python web_app.py --lan --tls-cert certs/shotlab.pem --tls-key certs/shotlab-key.pem
+     ```
+   - Both flags are required together. The access cookie gets the `Secure` flag. Install and trust the mkcert root CA on the phone. `certs/` and `*.pem` are git-ignored.
+   - If running over plain HTTP, simply record the clip with your phone's native Camera app, then choose **Upload a file** in the web app.
 
 **What happens after an upload (worker stages and progress):** pose analysis (0–85%) → "Preparing a replay copy that plays in every browser" (an H.264 copy `<upload id>-replay.mp4` in the upload dir, only when the codec/container may not play everywhere, e.g. iPhone HEVC; the original is kept) → "Measuring mechanics and writing your coaching report" (stores `attempt_analysis`, `session_analysis`, `session_reports` rows and keyframe JPEGs under `user_data/keyframes/<session_id>/`) → complete. **Cancel analysis** (or `POST /api/jobs/<job_id>/cancel`) stops after the current frame, marks the job `failed`/`cancelled`, and removes the partial session, its pose cache and upload.
 
@@ -682,6 +724,7 @@ py -3.12 -m unittest discover tests
 # Or run specific test suites:
 py -3.12 -m unittest tests/unit/test_dip_angle_model.py
 py -3.12 -m unittest tests/unit/test_live_camera_service.py
+py -3.12 -m unittest tests/unit/test_video_analysis_ball_tracking.py
 py -3.12 -m unittest tests/e2e/test_web_app.py
 ```
 ## Expected verification outputs

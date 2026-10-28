@@ -14,6 +14,7 @@ from typing import Callable, Optional
 import cv2
 
 from basketball.core.analyzer import SessionRecorder, ShotPhaseDetector, compute_all_angles
+from basketball.tracking.ball_geometry import arc_peak
 from basketball.core.pose_engine import PoseEngine
 from basketball.persistence.shot_lab_db import ShotLabDB
 
@@ -224,6 +225,12 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
     dip_frame = boundaries.get("dip_frame")
     knee_dip_3d = boundaries.get("knee_angle_dip_3d")
 
+    initial_outcome = "unknown"
+    outcome_source = "unlabeled"
+    if auto_outcome in ("make", "miss") and auto_conf >= 0.70 and traj_r2 is not None and traj_r2 >= 0.70:
+        initial_outcome = auto_outcome
+        outcome_source = "automated_trajectory"
+
     return db.save_shot({
         "session_id": session_id,
         "player_id": player_id,
@@ -235,8 +242,8 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
         "machine_set_frame": boundaries["set_frame"],
         "machine_release_frame": boundaries["release_frame"],
         "machine_end_frame": end_frame,
-        "outcome": "unknown",
-        "outcome_source": "unlabeled",
+        "outcome": initial_outcome,
+        "outcome_source": outcome_source,
         "review_status": "quarantined",
         "tracking_confidence": tracking_confidence,
         "valid_frame_ratio": conf_ratio,
@@ -303,6 +310,30 @@ def analyze_video(
     cache_stream = None
     world_frames = []
     frames_with_pose = 0
+    tracking_frames = []
+    pending_flight_shots = []
+    auto_makes_count = 0
+    auto_misses_count = 0
+
+    def _finalize_pending_shot(pending, curr_frame, curr_ts):
+        nonlocal auto_makes_count, auto_misses_count
+        ball_summary = None
+        if ball_tracker and pending.get("shot_uid"):
+            ball_summary = ball_tracker.on_shot_ended(pending["shot_uid"], curr_frame, curr_ts)
+            if ball_summary:
+                outc = ball_summary.get("outcome")
+                conf = float(ball_summary.get("outcome_conf", 0.0) or 0.0)
+                if outc == "make" and conf >= 0.70:
+                    auto_makes_count += 1
+                elif outc == "miss" and conf >= 0.70:
+                    auto_misses_count += 1
+
+        _persist_shot_proposal(
+            db, pending["summary"], pending["boundaries"], pending["end_frame"], pending["confidence_samples"],
+            session_id=session_id, player_id=player_id, camera_view=camera_view,
+            shot_type=shot_type, shot_style=shot_style,
+            ball_summary=ball_summary, ball_tracker=ball_tracker,
+        )
 
     try:
         pose = PoseEngine()
@@ -362,18 +393,48 @@ def analyze_video(
                 world_frames.append(world_points)
                 cache_stream.write(json.dumps(frame_points, separators=(",", ":")))
 
+            detections = {"ball": None, "rim": None, "ball_conf": 0.0, "rim_conf": 0.0, "rim_status": "UNAVAILABLE_NO_WEIGHTS"}
             if ball_tracker is not None:
                 try:
                     detections = ball_tracker.detect(frame)
                     ball_tracker.update(
                         detections,
-                        frame_index - 1,
-                        timestamp_ms,
-                        hand_coords=None,
-                        pose_landmarks=output.get("landmarks") if output else None,
+                        landmarks=output.get("smoothed_landmarks") if output else None,
+                        valid=output.get("valid") if output else None,
+                        timestamp_ms=timestamp_ms,
                     )
                 except Exception:
                     pass
+            b_box = detections.get("ball")
+            r_box = detections.get("rim")
+            tracking_frames.append({
+                "ball": [round(float(v), 1) for v in b_box] if b_box else None,
+                "ball_conf": round(float(detections.get("ball_conf", 0.0) or 0.0), 2),
+                "rim": [round(float(v), 1) for v in r_box] if r_box else None,
+                "rim_conf": round(float(detections.get("rim_conf", 0.0) or 0.0), 2),
+            })
+
+            if pending_flight_shots:
+                rem_pending = []
+                for pending in pending_flight_shots:
+                    rel_f = pending.get("release_frame") or (frame_index - 1)
+                    elapsed = (frame_index - 1) - rel_f
+                    flight_done = False
+                    if elapsed >= 60:
+                        flight_done = True
+                    elif ball_tracker and ball_tracker.active_shot_id == pending.get("shot_uid"):
+                        pts = ball_tracker.active_shot_flight_centers
+                        last_rim = getattr(ball_tracker, "active_shot_last_rim", None) or ball_tracker._last.get("rim")
+                        if len(pts) >= 4 and last_rim is not None:
+                            rim_y = (last_rim[1] + last_rim[3]) / 2.0
+                            peak = arc_peak(pts)
+                            if peak and pts[-1][1] > peak[1] and pts[-1][1] >= (rim_y - 20.0):
+                                flight_done = True
+                    if flight_done:
+                        _finalize_pending_shot(pending, frame_index - 1, timestamp_ms)
+                    else:
+                        rem_pending.append(pending)
+                pending_flight_shots = rem_pending
 
             if output is not None:
                 frames_with_pose += 1
@@ -399,6 +460,10 @@ def analyze_video(
                     and phase in ("preparing", "set_point", "releasing")
                     and not recorder.recording
                 ):
+                    for pending in pending_flight_shots:
+                        _finalize_pending_shot(pending, frame_index - 1, timestamp_ms)
+                    pending_flight_shots.clear()
+
                     recorder.start_shot()
                     active_shot_uid = f"shot_{session_id}_{frame_index}"
                     if ball_tracker:
@@ -451,16 +516,22 @@ def analyze_video(
                         active_boundaries["knee_angle_dip_3d"] = k3d
                         active_boundaries["knee_angle_dip_2d"] = k2d
 
-                        ball_summary = None
-                        if ball_tracker and active_boundaries.get("shot_uid"):
-                            ball_summary = ball_tracker.on_shot_ended(active_boundaries["shot_uid"], frame_index - 1, timestamp_ms)
-
-                        _persist_shot_proposal(
-                            db, summary, active_boundaries, frame_index - 1, confidence_samples,
-                            session_id=session_id, player_id=player_id, camera_view=camera_view,
-                            shot_type=shot_type, shot_style=shot_style,
-                            ball_summary=ball_summary, ball_tracker=ball_tracker,
-                        )
+                        if ball_tracker and active_boundaries.get("release_frame") is not None and active_boundaries.get("shot_uid"):
+                            pending_flight_shots.append({
+                                "summary": summary,
+                                "boundaries": active_boundaries,
+                                "end_frame": frame_index - 1,
+                                "confidence_samples": list(confidence_samples),
+                                "release_frame": active_boundaries["release_frame"],
+                                "shot_uid": active_boundaries["shot_uid"],
+                            })
+                        else:
+                            _persist_shot_proposal(
+                                db, summary, active_boundaries, frame_index - 1, confidence_samples,
+                                session_id=session_id, player_id=player_id, camera_view=camera_view,
+                                shot_type=shot_type, shot_style=shot_style,
+                                ball_summary=None, ball_tracker=ball_tracker,
+                            )
                     elif active_boundaries:
                         rejected_candidate_count += 1
                     active_boundaries = None
@@ -471,6 +542,10 @@ def analyze_video(
             if progress and (frame_index % max(1, total_frames // 100) == 0 or frame_index == total_frames):
                 ratio = min(1.0, frame_index / max(1, total_frames))
                 progress(ratio, f"Analyzed frame {frame_index:,} of {total_frames:,}")
+
+        for pending in pending_flight_shots:
+            _finalize_pending_shot(pending, max(0, frame_index - 1), timestamp_ms)
+        pending_flight_shots.clear()
 
         # A clip that stops right after the release never returns the detector to
         # "idle", so the attempt would be silently dropped. Keep it as a reviewable
@@ -495,6 +570,13 @@ def analyze_video(
                     ball_summary = None
                     if ball_tracker and active_boundaries.get("shot_uid"):
                         ball_summary = ball_tracker.on_shot_ended(active_boundaries["shot_uid"], max(0, frame_index - 1), timestamp_ms)
+                        if ball_summary:
+                            outc = ball_summary.get("outcome")
+                            conf = float(ball_summary.get("outcome_conf", 0.0) or 0.0)
+                            if outc == "make" and conf >= 0.70:
+                                auto_makes_count += 1
+                            elif outc == "miss" and conf >= 0.70:
+                                auto_misses_count += 1
 
                     _persist_shot_proposal(
                         db, summary, active_boundaries, max(0, frame_index - 1), confidence_samples,
@@ -512,7 +594,8 @@ def analyze_video(
         for shot in shots:
             shot["review_history"] = db.get_shot_review_history(shot["shot_id"])
         if cache_stream:
-            cache_stream.write('],"world":' + json.dumps(world_frames, separators=(",", ":")) + "}")
+            cache_stream.write('],"world":' + json.dumps(world_frames, separators=(",", ":")) +
+                               ',"ball_rim":' + json.dumps(tracking_frames, separators=(",", ":")) + "}")
             cache_stream.close()
             cache_stream = None
             cache_tmp.replace(cache_path)
@@ -526,8 +609,11 @@ def analyze_video(
             "incomplete_candidate_count": incomplete_candidates,
             "finalized_at_video_end_count": finalized_at_video_end,
             "shot_count": len(shots),
-            "outcomes": {"human": "unknown_pending_review", "automated": "not_run"},
-            "ball_rim_tracking": "not_run_in_web_upload_slice",
+            "outcomes": {
+                "human": "unknown_pending_review",
+                "automated": f"{auto_makes_count} makes, {auto_misses_count} misses" if (auto_makes_count or auto_misses_count) else "not_detected"
+            },
+            "ball_rim_tracking": getattr(ball_tracker, "mode", "unavailable") if ball_tracker else "unavailable",
             "pose_cache": "available" if cache_path else "not_saved",
             "pose_cache_format": CACHE_FORMAT,
             "frames_with_pose": frames_with_pose,
