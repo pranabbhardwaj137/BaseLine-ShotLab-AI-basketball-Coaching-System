@@ -307,6 +307,8 @@ python -m unittest tests/e2e/test_web_app.py
 python -m unittest tests/unit/test_workout_planner.py
 python -m unittest tests/e2e/test_workout_api.py
 python -m unittest tests/e2e/test_workout_ui.py   # needs Playwright Chromium + ffmpeg; skipped otherwise
+python -m unittest tests/unit/test_local_tls.py   # needs cryptography (openssl CLI for the chain check)
+python -m unittest tests/e2e/test_camera_recording.py   # Playwright Chromium fake camera + cryptography; skipped otherwise
 
 # Synthetic pipeline benchmark
 python evaluation/evaluate_pipeline.py
@@ -551,7 +553,7 @@ $key = Read-Host "Gemini API key" -AsSecureString
 $env:GEMINI_API_KEY = [System.Net.NetworkCredential]::new("", $key).Password
 $env:GEMINI_MODEL = Read-Host "Gemini model available to your API key (Enter for gemini-3.6-flash)"
 if (-not $env:GEMINI_MODEL) { $env:GEMINI_MODEL = "gemini-3.6-flash" }
-.venv\Scripts\python.exe web_app.py --host 127.0.0.1 --port 8765 --db shot_lab.db --upload-dir user_data\uploads --pose-cache-dir user_data\pose_cache --enable-llm-chat --llm-model $env:GEMINI_MODEL
+.venv\Scripts\python.exe web_app.py --host 127.0.0.1 --port 8765 --db shot_lab.db --upload-dir user_data\uploads --pose-cache-dir user_data\pose_cache --enable-llm-chat --llm-provider gemini --llm-model $env:GEMINI_MODEL
 ```
 
 Required input: user-provided `GEMINI_API_KEY`; no additional model weight is needed. The UI should enable the **Ask** button in **Ask about this session**. The chat sends the user's question plus a compact set of approved metric summaries/cue/source references to Google's Gemini `generateContent` API; it does not send uploaded video or raw landmarks and does not persist chat text. The answer appears with metric sample counts and shot/frame references supplied to the model. Network/API errors should leave local rule-based insight available. To disable chat, stop and restart without `--enable-llm-chat`; close the shell to clear its environment variable. Do not put the key in project files or command history.
@@ -633,14 +635,13 @@ python web_app.py --lan --access-code MYCODE2026   # or a fixed code (>= 8 lette
    - The backend automatically handles mobile formats, including iPhone HEVC (`.mov`/`.mp4`), generating an H.264 replay proxy when needed.
 6. **In-browser camera recording on phones (HTTPS):**
    - Mobile browsers require **HTTPS** (secure context) for WebRTC / `navigator.mediaDevices.getUserMedia` physical camera hardware access.
-   - To use in-browser recording directly from your phone's browser, generate local certificates (e.g., using `mkcert`) and pass `--tls-cert` and `--tls-key`:
+   - **Built-in (recommended):** `python -m pip install cryptography`, then `python web_app.py --lan --https`. See section 17 and README › "Phone camera over Wi-Fi (HTTPS)" for trusting the certificate on each device.
+   - **Your own certificate (e.g. mkcert):** pass `--tls-cert` and `--tls-key`:
      ```powershell
-     # Generate local certificates
      mkcert -cert-file certs/shotlab.pem -key-file certs/shotlab-key.pem <Computer Wi-Fi IP> localhost 127.0.0.1
-     # Start server with HTTPS
      python web_app.py --lan --tls-cert certs/shotlab.pem --tls-key certs/shotlab-key.pem
      ```
-   - Both flags are required together. The access cookie gets the `Secure` flag. Install and trust the mkcert root CA on the phone. `certs/` and `*.pem` are git-ignored.
+   - Both flags are required together and cannot be combined with `--https`. The access cookie gets the `Secure` flag. `certs/`, `*.pem` and `user_data/` are git-ignored.
    - If running over plain HTTP, simply record the clip with your phone's native Camera app, then choose **Upload a file** in the web app.
 
 **What happens after an upload (worker stages and progress):** pose analysis (0–85%) → "Preparing a replay copy that plays in every browser" (an H.264 copy `<upload id>-replay.mp4` in the upload dir, only when the codec/container may not play everywhere, e.g. iPhone HEVC; the original is kept) → "Measuring mechanics and writing your coaching report" (stores `attempt_analysis`, `session_analysis`, `session_reports` rows and keyframe JPEGs under `user_data/keyframes/<session_id>/`) → complete. **Cancel analysis** (or `POST /api/jobs/<job_id>/cancel`) stops after the current frame, marks the job `failed`/`cancelled`, and removes the partial session, its pose cache and upload.
@@ -793,6 +794,138 @@ py -3.12 -m unittest tests/unit/test_live_camera_service.py
 py -3.12 -m unittest tests/unit/test_video_analysis_ball_tracking.py
 py -3.12 -m unittest tests/e2e/test_web_app.py
 ```
+## 17. 10: Camera recording over Wi-Fi (HTTPS) and workout voice guidance
+
+**Root cause of "camera recording does not work over Wi-Fi":**
+- Pages opened at `http://<Wi-Fi IP>` are not a secure context, so browsers remove `navigator.mediaDevices`.
+- Before this change, the page then said "This browser cannot record locally".
+- It now explains the https requirement, and `--https` provides HTTPS without extra tools.
+
+```bash
+python -m pip install cryptography
+python web_app.py --lan --https                              # creates user_data/certs/ on first start
+python web_app.py --lan --https --cert-dir /path/to/certs    # keep certificates elsewhere
+```
+
+Expected terminal output, in addition to the LAN lines:
+- `HTTPS certificate made on this computer (local use only):`
+- `Covers: localhost, <host>.local, 127.0.0.1, ::1, <Wi-Fi IP>`
+- the CA certificate path;
+- `CA SHA-256 fingerprint: …`;
+- `A NEW local CA was created…` on the first start only.
+
+Addresses outside private ranges are listed as "Not covered".
+
+Side effects:
+- writes `user_data/certs/` with these files:
+  - `shotlab-local-ca.pem` / `.crt` (public);
+  - `shotlab-local-ca-key.pem` (private, mode 600);
+  - `shotlab-server.pem`, `shotlab-server-key.pem` (private, mode 600);
+  - `shotlab-server.json`;
+- the server certificate is re-issued when the LAN addresses change or it nears expiry;
+- deleting the folder creates a new CA (devices must trust it again).
+
+Checks:
+
+```bash
+curl -s --cacert user_data/certs/shotlab-local-ca.pem https://127.0.0.1:8765/shotlab-ca.crt -o /tmp/ca.crt && echo "TLS OK"
+openssl x509 -in user_data/certs/shotlab-local-ca.pem -noout -ext nameConstraints   # private ranges, localhost, .local only
+```
+
+**Browser checklist (manual; physical devices):**
+
+| Step | Expected |
+|---|---|
+| Phone opens `http://<IP>:8765` and selects **Record with camera** | A note says https is required; uploading still works |
+| Phone opens `https://<IP>:8765` after trusting the certificate | No warning; **Turn on camera** asks for permission and shows the preview in the camera's real frame shape |
+| Switch camera | Shown only when the device has more than one camera; switches front/back |
+| Start recording | REC indicator and timer appear |
+| Pause | Timer freezes (where the browser supports pause) |
+| Stop | The clip plays back in the viewport; **Retake** discards it |
+| **Analyze this session** | Upload progress, then a normal analysis job |
+| Safari | Records MP4 |
+| Chrome / Android | Records WebM |
+
+**Workout voice (browser, any device):**
+
+| Step | Expected |
+|---|---|
+| Start a workout | The exercise name once |
+| Repetition sets | Every rep counted down ("10, 9 … 1"), matching the on-screen number; each-side exercises say "Switch sides. 10" |
+| Timed sets | "45 seconds", then every 10 s, then 5–1 |
+| Rest begins | "Rest for N seconds" once, then silence; the countdown is on screen only |
+| Rest ends | "Rest complete. Next exercise: X." (or "Next set: X, set 2 of 3."); X's name is not said again |
+| Pause / mute / skip | Speech stops immediately; resuming repeats nothing |
+| Reload during rest | Resumes paused; the rest start is not announced again |
+
+Automated (synthetic):
+
+```bash
+PYTHONPATH=src:. python3 -m pytest -q tests/unit/test_local_tls.py tests/e2e/test_camera_recording.py tests/e2e/test_workout_ui.py tests/unit/test_workout_planner.py
+```
+
+What the automated tests use:
+- the camera tests use Chromium's **fake camera** (a test pattern), not a physical camera;
+- the voice tests use a **recording stand-in** for speech;
+- none of them verify real audio, Safari/iOS recording or Android devices; those remain manual checks.
+
+## 18. 11: Grok AI coach chat, HTTPS trust diagnostics and the phone setup page
+
+**Configure Grok** (`.env` is git-ignored; `.env.example` holds placeholders only):
+
+```bash
+cp .env.example .env             # then set XAI_API_KEY=xai-…  (optional XAI_MODEL, default grok-4.7)
+PYTHONPATH=src python3 -m basketball.coaching.llm_coach            # key check via GET /v1/models (no tokens)
+PYTHONPATH=src python3 -m basketball.coaching.llm_coach --answer   # one tiny billed answer: confirms credits
+python web_app.py --lan --https                                    # chat turns on automatically with XAI_API_KEY
+```
+
+Expected output of the key check, one of:
+- `Key check: key_ok - API key accepted by xAI…`;
+- `invalid_key`;
+- `forbidden` / `no_credits`;
+- `model_not_listed` (the message lists your models);
+- `unreachable`.
+
+`--answer` prints `Answer check: ok - model grok-4.7 replied: 'OK'`, or `no_credits` when the account has
+no credits.
+
+Start-up lines:
+- `Settings loaded from .env: XAI_API_KEY` (key names only, never values);
+- `AI coach chat: enabled - xAI Grok, model grok-4.7…`;
+- `AI coach chat key check: …`.
+
+Options:
+- `--disable-llm-chat` keeps chat off.
+- `--llm-provider {auto,xai,gemini}` chooses the provider.
+- `--llm-model ID` overrides `XAI_MODEL`.
+- `--env-file PATH` reads a different settings file.
+
+API checks:
+- `GET /api/health` returns `llm_provider`, `llm_model` and `llm_status` (state of the last key/credit
+  check), or `llm_setup` (setup text) when chat is off.
+- `POST /api/sessions/<id>/coach-chat` (needs `X-Shotlab: 1`) returns:
+  - `200 {answer, provider, model, notice, evidence}`;
+  - or `{error, code}` with codes `not_configured` 503, `invalid_key`/`no_credits`/`forbidden`/`model_not_found` 502, `rate_limited` 429, `timeout` 504, `unreachable` 503.
+- Side effects: none stored. The request uses `store: false`, so xAI does not keep the conversation.
+
+**HTTPS trust diagnostics:**
+- **Phone setup page** (with `--lan --https`): it is printed as `Phone setup (certificate + steps, plain http, certificate only): http://<IP>:8766/`.
+  - `GET /` returns the steps and the fingerprint.
+  - `GET /shotlab-ca.crt` returns the public CA certificate.
+  - Every other path returns 404. Private-network clients only.
+  - `--setup-port N` changes the port; `--setup-port 0` turns the page off.
+- **Handshake failures** are logged as one line per device instead of a traceback:
+  - `[https] <ip>: SSLV3_ALERT_CERTIFICATE_UNKNOWN. This device does not trust…`: the phone has not installed and trusted the CA;
+  - `[https] <ip>: HTTP_REQUEST`: `http://` was used on the https port.
+
+  They are also listed in `GET /api/connection` → `tls_problems` (computer only) and in the **Use it from your phone** panel.
+- **Camera diagnostics** (camera pane): shows secure context, `getUserMedia`, `MediaRecorder`, supported recording types, the chosen type, the number of cameras and the last camera error.
+
+```bash
+PYTHONPATH=src:. python3 -m pytest -q tests/unit/test_llm_coach.py tests/e2e/test_ai_chat_and_https.py   # mocked xAI; no key needed
+```
+
 ## Expected verification outputs
 
 - Annotation Lab: video window opens; edits are saved to the selected SQLite DB when saved/committed.

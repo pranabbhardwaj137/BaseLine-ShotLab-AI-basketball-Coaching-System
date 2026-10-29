@@ -142,6 +142,7 @@ async function api(path, options = {}) {
   if (!response.ok) {
     const error = new Error(payload.error || `Request failed (${response.status})`);
     error.status = response.status;
+    if (payload.code) error.code = payload.code;
     throw error;
   }
   return payload;
@@ -612,38 +613,406 @@ dropzone.addEventListener('drop', event => {
   fileInput.dispatchEvent(new Event('change'));
 });
 
-cameraStartButton.addEventListener('click', async () => {
-  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-    cameraStatus.textContent = 'This browser cannot record locally. Upload a video file instead.';
-    return;
+/* ---------------------------------------------------------- camera recorder
+   Browsers expose the camera only in a secure context (https:// or http://localhost). On a phone
+   that opens http://<computer IP>, navigator.mediaDevices is undefined, so we explain that instead
+   of claiming the browser cannot record. States: off → live → recording ⇄ paused → review. */
+const cameraReview = $('#camera-review');
+const cameraIdle = $('#camera-idle');
+const cameraViewport = $('#camera-viewport');
+const cameraSecureNote = $('#camera-secure-note');
+const recordPauseButton = $('#record-pause');
+const recordRetakeButton = $('#record-retake');
+const cameraSwitchButton = $('#camera-switch');
+const recIndicator = $('#rec-indicator');
+const recLabel = $('#rec-label');
+const recTime = $('#rec-time');
+const MAX_RECORDING_MS = 10 * 60 * 1000;   // the server accepts clips up to 10 minutes
+
+let cameraState = 'off';          // off | starting | live | recording | paused | review
+let recordedFile = null;          // the finished recording, used by "Analyze this session"
+let recordedUrl = null;
+let recordedMs = 0;
+let recordTimer = null;
+let recordSegmentStart = 0;
+let videoInputs = [];
+let currentDeviceId = null;
+let currentFacing = 'environment';
+
+function cameraCapabilities() {
+  const secure = window.isSecureContext === true;
+  const getUserMedia = !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
+  const recorder = typeof window.MediaRecorder === 'function';
+  return {secure, getUserMedia, recorder,
+          pause: recorder && typeof window.MediaRecorder.prototype.pause === 'function'};
+}
+
+/* Pick a format this browser can both record and play back for the preview:
+   WebM (VP9/VP8) on Chrome, Edge, Firefox and Android; MP4 (H.264) on Safari/iOS. */
+function pickRecordingType() {
+  if (typeof MediaRecorder.isTypeSupported !== 'function') return '';
+  const probe = document.createElement('video');
+  const candidates = [
+    ['video/webm;codecs=vp9', 'video/webm; codecs="vp9"'],
+    ['video/webm;codecs=vp8', 'video/webm; codecs="vp8"'],
+    ['video/mp4;codecs=avc1.42E01E', 'video/mp4; codecs="avc1.42E01E"'],
+    ['video/mp4', 'video/mp4'],
+    ['video/webm', 'video/webm'],
+  ];
+  for (const [recordType, playType] of candidates) {
+    let ok = false;
+    try { ok = MediaRecorder.isTypeSupported(recordType); } catch { ok = false; }
+    if (ok && probe.canPlayType(playType) !== '') return recordType;
   }
-  cameraStartButton.disabled = true;
-  cameraStatus.textContent = 'Waiting for camera permission…';
+  return '';
+}
+
+function formatClock(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+}
+
+let lastCameraError = null;
+async function renderCameraDiagnostics() {
+  const list = $('#camera-diag-list');
+  if (!list) return;
+  const caps = cameraCapabilities();
+  const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/mp4;codecs=avc1.42E01E', 'video/mp4'];
+  const supported = caps.recorder && typeof MediaRecorder.isTypeSupported === 'function'
+    ? types.filter(type => { try { return MediaRecorder.isTypeSupported(type); } catch { return false; } }) : [];
+  let cameras = 'unknown (allow the camera first)';
+  if (caps.getUserMedia && navigator.mediaDevices.enumerateDevices) {
+    try { cameras = String((await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput').length); } catch { /* ignore */ }
+  }
+  const rows = [
+    ['Page address', `${location.protocol}//${location.host}`],
+    ['Secure context (needed for the camera)', caps.secure ? 'yes' : 'NO: open the https:// address'],
+    ['Camera API (getUserMedia)', caps.getUserMedia ? 'available' : 'not available'],
+    ['Recording API (MediaRecorder)', caps.recorder ? 'available' : 'not available'],
+    ['Pause while recording', caps.pause ? 'supported' : 'not supported'],
+    ['Recordable formats', supported.length ? supported.join(', ') : 'none reported'],
+    ['Format that will be used', caps.recorder ? (pickRecordingType() || 'browser default') : '—'],
+    ['Cameras found', cameras],
+    ['Last camera error', lastCameraError || 'none'],
+    ['Browser', navigator.userAgent],
+  ];
+  list.replaceChildren(...rows.flatMap(([term, value]) => [el('dt', {text: term}), el('dd', {text: value})]));
+}
+$('#camera-diagnostics')?.addEventListener('toggle', event => { if (event.target.open) renderCameraDiagnostics(); });
+
+function cameraErrorMessage(error) {
+  switch (error && error.name) {
+    case 'NotAllowedError':
+    case 'PermissionDeniedError':
+      return 'Camera permission was blocked. Allow the camera for this site (Safari: the aA menu › Website Settings › Camera; Chrome: the icon left of the address › Permissions), then try again.';
+    case 'NotFoundError':
+    case 'DevicesNotFoundError':
+      return 'No camera was found on this device.';
+    case 'NotReadableError':
+    case 'TrackStartError':
+      return 'The camera is busy in another app or tab. Close it there and try again.';
+    case 'SecurityError':
+      return 'The browser blocked the camera because this page is not secure. Open the https:// address instead.';
+    default:
+      return `The camera could not start (${(error && (error.message || error.name)) || 'unknown error'}).`;
+  }
+}
+
+function showInsecureNote() {
+  const host = location.hostname;
+  cameraSecureNote.replaceChildren(
+    el('strong', {text: 'Camera recording needs a secure (https) connection. '}),
+    document.createTextNode(`This page was opened at http://${host}, so the browser hides the camera. `),
+    document.createTextNode('On the computer, restart Shot Lab with '),
+    el('code', {text: 'python web_app.py --lan --https'}),
+    document.createTextNode(' and open the https:// address it prints (README › “Phone camera over Wi-Fi”). '),
+    document.createTextNode('Until then, record with the phone’s Camera app and choose Upload a file.'));
+  cameraSecureNote.classList.remove('hidden');
+}
+
+function renderCameraControls() {
+  const state = cameraState;
+  const caps = cameraCapabilities();
+  const show = (button, visible) => button.classList.toggle('hidden', !visible);
+  show(cameraStartButton, state === 'off' || state === 'starting');
+  cameraStartButton.disabled = state === 'starting';
+  show(recordStartButton, state === 'live');
+  recordStartButton.disabled = state !== 'live';
+  show(recordPauseButton, (state === 'recording' || state === 'paused') && caps.pause);
+  recordPauseButton.disabled = !(state === 'recording' || state === 'paused');
+  recordPauseButton.textContent = state === 'paused' ? 'Resume' : 'Pause';
+  recordPauseButton.setAttribute('aria-pressed', String(state === 'paused'));
+  show(recordStopButton, state === 'recording' || state === 'paused');
+  recordStopButton.disabled = !(state === 'recording' || state === 'paused');
+  show(recordRetakeButton, state === 'review');
+  show(cameraSwitchButton, state === 'live' && videoInputs.length > 1);
+  cameraSwitchButton.disabled = state !== 'live';
+  show(cameraStopButton, state !== 'off' && state !== 'starting');
+  cameraStopButton.disabled = state === 'off' || state === 'starting';
+  cameraViewport.classList.toggle('is-live', !!cameraStream && state !== 'review');
+  cameraViewport.classList.toggle('is-review', state === 'review');
+  cameraViewport.classList.toggle('is-recording', state === 'recording' || state === 'paused');
+  cameraIdle.hidden = !!cameraStream || state === 'review';
+  cameraPreview.classList.toggle('camera-live', !!cameraStream && state !== 'review');
+  cameraReview.hidden = state !== 'review';
+  recIndicator.classList.toggle('hidden', !(state === 'recording' || state === 'paused'));
+  recIndicator.classList.toggle('is-paused', state === 'paused');
+  recLabel.textContent = state === 'paused' ? 'PAUSED' : 'REC';
+}
+
+function updateRecordClock() {
+  const running = cameraState === 'recording' ? performance.now() - recordSegmentStart : 0;
+  const total = recordedMs + running;
+  recTime.textContent = formatClock(total);
+  if (total >= MAX_RECORDING_MS && cameraState === 'recording') {
+    cameraStatus.textContent = 'Recording reached the 10-minute limit and was stopped.';
+    stopRecording();
+  }
+}
+
+function setPreviewAspect() {
+  const w = cameraPreview.videoWidth, h = cameraPreview.videoHeight;
+  if (w && h) cameraViewport.style.setProperty('--cam-ratio', `${w} / ${h}`);
+}
+cameraPreview.addEventListener('loadedmetadata', setPreviewAspect);
+cameraPreview.addEventListener('resize', setPreviewAspect);
+
+async function listVideoInputs() {
   try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: {ideal: 'environment'}}, audio: false});
-    cameraPreview.srcObject = cameraStream;
-    cameraPreview.classList.add('camera-live');
-    cameraStopButton.disabled = false;
-    recordStartButton.disabled = false;
-    cameraStatus.textContent = 'Camera on. Frame your whole body and the ball, then start recording.';
-    startLiveTracking();
-  } catch (error) {
-    cameraStartButton.disabled = false;
-    cameraStatus.textContent = `Camera unavailable (${error.message || 'permission denied'}). You can still upload a file.`;
-  }
-});
-cameraStopButton.addEventListener('click', () => {
-  if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    videoInputs = devices.filter(device => device.kind === 'videoinput');
+  } catch { videoInputs = []; }
+}
+
+function releaseStream() {
   stopLiveTracking();
   cameraStream?.getTracks().forEach(track => track.stop());
   cameraStream = null;
   cameraPreview.srcObject = null;
-  cameraPreview.classList.remove('camera-live');
-  cameraStartButton.disabled = false;
-  cameraStopButton.disabled = true;
-  recordStartButton.disabled = true;
-  cameraStatus.textContent = 'Camera is off.';
-});
+}
+
+async function openCamera({deviceId = null, facing = currentFacing} = {}) {
+  const quality = {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 30}};
+  const attempts = deviceId
+    ? [{video: {deviceId: {exact: deviceId}, ...quality}, audio: false}]
+    : [{video: {facingMode: {ideal: facing}, ...quality}, audio: false}, {video: true, audio: false}];
+  let lastError = null;
+  for (const constraints of attempts) {
+    try { return await navigator.mediaDevices.getUserMedia(constraints); }
+    catch (error) {
+      lastError = error;
+      if (error.name !== 'OverconstrainedError' && error.name !== 'ConstraintNotSatisfiedError') break;
+    }
+  }
+  throw lastError;
+}
+
+async function startCamera(options = {}) {
+  const caps = cameraCapabilities();
+  if (!caps.secure || !caps.getUserMedia) {
+    if (!caps.secure) showInsecureNote();
+    lastCameraError = caps.secure ? 'getUserMedia is not available in this browser' : 'Page is not a secure context (http://)';
+    renderCameraDiagnostics();
+    cameraStatus.textContent = caps.secure
+      ? 'This browser does not give web pages camera access. Record with the Camera app and choose Upload a file.'
+      : 'Camera recording is not available on this http:// address (see the note below). Uploading a file still works.';
+    return;
+  }
+  if (!caps.recorder) {
+    cameraStatus.textContent = 'This browser can show the camera but cannot record video in a web page. Update the browser, or record with the Camera app and choose Upload a file.';
+    return;
+  }
+  cameraState = 'starting';
+  renderCameraControls();
+  cameraStatus.textContent = 'Waiting for camera permission…';
+  try {
+    const stream = await openCamera(options);
+    releaseStream();
+    cameraStream = stream;
+    const track = stream.getVideoTracks()[0];
+    const settings = track?.getSettings ? track.getSettings() : {};
+    currentDeviceId = settings.deviceId || options.deviceId || null;
+    if (settings.facingMode) currentFacing = settings.facingMode;
+    track?.addEventListener('ended', () => {
+      if (cameraStream !== stream) return;
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') stopRecording();
+      releaseStream();
+      if (cameraState !== 'review') cameraState = 'off';
+      renderCameraControls();
+      cameraStatus.textContent = 'The camera was turned off by the device (for example the screen locked or another app took it). Turn it on again to continue.';
+    });
+    cameraPreview.srcObject = stream;
+    try { await cameraPreview.play(); } catch { /* autoplay is allowed for muted inline video; ignore */ }
+    await listVideoInputs();
+    cameraState = 'live';
+    renderCameraControls();
+    cameraStatus.textContent = 'Camera on. Frame your whole body and the ball, then start recording.';
+    startLiveTracking();
+  } catch (error) {
+    cameraState = cameraStream ? 'live' : 'off';
+    renderCameraControls();
+    lastCameraError = `${error?.name || 'Error'}: ${error?.message || ''}`.trim();
+    cameraStatus.textContent = `${cameraErrorMessage(error)} You can still upload a file.`;
+    renderCameraDiagnostics();
+  }
+}
+
+function discardRecording() {
+  if (recordedUrl) URL.revokeObjectURL(recordedUrl);
+  recordedUrl = null;
+  recordedFile = null;
+  cameraReview.removeAttribute('src');
+  try { cameraReview.load(); } catch { /* ignore */ }
+}
+
+function startRecording() {
+  if (!cameraStream || cameraState !== 'live') return;
+  discardRecording();
+  const mimeType = pickRecordingType();
+  const options = {videoBitsPerSecond: 4_000_000};
+  if (mimeType) options.mimeType = mimeType;
+  try {
+    mediaRecorder = new MediaRecorder(cameraStream, options);
+  } catch (error) {
+    try { mediaRecorder = new MediaRecorder(cameraStream); }
+    catch (fallbackError) {
+      cameraStatus.textContent = `Could not start recording (${fallbackError.message || 'unsupported format'}). Record with the Camera app and choose Upload a file.`;
+      return;
+    }
+  }
+  const recorder = mediaRecorder;
+  recordedChunks = [];
+  recordingSize = 0;
+  recordedMs = 0;
+  recorder.addEventListener('dataavailable', event => {
+    if (!event.data || !event.data.size) return;
+    recordingSize += event.data.size;
+    recordedChunks.push(event.data);
+    if (recordingSize > MAX_VIDEO_BYTES && recorder.state !== 'inactive') {
+      cameraStatus.textContent = 'Recording reached the 250 MB limit and was stopped.';
+      stopRecording();
+    }
+  });
+  recorder.addEventListener('error', event => {
+    lastCameraError = `MediaRecorder: ${event.error?.name || ''} ${event.error?.message || 'unknown error'}`.trim();
+    cameraStatus.textContent = `Recording failed (${event.error?.message || 'unknown error'}). Open Camera diagnostics below for details.`;
+  });
+  recorder.addEventListener('stop', () => finishRecording(recorder));
+  recorder.start(1000);
+  recordSegmentStart = performance.now();
+  clearInterval(recordTimer);
+  recordTimer = setInterval(updateRecordClock, 250);
+  cameraState = 'recording';
+  renderCameraControls();
+  updateRecordClock();
+  cameraStatus.textContent = 'Recording… Shoot as usual. Stop when you are done.';
+}
+
+function togglePauseRecording() {
+  if (!mediaRecorder) return;
+  if (cameraState === 'recording' && mediaRecorder.state === 'recording') {
+    mediaRecorder.pause();
+    recordedMs += performance.now() - recordSegmentStart;
+    cameraState = 'paused';
+    cameraStatus.textContent = 'Recording paused. Resume to continue the same clip, or Stop to finish it.';
+  } else if (cameraState === 'paused' && mediaRecorder.state === 'paused') {
+    mediaRecorder.resume();
+    recordSegmentStart = performance.now();
+    cameraState = 'recording';
+    cameraStatus.textContent = 'Recording…';
+  }
+  renderCameraControls();
+  updateRecordClock();
+}
+
+function stopRecording() {
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+  if (cameraState === 'recording') recordedMs += performance.now() - recordSegmentStart;
+  clearInterval(recordTimer);
+  recordTimer = null;
+  recordStopButton.disabled = true;
+  recordPauseButton.disabled = true;
+  try { mediaRecorder.stop(); } catch { finishRecording(mediaRecorder); }
+}
+
+function finishRecording(recorder) {
+  if (recorder !== mediaRecorder) return;
+  clearInterval(recordTimer);
+  recordTimer = null;
+  const chunks = recordedChunks;
+  if (!chunks.length) {
+    cameraState = cameraStream ? 'live' : 'off';
+    renderCameraControls();
+    cameraStatus.textContent = 'Nothing was recorded. Try again.';
+    return;
+  }
+  const type = (recorder.mimeType || chunks[0].type || 'video/webm').split(';')[0];
+  const blob = new Blob(chunks, {type});
+  const extension = type.includes('mp4') ? 'mp4' : 'webm';
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  recordedFile = new File([blob], `practice-${stamp}.${extension}`, {type});
+  recordedUrl = URL.createObjectURL(blob);
+  cameraReview.src = recordedUrl;
+  cameraState = 'review';
+  stopLiveTracking();
+  renderCameraControls();
+  const seconds = Math.round(recordedMs / 1000);
+  if (blob.size > MAX_VIDEO_BYTES) {
+    cameraStatus.textContent = `This recording is ${(blob.size / 1048576).toFixed(0)} MB, over the 250 MB limit. Retake a shorter clip.`;
+  } else {
+    cameraStatus.textContent = `Recording ready: ${formatClock(seconds * 1000)}, ${(blob.size / 1048576).toFixed(1)} MB (${extension.toUpperCase()}). Watch it back, then press Analyze this session, or Retake.`;
+  }
+  formError.classList.add('hidden');
+}
+
+function retakeRecording() {
+  discardRecording();
+  cameraState = cameraStream ? 'live' : 'off';
+  renderCameraControls();
+  if (cameraStream) startLiveTracking();
+  cameraStatus.textContent = cameraStream ? 'Ready to record again.' : 'Turn on the camera to record again.';
+}
+
+function stopCamera() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') stopRecording();
+  releaseStream();
+  if (cameraState !== 'review') {
+    cameraState = 'off';
+    cameraStatus.textContent = 'Camera is off.';
+  }
+  renderCameraControls();
+}
+
+async function switchCamera() {
+  if (cameraState !== 'live') return;
+  await listVideoInputs();
+  if (videoInputs.length > 1 && videoInputs.some(device => device.deviceId)) {
+    const index = videoInputs.findIndex(device => device.deviceId === currentDeviceId);
+    const next = videoInputs[(index + 1) % videoInputs.length];
+    await startCamera({deviceId: next.deviceId});
+  } else {
+    await startCamera({facing: currentFacing === 'environment' ? 'user' : 'environment'});
+  }
+}
+
+cameraStartButton.addEventListener('click', () => startCamera());
+cameraStopButton.addEventListener('click', stopCamera);
+recordStartButton.addEventListener('click', startRecording);
+recordStopButton.addEventListener('click', stopRecording);
+recordPauseButton.addEventListener('click', togglePauseRecording);
+recordRetakeButton.addEventListener('click', retakeRecording);
+cameraSwitchButton.addEventListener('click', switchCamera);
+window.addEventListener('pagehide', () => { if (cameraStream) stopCamera(); });
+(function initCameraSupport() {
+  const caps = cameraCapabilities();
+  if (!caps.secure) showInsecureNote();
+  renderCameraControls();
+})();
+
+function selectedVideoFile() {
+  const cameraTab = !$('#pane-camera').hidden;
+  return cameraTab ? recordedFile : fileInput.files?.[0] || null;
+}
 
 function startLiveTracking() {
   liveTrackingActive = true;
@@ -715,7 +1084,7 @@ async function processLiveFrame() {
   } finally {
     liveProcessing = false;
     if (liveTrackingActive) {
-      scheduleLiveFrame(50);
+      scheduleLiveFrame(cameraState === 'recording' ? 250 : 50);
     }
   }
 }
@@ -999,46 +1368,6 @@ if (hudBtnSkeleton) {
     toast(liveShowSkeleton ? 'Skeleton overlay enabled' : 'Skeleton overlay hidden');
   });
 }
-recordStartButton.addEventListener('click', () => {
-  if (!cameraStream) return;
-  const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(type => MediaRecorder.isTypeSupported(type));
-  try {
-    mediaRecorder = new MediaRecorder(cameraStream, mimeType ? {mimeType} : undefined);
-    recordedChunks = [];
-    recordingSize = 0;
-    mediaRecorder.addEventListener('dataavailable', event => {
-      if (!event.data.size) return;
-      recordingSize += event.data.size;
-      if (recordingSize > MAX_VIDEO_BYTES) {
-        cameraStatus.textContent = 'Recording passed the 250 MB limit and was stopped. Record a shorter clip.';
-        mediaRecorder.stop();
-        return;
-      }
-      recordedChunks.push(event.data);
-    });
-    mediaRecorder.addEventListener('stop', () => {
-      recordStartButton.disabled = false;
-      recordStopButton.disabled = true;
-      if (!recordedChunks.length || recordingSize > MAX_VIDEO_BYTES) return;
-      const mime = mediaRecorder.mimeType || 'video/webm';
-      const blob = new Blob(recordedChunks, {type: mime});
-      const extension = mime.includes('mp4') ? 'mp4' : 'webm';
-      const file = new File([blob], `practice-${Date.now()}.${extension}`, {type: blob.type});
-      const transfer = new DataTransfer();
-      transfer.items.add(file);
-      fileInput.files = transfer.files;
-      fileInput.dispatchEvent(new Event('change'));
-      cameraStatus.textContent = `Recording ready (${(file.size / (1024 * 1024)).toFixed(1)} MB). Press Analyze this session.`;
-    });
-    mediaRecorder.start(1000);
-    recordStartButton.disabled = true;
-    recordStopButton.disabled = false;
-    cameraStatus.textContent = 'Recording in this browser…';
-  } catch (error) {
-    cameraStatus.textContent = `Could not start recording (${error.message || 'unsupported format'}). Upload a file instead.`;
-  }
-});
-recordStopButton.addEventListener('click', () => { if (mediaRecorder?.state === 'recording') mediaRecorder.stop(); });
 
 /* ------------------------------------------------------------------- upload */
 function showFormError(message) {
@@ -1050,13 +1379,15 @@ form.addEventListener('submit', async event => {
   event.preventDefault();
   formError.classList.add('hidden');
   playerIdInput.removeAttribute('aria-invalid');
-  const file = fileInput.files?.[0];
+  const file = selectedVideoFile();
+  const fromCamera = !$('#pane-camera').hidden;
   if (!PLAYER_ID_PATTERN.test(playerIdInput.value.trim())) {
     playerIdInput.setAttribute('aria-invalid', 'true');
     playerIdInput.focus();
     return showFormError('Player ID can use letters, numbers, - and _ only (up to 64 characters).');
   }
-  if (!file) return showFormError('Choose a video file or record a clip first.');
+  if (fromCamera && (cameraState === 'recording' || cameraState === 'paused')) return showFormError('Stop the recording first, then press Analyze this session.');
+  if (!file) return showFormError(fromCamera ? 'Record a clip first (or switch to Upload a file).' : 'Choose a video file or record a clip first.');
   if (file.size > MAX_VIDEO_BYTES) return showFormError('This clip is larger than 250 MB. Trim it or record a shorter clip.');
 
   if (pollingTimer) clearTimeout(pollingTimer);
@@ -1669,8 +2000,12 @@ function renderResults(result, jobId) {
   const chatButton = el('button', {type: 'submit', class: 'btn btn-quiet', disabled: true}, 'Ask');
   const chatAnswer = el('p', {class: 'chat-answer', 'aria-live': 'polite'});
   const chatForm = el('form', {class: 'chat-form'}, chatInput, chatButton);
+  const chatStatus = el('p', {class: 'hint chat-status hidden', role: 'status'});
+  const chatSuggestions = el('div', {class: 'chat-suggestions hidden'},
+    ['Explain my top issue in plain words', 'What should I practise this week?', 'Which results are uncertain, and why?']
+      .map(text => el('button', {type: 'button', class: 'btn btn-quiet btn-small', onclick: () => { chatInput.value = text; chatForm.requestSubmit(); }}, text)));
   lowerGrid.append(el('section', {class: 'card', 'aria-labelledby': 'chat-title'},
-    el('h2', {id: 'chat-title', text: 'Ask about this session'}), chatNotice, chatForm, chatAnswer));
+    el('h2', {id: 'chat-title', text: 'Ask about this session'}), chatNotice, chatStatus, chatSuggestions, chatForm, chatAnswer));
   lowerGrid.append(el('section', {class: 'card report-card', 'aria-labelledby': 'report-title'},
     el('h2', {id: 'report-title', text: 'Full coaching report'}),
     el('p', {text: 'Ten sections: overview, coaching summary, technical table, annotated keyframes, shot-by-shot review, correction plan, practice plan, technique and injury-risk reduction, progress, and methodology. Print it or save it as a PDF.'}),
@@ -1679,26 +2014,39 @@ function renderResults(result, jobId) {
       el('button', {type: 'button', class: 'btn btn-quiet', onclick: () => { reportSessionId = result.session_id; openWorkoutFor(result.session_id); }}, 'Personalized workout'))));
   results.append(lowerGrid);
 
+  const showChatStatus = status => {
+    const problem = status && ['invalid_key', 'no_credits', 'forbidden', 'model_not_found', 'model_not_listed', 'unreachable'].includes(status.state);
+    chatStatus.textContent = problem ? status.message : '';
+    chatStatus.classList.toggle('hidden', !problem);
+  };
   const enableChat = health => {
-    if (!health?.llm_chat_enabled) return;
-    chatNotice.textContent = 'AI explanations are on. Only your question, the coach findings and the measurement summaries are sent; video and body landmarks stay on the computer.';
+    if (!health?.llm_chat_enabled) {
+      chatNotice.textContent = health?.llm_setup || 'Optional AI explanations are off. The rule-based cue above works without them.';
+      return;
+    }
+    chatNotice.textContent = `AI explanations are on (${health.llm_provider_label || 'AI'}, ${health.llm_model || ''}). Only your question and text summaries of this session's results and report are sent; video and body landmarks stay on the computer.`;
+    showChatStatus(health.llm_status);
     chatInput.disabled = false;
     chatButton.disabled = false;
+    chatSuggestions.classList.remove('hidden');
   };
-  if (healthInfo) enableChat(healthInfo);
-  else api('/api/health').then(health => { healthInfo = health; enableChat(health); }).catch(() => {});
+  // Always re-read health: the key check (and its result) happens in the background after start-up.
+  api('/api/health').then(health => { healthInfo = health; enableChat(health); }).catch(() => { if (healthInfo) enableChat(healthInfo); });
   chatForm.addEventListener('submit', async event => {
     event.preventDefault();
     if (!chatInput.value.trim()) return;
     chatButton.disabled = true;
-    chatAnswer.textContent = 'Thinking…';
+    chatAnswer.textContent = 'Thinking… (this can take up to a minute)';
     try {
       const payload = await api(`/api/sessions/${encodeURIComponent(result.session_id)}/coach-chat`, jsonBody('POST', {question: chatInput.value}));
       const sources = payload.evidence?.supporting_shot_frames || [];
       const references = sources.map(source => `${source.metric_value} ${source.unit} (shot ${source.shot_id}${source.frame == null ? '' : `, frame ${source.frame}`})`);
       const samples = (payload.evidence?.metrics || []).map(metric => `${metric.label}: ${metric.sample_count} of ${metric.minimum_required} samples`);
       chatAnswer.textContent = `${payload.answer}\n\n${payload.notice}${samples.length ? `\nMetrics supplied: ${samples.join('; ')}` : ''}${references.length ? `\nEvidence: ${references.join('; ')}` : '\nNo shot-level evidence was available for this answer.'}`;
-    } catch (error) { chatAnswer.textContent = error.message; }
+    } catch (error) {
+      chatAnswer.textContent = error.message;
+      if (error.code && error.code !== 'rate_limited' && error.code !== 'timeout') showChatStatus({state: error.code, message: error.message});
+    }
     finally { chatButton.disabled = false; }
   });
 
@@ -2486,8 +2834,8 @@ async function loadPhoneCard() {
     card.classList.remove('hidden');
     if (!info.lan_enabled) {
       body.replaceChildren(
-        el('p', {text: 'Phone access is off, so only this computer can open the app. To upload from your phone on the same Wi-Fi, stop the app and start it again with --lan:'}),
-        el('pre', {class: 'cmd'}, 'python web_app.py --lan'),
+        el('p', {text: 'Phone access is off, so only this computer can open the app. To use your phone on the same Wi-Fi (upload and camera recording), stop the app and start it again with:'}),
+        el('pre', {class: 'cmd'}, 'python web_app.py --lan --https'),
         el('p', {class: 'hint', text: 'The terminal then shows an address and an access code to enter on the phone. Only devices on your private network can connect.'}));
       return;
     }
@@ -2501,7 +2849,14 @@ async function loadPhoneCard() {
         try { await navigator.clipboard.writeText(`${url}?token=${info.access_code}`); toast('Link copied. Send it only to your own phone.'); }
         catch { toast('Copy failed; type the address and code instead.'); }
       }}, 'Copy one-tap link') : null,
-      el('p', {class: 'hint', text: info.tls ? 'HTTPS is on, so phone camera recording can also work.' : 'Uploading from the photo library works now. Recording with the phone camera needs HTTPS (see README).'}));
+      info.https_builtin ? el('p', {class: 'hint'},
+        'Camera recording on the phone needs it to trust this computer\'s Shot Lab certificate (once per phone). On the phone, open ',
+        el('code', {text: info.setup_url || `${url || ''}shotlab-ca.crt`}),
+        ' and follow the steps. Fingerprint to compare: ', el('code', {class: 'fingerprint', text: info.ca_fingerprint || ''})) : null,
+      (info.tls_problems || []).length ? el('div', {class: 'quality-banner', role: 'status'},
+        el('strong', {text: 'A device could not connect securely. '}),
+        ...(info.tls_problems || []).map(problem => el('span', {text: `${problem.ip} (${Math.max(1, Math.round(problem.seconds_ago / 60))} min ago): ${problem.hint} `}))) : null,
+      el('p', {class: 'hint', text: info.tls ? 'HTTPS is on, so the camera can record in the phone\'s browser.' : 'Uploading from the photo library works now. Recording with the phone camera needs HTTPS: restart with --lan --https (see README).'}));
   } catch {
     card.classList.add('hidden');  // shown only on the computer running the app
   }

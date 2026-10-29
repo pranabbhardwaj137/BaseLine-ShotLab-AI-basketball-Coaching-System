@@ -313,6 +313,51 @@ def plan_duration(items: list[dict]) -> dict[str, int]:
     return totals
 
 
+HEAVY_EQUIPMENT = {"barbell", "smith", "machine"}
+REST_CAP_BETWEEN_S = 180
+REST_CAP_AFTER_S = 120
+
+
+def _finalize_rest(items: list[dict], prefs: dict) -> None:
+    """Exercise-specific rest. The catalog gives a base rest per exercise type and fitness level
+    (``dosing``); it is then adjusted for intensity and volume:
+
+    * +15 s between sets for moderate/high-impact work (landing and plyometric stress);
+    * +15 s between sets for compound strength with heavier external load (barbell, Smith, machine);
+    * +10 s between sets when an exercise has 4 or more sets (accumulated fatigue);
+    * +15 s between sets and after the exercise when pain or a limitation was reported.
+
+    Capped at 180 s between sets and 120 s after an exercise. Single-set items (warm-up drills,
+    stretches) keep their short transition rest.
+    """
+    for item in items:
+        between = int(item["_rest_between_base"])
+        after = int(item["_rest_after_base"])
+        reasons = []
+        if item["sets"] > 1 and between > 0:
+            if item["impact"] in ("moderate", "high"):
+                between += 15
+                reasons.append("+15 s for impact")
+            if item["kind"] == "strength_compound" and item["equipment"] in HEAVY_EQUIPMENT:
+                between += 15
+                reasons.append("+15 s for heavier load")
+            if item["sets"] >= 4:
+                between += 10
+                reasons.append("+10 s for 4+ sets")
+            if prefs["pain"]:
+                between += 15
+                reasons.append("+15 s because you reported pain")
+        if prefs["pain"] and after > 0 and item["phase"] == "main":
+            after += 15
+        item["rest_between_sets_s"] = min(between, REST_CAP_BETWEEN_S) if item["sets"] > 1 else 0
+        item["_rest_after_default"] = min(after, REST_CAP_AFTER_S)
+        level = "beginner" if prefs["pain"] else prefs["fitness_level"]
+        kind = item["kind"].replace("_", " ")
+        item["rest_basis"] = (f"{item['rest_between_sets_s']} s between sets: base for {kind} at {level} level"
+                              + (f" ({', '.join(reasons)})" if reasons else "") + "."
+                              if item["sets"] > 1 else "Single set; short transition only.")
+
+
 def _set_phase_transitions(items: list[dict], catalog: dict) -> None:
     """Rest after an item depends on what follows: no rest after the last main item (straight to cool-down)."""
     for index, item in enumerate(items):
@@ -337,6 +382,7 @@ def _make_item(exercise: dict, catalog: dict, prefs: dict, phase: str, area: Opt
         "per_side": exercise["per_side"], "target": dose["target"], "sets": dose["sets"], "cadence_s": dose["cadence_s"],
         "work_s": dose["work_s"], "rest_between_sets_s": dose["rest_between_sets_s"], "rest_after_s": dose["rest_after_s"],
         "_rest_after_default": dose["rest_after_s"],
+        "_rest_between_base": dose["rest_between_sets_s"], "_rest_after_base": dose["rest_after_s"],
         "video": has_video, "video_missing": bool(exercise.get("video")) and not has_video,
         "media_url": f"/api/workout-media/{exercise['id']}" if has_video else None,
         "equipment": exercise["equipment"], "equipment_label": catalog["equipment"][exercise["equipment"]]["label"],
@@ -520,6 +566,7 @@ def build_plan(report: dict[str, Any], prefs: dict[str, Any], catalog: dict[str,
 
     def assemble():
         items = warmup + main + cooldown
+        _finalize_rest(items, prefs)
         _set_phase_transitions(items, catalog)
         return items
 
@@ -647,10 +694,13 @@ def build_plan(report: dict[str, Any], prefs: dict[str, Any], catalog: dict[str,
             adjustments.append(f"Left out {item['name']} to stay close to the planned duration.")
         items = assemble()
 
+    items = assemble()  # recompute rests/transitions after any trial changes above
     for index, item in enumerate(items):
         item["uid"] = f"s{index + 1:02d}-{item['exercise_id']}"
         item["planned_s"] = item_duration(item)
         item.pop("_rest_after_default", None)
+        item.pop("_rest_between_base", None)
+        item.pop("_rest_after_base", None)
     duration = plan_duration(items)
     duration["target_s"] = target_s
     duration["method"] = ("Each item counts sets × work time, plus rest between sets, plus the rest after it. Repetition sets "

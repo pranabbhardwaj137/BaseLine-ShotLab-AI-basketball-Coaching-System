@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import html
+import sys
 import hmac
 import ipaddress
 import secrets
@@ -30,6 +32,7 @@ import numpy as np
 from basketball.persistence.shot_lab_db import ShotLabDB
 from basketball.coaching.coaching_service import build_session_insights
 from basketball.services.history_service import build_player_history
+import basketball.coaching.llm_coach as llm_coach
 from basketball.coaching.llm_coach import CoachUnavailable, answer_grounded_question, summarize_findings_for_llm
 from basketball.coaching.drills_catalog import get_catalog as get_drills_catalog
 from basketball.services.video_analysis_service import (AnalysisCancelled, analyze_video, make_browser_replay,
@@ -39,6 +42,7 @@ import basketball.services.report_service as report_service
 import basketball.analysis.shooting_analysis as shooting_analysis
 from basketball.services.video_analysis_service import KEY_JOINTS, MIN_SUFFICIENT_VALID_JOINT_RATIO
 import basketball.workout.catalog as workout_catalog
+import basketball.app.local_tls as local_tls
 import basketball.workout.planner as workout_planner
 import basketball.workout.progress as workout_progress
 
@@ -72,7 +76,7 @@ button{width:100%;margin-top:16px;padding:14px;border:0;border-radius:10px;backg
 <p>This Shot Lab runs on someone's computer on your network. Enter the code shown in the terminal or in the app's <b>Connect a phone</b> panel on that computer.</p>
 __ERROR__<form method="get" action="/"><label for="token">Access code</label>
 <input id="token" name="token" autocomplete="one-time-code" autocapitalize="characters" required autofocus>
-<button type="submit">Continue</button></form></main></body></html>"""
+<button type="submit">Continue</button></form>__CERT__</main></body></html>"""
 
 
 class JobStore:
@@ -426,6 +430,38 @@ class AppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _access_page(self, error_html):
+        cert_html = ""
+        if self.server.ca_der_path:
+            setup = self.server.setup_url
+            cert_html = ('<p style="margin-top:20px;font-size:.92rem">Camera recording needs this device to trust the '
+                         "computer's Shot Lab certificate. If your browser showed a certificate warning, do not continue "
+                         'past it: install the certificate first'
+                         + (f' from <b>{html.escape(setup)}</b>' if setup else '') + ' (README › Phone camera over Wi-Fi).</p>')
+        return ACCESS_PAGE.replace("__ERROR__", error_html).replace("__CERT__", cert_html)
+
+    def _serve_ca_certificate(self):
+        """The local CA *certificate* (never its key), for installing on a phone. Private-network clients only."""
+        ip = self._client_ip()
+        path = self.server.ca_der_path
+        if not path or ip is None or not (ip.is_private or ip.is_loopback or ip.is_link_local):
+            return self._text_error(404, "Not found")
+        try:
+            body = Path(path).read_bytes()
+        except OSError:
+            return self._text_error(404, "Not found")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-x509-ca-cert")
+        self.send_header("Content-Disposition", 'attachment; filename="shotlab-local-ca.crt"')
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _llm_provider(self):
+        return getattr(self.server, "llm_provider", None) or ("gemini" if self.server.llm_chat_enabled else None)
+
     def _is_local_request(self):
         ip = self._client_ip()
         return bool(ip and ip.is_loopback and self._host_name() in LOOPBACK_NAMES)
@@ -459,10 +495,10 @@ class AppHandler(BaseHTTPRequestHandler):
                         self.end_headers()
                         return False
                     self._record_failure(ip)
-                    self._send_html(401, ACCESS_PAGE.replace("__ERROR__", '<p class="err">That code is not right. Check it on the computer and try again.</p>'))
+                    self._send_html(401, self._access_page('<p class="err">That code is not right. Check it on the computer and try again.</p>'))
                     return False
                 if self.command == "GET" and parsed.path == "/":
-                    self._send_html(401, ACCESS_PAGE.replace("__ERROR__", ""))
+                    self._send_html(401, self._access_page(""))
                     return False
                 self._text_error(401, "Access code required. Open the app's main page on this device and enter the code.")
                 return False
@@ -472,6 +508,9 @@ class AppHandler(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
+        # The CA certificate is public information and is needed *before* a phone can trust this server.
+        if urlparse(self.path).path == "/shotlab-ca.crt":
+            return self._serve_ca_certificate()
         if self._guard():
             self._do_get()
 
@@ -496,6 +535,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 "lan_enabled": bool(self.server.lan_mode), "urls": self.server.lan_urls,
                 "access_code": self.server.access_token if self.server.lan_mode else None,
                 "tls": bool(self.server.tls_enabled),
+                "https_builtin": bool(self.server.ca_der_path),
+                "setup_url": self.server.setup_url,
+                "tls_problems": [{"ip": ip, "reason": event["reason"], "hint": event["hint"],
+                                  "seconds_ago": int(time.time() - event["at"])}
+                                 for ip, event in sorted(getattr(self.server, "tls_events", {}).items(),
+                                                         key=lambda kv: -kv[1]["at"])][:5],
+                "ca_url": "/shotlab-ca.crt" if self.server.ca_der_path else None,
+                "ca_fingerprint": self.server.ca_fingerprint,
                 "how_to_enable": "Restart with --lan to let phones on the same Wi-Fi connect (see README).",
             })
 
@@ -553,7 +600,11 @@ class AppHandler(BaseHTTPRequestHandler):
                 "ball_rim_tracking": ball_status,
                 "llm_chat_enabled": bool(self.server.llm_chat_enabled),
                 "max_upload_bytes": MAX_UPLOAD_BYTES,
-                "llm_provider": "gemini" if self.server.llm_chat_enabled else None,
+                "llm_provider": self._llm_provider() if self.server.llm_chat_enabled else None,
+                "llm_provider_label": llm_coach.PROVIDER_LABELS.get(self._llm_provider()) if self.server.llm_chat_enabled else None,
+                "llm_model": self.server.llm_model if self.server.llm_chat_enabled else None,
+                "llm_status": self.server.llm_status,
+                "llm_setup": None if self.server.llm_chat_enabled else llm_coach.setup_message(),
             })
 
         history_match = re.fullmatch(r"/api/players/([A-Za-z0-9_-]{1,64})/history", parsed.path)
@@ -825,7 +876,7 @@ class AppHandler(BaseHTTPRequestHandler):
         chat_match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/coach-chat", path)
         if chat_match:
             if not self.server.llm_chat_enabled:
-                return self._text_error(503, "Gemini coach chat is disabled. Restart with --enable-llm-chat after configuring GEMINI_API_KEY.")
+                return self._json(503, {"error": llm_coach.setup_message(), "code": "not_configured"})
             try:
                 size = int(self.headers.get("Content-Length", "0"))
                 if size <= 0 or size > 8 * 1024:
@@ -839,18 +890,28 @@ class AppHandler(BaseHTTPRequestHandler):
             insights = build_session_insights(self.server.db_path, session_id)
             if insights.get("status") == "NOT_FOUND":
                 return self._text_error(404, insights["message"])
-            stored = ShotLabDB(self.server.db_path).get_session_report(session_id)
+            db = ShotLabDB(self.server.db_path)
+            stored = db.get_session_report(session_id)
             report = stored["report"] if stored else None
             try:
+                workouts = db.list_workout_plans(session_id)
+            except Exception:
+                workouts = []
+            try:
                 response = answer_grounded_question(
-                    payload["question"], insights, model=self.server.llm_model,
+                    payload["question"], insights, model=self.server.llm_model, provider=self._llm_provider(),
                     coach_findings=summarize_findings_for_llm(report),
                     recording_limits=(report or {}).get("overview", {}).get("limitations", []),
+                    report_summary=llm_coach.summarize_report_for_llm(report, workouts),
                 )
             except ValueError as exc:
                 return self._text_error(400, str(exc))
             except CoachUnavailable as exc:
-                return self._text_error(502, str(exc))
+                if exc.code in ("invalid_key", "no_credits", "forbidden", "model_not_found"):
+                    self.server.llm_status = {"state": exc.code, "message": str(exc)}
+                return self._json(exc.status, {"error": str(exc), "code": exc.code})
+            if self._llm_provider() == "xai":
+                self.server.llm_status = {"state": "answered", "message": "Grok answered a question successfully."}
             return self._json(200, response)
 
         if path != "/api/sessions":
@@ -1504,13 +1565,51 @@ class LocalAppServer(ThreadingHTTPServer):
     lan_mode = False
     access_token = None
     tls_enabled = False
+    llm_provider = None         # "xai" or "gemini" when AI chat is on
+    llm_status = None           # last known key/credit state, e.g. {"state": "key_ok", "message": ...}
+    ca_der_path = None          # set with --https: the local CA certificate phones can install
+    ca_fingerprint = None
     lan_urls: list = []
     workout_dir = workout_catalog.DEFAULT_WORKOUT_DIR
     workout_catalog_path = workout_catalog.DEFAULT_CATALOG_PATH
 
+    setup_url = None            # plain-http certificate setup page (only with --https --lan)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.auth_failures = {}
+        self.tls_events = {}        # client ip -> {"reason", "hint", "at"}: recent HTTPS handshake failures
+        self._tls_lock = threading.Lock()
+
+    def handle_error(self, request, client_address):
+        """Turn TLS handshake failures into one clear line per device instead of a traceback."""
+        exc = sys.exc_info()[1]
+        if isinstance(exc, ssl.SSLError) and self.tls_enabled:
+            self.record_tls_failure(client_address[0] if client_address else "?", exc)
+            return
+        if isinstance(exc, (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
+            return   # the browser closed the connection (common during downloads and page changes)
+        super().handle_error(request, client_address)
+
+    def record_tls_failure(self, ip, exc):
+        reason = (getattr(exc, "reason", None) or type(exc).__name__ or "TLS error").upper()
+        if any(tag in reason for tag in ("CERTIFICATE_UNKNOWN", "UNKNOWN_CA", "BAD_CERTIFICATE", "CERTIFICATE_EXPIRED")):
+            hint = ("This device does not trust this computer's Shot Lab certificate yet, so its browser refused "
+                    "the connection. Install and trust the certificate on that device"
+                    + (f": open {self.setup_url} there" if self.setup_url else "") + " (README › Phone camera over Wi-Fi).")
+        elif "HTTP_REQUEST" in reason or "WRONG_VERSION" in reason:
+            hint = "This device used http:// on the https port. Open the https:// address instead."
+        else:
+            hint = "The secure connection could not be set up. Check the device's date and time, then retry."
+        now = time.time()
+        with self._tls_lock:
+            previous = self.tls_events.get(ip)
+            self.tls_events[ip] = {"reason": reason, "hint": hint, "at": now}
+            if len(self.tls_events) > 50:
+                oldest = min(self.tls_events, key=lambda key: self.tls_events[key]["at"])
+                self.tls_events.pop(oldest, None)
+        if not previous or previous["reason"] != reason or now - previous["at"] > 600:
+            print(f"[https] {ip}: {reason}. {hint}", flush=True)
         try:
             self.live_engine = LiveCameraEngine()
         except Exception:
@@ -1522,6 +1621,107 @@ ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I to avoid typo
 
 def generate_access_code(length=10):
     return "".join(secrets.choice(ACCESS_ALPHABET) for _ in range(length))
+
+
+SETUP_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Shot Lab: trust this computer</title>
+<style>body{margin:0;background:#f7f8f6;color:#18212f;font:16px/1.55 system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:20px 16px 40px}h1{font-size:1.45rem;margin:.2em 0 .4em}
+h2{font-size:1.1rem;margin:1.4em 0 .3em}code{font:.85rem ui-monospace,monospace;overflow-wrap:anywhere}
+.fp{display:block;padding:10px;border-radius:10px;background:#fff;border:1px solid #d9dee5}
+a.btn{display:inline-block;margin:8px 0;padding:12px 18px;border-radius:10px;background:#c2410c;color:#fff;
+font-weight:700;text-decoration:none}ol{padding-left:1.2em}li{margin:.35em 0}.note{color:#4a5566;font-size:.92rem}</style>
+</head><body><main>
+<h1>Trust this computer's Shot Lab certificate</h1>
+<p>Phone browsers only allow the camera on secure (https) pages. Shot Lab made its own certificate on the
+computer <b>__HOST__</b>. Install and trust it once on this device; then open the secure address below.</p>
+<a class="btn" href="/shotlab-ca.crt">Download the Shot Lab certificate</a>
+<p class="note">Before trusting it, check that this fingerprint matches the one printed in the computer's terminal
+(and shown in the certificate details on your phone):</p><code class="fp">SHA-256 __FP__</code>
+<h2>iPhone / iPad (Safari)</h2><ol>
+<li>Tap <b>Download</b> above, then <b>Allow</b>. iOS says "Profile Downloaded".</li>
+<li>Open <b>Settings › General › VPN &amp; Device Management</b> (or tap "Profile Downloaded" at the top of Settings),
+choose <b>Shot Lab Local CA</b> and tap <b>Install</b>.</li>
+<li>Open <b>Settings › General › About › Certificate Trust Settings</b> and turn on <b>Shot Lab Local CA</b>.</li></ol>
+<h2>Android (Chrome)</h2><ol>
+<li>Tap <b>Download</b> above.</li>
+<li>Open <b>Settings › Security &amp; privacy › More security settings › Encryption &amp; credentials ›
+Install a certificate › CA certificate</b> (names vary by phone; search Settings for "CA certificate"), and pick
+<code>shotlab-local-ca.crt</code>.</li></ol>
+<h2>Then open Shot Lab securely</h2>
+<p><a href="__HTTPS__"><code>__HTTPS__</code></a> — enter the access code shown on the computer.
+There should be <b>no certificate warning</b>; if there is, the certificate is not trusted yet (repeat the steps).
+Do not bypass the warning.</p>
+<p class="note">This setup page only offers the public certificate. It cannot be used to open Shot Lab, and the
+certificate can only vouch for private Wi-Fi addresses, <code>localhost</code> and <code>.local</code> names.</p>
+</main></body></html>"""
+
+
+class SetupHandler(BaseHTTPRequestHandler):
+    """Plain-http helper (with --https --lan): serves only the public CA certificate and setup steps."""
+    server_version = "ShotLabSetup/1.0"
+
+    def log_message(self, fmt, *args):
+        return
+
+    def _send(self, status, body, content_type, extra=()):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+        for name, value in extra:
+            self.send_header(name, value)
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def do_HEAD(self):
+        self.do_GET()
+
+    def do_GET(self):
+        try:
+            ip = ipaddress.ip_address(self.client_address[0])
+        except ValueError:
+            ip = None
+        if ip is None or not (ip.is_private or ip.is_loopback or ip.is_link_local):
+            return self._send(403, b"Local network only", "text/plain; charset=utf-8")
+        path = urlparse(self.path).path
+        info = self.server.setup_info
+        if path == "/shotlab-ca.crt":
+            return self._send(200, Path(info["ca_der"]).read_bytes(), "application/x-x509-ca-cert",
+                              (("Content-Disposition", 'attachment; filename="shotlab-local-ca.crt"'),))
+        if path == "/":
+            host = self.headers.get("Host", "").split(":")[0]
+            https_url = info["https_url_for"](host)
+            page = (SETUP_PAGE.replace("__HOST__", html.escape(info["computer"]))
+                    .replace("__FP__", html.escape(info["fingerprint"]))
+                    .replace("__HTTPS__", html.escape(https_url, quote=True)))
+            return self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
+        return self._send(404, b"Not found. This port only offers the Shot Lab certificate; open the https:// address.",
+                          "text/plain; charset=utf-8")
+
+
+def start_setup_server(host, port, info):
+    """Start the certificate setup helper in a background thread; returns the server."""
+    setup = ThreadingHTTPServer((host, port), SetupHandler)
+    setup.daemon_threads = True
+    setup.setup_info = info
+    threading.Thread(target=setup.serve_forever, daemon=True, name="cert-setup").start()
+    return setup
+
+
+def enable_tls(server, cert_path, key_path):
+    """Serve ``server`` over HTTPS (TLS 1.2+) with the given PEM certificate chain and key."""
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.load_cert_chain(str(cert_path), str(key_path))
+    # Handshake lazily in each request thread so one stalled client cannot block accept().
+    server.socket = context.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
+    server.tls_enabled = True
+    return server
 
 
 def local_network_addresses():
@@ -1563,15 +1763,48 @@ def build_parser():
                         help="Access code for --lan (default: a new random code each start, or SHOTLAB_ACCESS_CODE)")
     parser.add_argument("--tls-cert", help="PEM certificate for HTTPS (e.g. made with mkcert); needed for phone camera recording")
     parser.add_argument("--tls-key", help="PEM private key matching --tls-cert")
+    parser.add_argument("--https", action="store_true",
+                        help="Serve over HTTPS with a certificate made on this computer (needed for camera recording "
+                             "on phones and on other computers). Creates a local, name-constrained CA in --cert-dir.")
+    parser.add_argument("--setup-port", type=int, default=None,
+                        help="With --https --lan: plain-http page that only serves the certificate and trust steps "
+                             "(default: --port + 1; 0 turns it off)")
+    parser.add_argument("--cert-dir", default="user_data/certs",
+                        help="Where --https keeps its local CA and server certificate (default user_data/certs)")
     parser.add_argument("--enable-llm-chat", action="store_true",
-                        help="Enable optional network-backed coach chat using approved metrics only")
-    parser.add_argument("--llm-model", default=os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"),
-                        help="Gemini model available to your API key (or set GEMINI_MODEL)")
+                        help="Turn on AI coach chat (xAI Grok turns on automatically when XAI_API_KEY is set; "
+                             "Gemini needs this flag)")
+    parser.add_argument("--disable-llm-chat", action="store_true",
+                        help="Keep AI coach chat off even if an API key is configured")
+    parser.add_argument("--llm-provider", choices=["auto", "xai", "gemini"], default=os.environ.get("LLM_PROVIDER", "auto"),
+                        help="AI chat provider (default auto: xAI if XAI_API_KEY is set, else Gemini if GEMINI_API_KEY is set)")
+    parser.add_argument("--llm-model", default=None,
+                        help="Model id (default: XAI_MODEL or grok-4.7 for xAI; GEMINI_MODEL or gemini-3.6-flash for Gemini)")
+    parser.add_argument("--env-file", default=None,
+                        help="Settings file with API keys (default: .env in the current folder, then in the project folder)")
     return parser
 
 
+def load_settings_files(env_file=None):
+    """Load KEY=VALUE settings (API keys) from .env without overriding the real environment. Returns key names."""
+    candidates = [Path(env_file)] if env_file else [Path.cwd() / ".env", workout_catalog.PROJECT_ROOT / ".env"]
+    loaded, seen = [], set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen or not resolved.is_file():
+            continue
+        seen.add(resolved)
+        loaded += llm_coach.load_dotenv(resolved)
+    return loaded
+
+
 def main():
+    try:
+        sys.stdout.reconfigure(line_buffering=True)   # start-up and diagnostic lines appear immediately, in order
+    except (AttributeError, ValueError):
+        pass
     args = build_parser().parse_args()
+    loaded_settings = load_settings_files(args.env_file)
     host = args.host or ("0.0.0.0" if args.lan else "127.0.0.1")
     loopback = host in {"127.0.0.1", "localhost", "::1"}
     if not loopback and not args.lan:
@@ -1587,10 +1820,17 @@ def main():
         raise SystemExit("Port must be between 1 and 65535")
     if bool(args.tls_cert) != bool(args.tls_key):
         raise SystemExit("Pass both --tls-cert and --tls-key, or neither.")
-    if args.enable_llm_chat and not os.environ.get("GEMINI_API_KEY", "").strip():
-        raise SystemExit("Gemini coach chat needs GEMINI_API_KEY. Configure it in the environment, or omit --enable-llm-chat.")
-    if args.enable_llm_chat and not args.llm_model:
-        raise SystemExit("Gemini coach chat needs a model. Pass --llm-model or set GEMINI_MODEL to one available to your API key.")
+    if args.https and args.tls_cert:
+        raise SystemExit("Use either --https (certificate made by the app) or --tls-cert/--tls-key (your own), not both.")
+    preferred = None if args.llm_provider == "auto" else args.llm_provider
+    llm_provider = None if args.disable_llm_chat else llm_coach.configured_provider(preferred)
+    if llm_provider == "gemini" and not args.enable_llm_chat:
+        llm_provider = None   # Gemini keeps its explicit opt-in, as before
+    if args.enable_llm_chat and not args.disable_llm_chat and not llm_provider:
+        wanted = preferred or "xai"
+        raise SystemExit(f"AI coach chat needs {llm_coach.KEY_ENV[wanted]}. Add it to .env (see .env.example) "
+                         "or the environment, or omit --enable-llm-chat.")
+    llm_model = (args.llm_model or llm_coach.default_model(llm_provider)) if llm_provider else None
     access_code = None
     if args.lan:
         access_code = (args.access_code or generate_access_code()).strip().upper().replace(" ", "")
@@ -1605,12 +1845,24 @@ def main():
         folder.mkdir(parents=True, exist_ok=True)
     server = LocalAppServer((host, args.port), AppHandler)
     scheme = "http"
+    tls_info = None
+    if args.https:
+        try:
+            bind_ip = ipaddress.ip_address(host) if host != "localhost" else ipaddress.ip_address("127.0.0.1")
+        except ValueError:
+            bind_ip = None
+        cert_addresses = (local_network_addresses() if bind_ip is not None and bind_ip.is_unspecified
+                          else [str(bind_ip)] if bind_ip is not None else [])
+        try:
+            tls_info = local_tls.ensure_local_certificates(Path(args.cert_dir).resolve(), cert_addresses)
+        except local_tls.LocalTLSUnavailable as exc:
+            server.server_close()
+            raise SystemExit(str(exc))
+        args.tls_cert, args.tls_key = str(tls_info["cert"]), str(tls_info["key"])
+        server.ca_der_path = tls_info["ca_der"]
+        server.ca_fingerprint = local_tls.ca_fingerprint(tls_info["ca_pem"])
     if args.tls_cert:
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
-        context.load_cert_chain(args.tls_cert, args.tls_key)
-        # Handshake lazily in each request thread so one stalled client cannot block accept().
-        server.socket = context.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
+        enable_tls(server, args.tls_cert, args.tls_key)
         scheme = "https"
     server.db_path = db_path
     server.upload_dir = upload_dir
@@ -1621,14 +1873,41 @@ def main():
     server.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="shot-analysis")
     server.worker_slots = threading.BoundedSemaphore(2)
     server.session_locks = {}
-    server.llm_chat_enabled = args.enable_llm_chat
-    server.llm_model = args.llm_model
+    server.llm_chat_enabled = bool(llm_provider)
+    server.llm_provider = llm_provider
+    server.llm_model = llm_model
+    if llm_provider == "xai":
+        server.llm_status = {"state": "checking", "message": "Checking the xAI API key…"}
+
+        def _check_key():
+            server.llm_status = llm_coach.check_xai_access()
+            print(f"AI coach chat key check: {server.llm_status['message']}")
+        threading.Thread(target=_check_key, daemon=True, name="xai-key-check").start()
     server.live_engine = LiveCameraEngine()
     server.lan_mode = bool(args.lan)
     server.access_token = access_code
     server.tls_enabled = scheme == "https"
     addresses = local_network_addresses() if args.lan and ipaddress.ip_address(host).is_unspecified else ([host] if args.lan else [])
     server.lan_urls = [f"{scheme}://{address}:{args.port}/" for address in addresses]
+    setup_server = None
+    if tls_info and args.lan:
+        setup_port = args.port + 1 if args.setup_port is None else args.setup_port
+        if setup_port:
+            if not 1 <= setup_port <= 65535 or setup_port == args.port:
+                raise SystemExit("--setup-port must be a free port different from --port (or 0 to turn it off).")
+            covered = [a for a in addresses if local_tls.is_permitted_ip(a)]
+            first_ip = (covered or addresses or ["<this computer's Wi-Fi IP>"])[0]
+
+            def https_url_for(host_name):
+                target = host_name if host_name and host_name in tls_info["names"]["ips"] + tls_info["names"]["dns"] else first_ip
+                return f"https://{target}:{args.port}/"
+            try:
+                setup_server = start_setup_server(host, setup_port, {
+                    "ca_der": tls_info["ca_der"], "fingerprint": server.ca_fingerprint,
+                    "computer": socket.gethostname(), "https_url_for": https_url_for})
+                server.setup_url = f"http://{first_ip}:{setup_port}/"
+            except OSError as exc:
+                print(f"Certificate setup page could not start on port {setup_port}: {exc}")
 
     print(f"Basketball Shot Lab web app on this computer: {scheme}://127.0.0.1:{args.port}")
     if args.lan:
@@ -1638,11 +1917,35 @@ def main():
         print(f"  Access code: {access_code}")
         print(f"  One-tap link (keep private): {(server.lan_urls or ['<url>'])[0]}?token={access_code}")
         if scheme == "http":
-            print("  Uploading from the photo library works over http. Camera recording on phones needs https (--tls-cert/--tls-key).")
+            print("  Uploading from the photo library works over http. Camera recording on phones needs HTTPS:")
+            print("  restart with  --lan --https  (see README, 'Phone camera over Wi-Fi').")
+    if tls_info:
+        print("HTTPS certificate made on this computer (local use only):")
+        print(f"  Covers: {', '.join(tls_info['names']['dns'] + tls_info['names']['ips'])}")
+        print(f"  CA certificate file (AirDrop/copy it to a phone, or use the setup page below): {tls_info['ca_der']}")
+        print(f"  CA SHA-256 fingerprint: {server.ca_fingerprint}")
+        if server.setup_url:
+            print(f"  Phone setup (certificate + steps, plain http, certificate only): {server.setup_url}")
+        uncovered = [a for a in cert_addresses if not local_tls.is_permitted_ip(a)]
+        if uncovered:
+            print(f"  Not covered (not a private LAN range): {', '.join(uncovered)}. Phones must use a covered address.")
+        if tls_info["created_ca"]:
+            print("  A NEW local CA was created. Devices must trust it once; see README 'Phone camera over Wi-Fi'.")
+        elif tls_info["created_server"]:
+            print("  The server certificate was renewed for the current addresses; devices that trust the CA need no change.")
     print(f"Shot Lab database: {db_path}")
     print(f"Local video uploads: {upload_dir}")
     print("Processing: local MediaPipe pose + shot-phase detector + measurement engine; YOLO/outcomes are not run in this flow.")
-    print(f"Optional AI coach chat: {'enabled (approved metric summaries are sent to Gemini)' if args.enable_llm_chat else 'disabled'}")
+    if loaded_settings:
+        print(f"Settings loaded from .env: {', '.join(sorted(loaded_settings))}")   # names only, never values
+    if llm_provider:
+        print(f"AI coach chat: enabled - {llm_coach.PROVIDER_LABELS[llm_provider]}, model {llm_model}. "
+              "Only text summaries of this session's results are sent; no video or body landmarks.")
+    elif args.disable_llm_chat:
+        print("AI coach chat: disabled (--disable-llm-chat).")
+    else:
+        print("AI coach chat: off - no XAI_API_KEY found in the environment or .env. "
+              "Add it to .env (see .env.example and README 'AI coach chat (Grok)') and restart.")
     print("Press Ctrl+C to stop the server.")
     try:
         server.serve_forever()
@@ -1650,6 +1953,9 @@ def main():
         print("\nStopping server...")
     finally:
         server.server_close()
+        if setup_server is not None:
+            setup_server.shutdown()
+            setup_server.server_close()
         server.executor.shutdown(wait=False, cancel_futures=True)
 
 

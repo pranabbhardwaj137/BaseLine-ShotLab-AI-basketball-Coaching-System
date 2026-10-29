@@ -102,3 +102,8 @@ Thumbs.db
 *.egg-info/
 dist/
 build/
+
+# Local secrets (API keys). Never commit; see .env.example
+.env
+.env.*
+!.env.example
