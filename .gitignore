@@ -94,3 +94,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Python build artifacts
+*.egg-info/
+dist/
+build/

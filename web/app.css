@@ -1048,3 +1048,393 @@ table { width: 100%; border-collapse: collapse; font-size: .88rem; }
   .conf, .chip, .focus-box, .pain-flagged, .warn, .finding-kind, .facts dt { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   a { color: #111; text-decoration: none; }
 }
+
+
+
+/* ======================================================================
+   DRILLS VIEW v2
+   ====================================================================== */
+
+/* difficulty badges */
+.difficulty-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.difficulty-approved { background: var(--approved-wash); color: var(--approved-ink); }
+.difficulty-caution  { background: var(--caution-wash);  color: var(--caution-ink);  }
+.difficulty-review   { background: var(--review-wash);   color: var(--review-ink);   }
+.difficulty-neutral  { background: var(--neutral-wash);  color: var(--neutral-ink);  }
+
+/* ---- catalog ---- */
+.drills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.drill-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              box-shadow   var(--dur-fast) var(--ease-out),
+              transform    var(--dur-fast) var(--ease-out);
+  outline: none;
+}
+.drill-card:hover, .drill-card:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md), 0 0 0 2px var(--accent-wash);
+  transform: translateY(-2px);
+}
+
+/* thumbnail strip — 9:16 shorts aspect */
+.drill-card-thumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  background: var(--mon-bg);
+  overflow: hidden;
+  max-height: 200px;    /* cap so card isn't too tall in grid */
+  flex-shrink: 0;
+}
+.drill-card-thumb-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+.drill-card-play-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.35);
+  color: #fff;
+  transition: background var(--dur-fast);
+}
+.drill-card-play-icon .icon { width: 36px; height: 36px; opacity: .9; }
+.drill-card:hover .drill-card-play-icon { background: rgba(0,0,0,.15); }
+
+.drill-card-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.drill-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.drill-card-dur {
+  font-size: .78rem;
+  color: var(--fg-3);
+}
+.drill-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--fg);
+}
+.drill-card-how {
+  font-size: .85rem;
+  color: var(--fg-2);
+  line-height: 1.55;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.drill-card-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.skill-chip {
+  background: var(--surface-2);
+  color: var(--fg-2);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: .72rem;
+  font-weight: 500;
+}
+
+/* ---- runner ---- */
+.drill-runner-topbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.drill-runner-title-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.drill-runner-title-row h2 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+/* two-panel stage: reference | camera — side by side */
+.drill-stage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .drill-stage { grid-template-columns: 1fr; }
+}
+
+.drill-panel-label {
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin: 0 0 6px;
+}
+
+/* reference video — respect 9:16 shorts aspect ratio */
+.drill-ref-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.drill-ref-video {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  background: var(--mon-bg);
+  border-radius: var(--r-lg);
+  display: block;
+  max-height: 480px;   /* cap on wide screens */
+}
+
+/* live camera panel */
+.drill-cam-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.drill-cam-inner {
+  position: relative;
+  aspect-ratio: 9 / 16;   /* match the reference video */
+  max-height: 480px;
+  background: var(--mon-bg);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.drill-cam-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+.drill-cam-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.drill-cam-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--mon-fg-2);
+  font-size: .9rem;
+}
+.drill-cam-placeholder.hidden { display: none; }
+.drill-placeholder-icon { width: 40px; height: 40px; opacity: .4; }
+
+/* HUD overlay on camera */
+.drill-cam-hud {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 20px;
+  background: rgba(0,0,0,.6);
+  border-radius: var(--r-lg);
+  padding: 8px 20px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.drill-stat { display: flex; flex-direction: column; align-items: center; }
+.drill-stat-label { font-size: .65rem; color: var(--mon-fg-2); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.drill-stat-value { font-size: 1.4rem; font-weight: 800; color: var(--mon-fg); font-variant-numeric: tabular-nums; line-height: 1.1; }
+
+.drill-cam-status {
+  position: absolute;
+  bottom: 56px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: .8rem;
+  color: var(--mon-fg-2);
+  padding: 0 12px;
+  pointer-events: none;
+}
+
+/* controls row */
+.drill-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.drill-live-count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-left: auto;
+}
+.drill-big-count {
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: var(--accent);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.drill-big-count.rep-flash {
+  animation: repPulse .28s var(--ease-spring);
+}
+@keyframes repPulse {
+  0%   { transform: scale(1);    color: var(--accent); }
+  45%  { transform: scale(1.3);  color: var(--mon-accent); }
+  100% { transform: scale(1);    color: var(--accent); }
+}
+.drill-count-label {
+  font-size: .9rem;
+  font-weight: 600;
+  color: var(--fg-3);
+}
+.drill-privacy-note {
+  font-size: .72rem;
+  color: var(--fg-3);
+  margin: 0;
+  flex-basis: 100%;
+}
+
+/* info strip */
+.drill-info-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 600px) {
+  .drill-info-strip { grid-template-columns: 1fr; }
+}
+.drill-section-title {
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  margin: 0 0 10px;
+}
+.drill-runner-how {
+  font-size: .9rem;
+  line-height: 1.65;
+  color: var(--fg-2);
+  margin: 0;
+}
+.drill-cues {
+  list-style: none;
+  padding: 0; margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.drill-cue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: .9rem;
+  color: var(--fg);
+}
+.drill-cue-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+/* feedback panel */
+.drill-feedback-panel {
+  margin-top: 20px;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-lg);
+}
+.drill-feedback-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.drill-feedback-header .icon { width: 20px; height: 20px; color: var(--approved-ink); }
+.drill-feedback-header h3 { font-size: 1rem; font-weight: 700; margin: 0; }
+.drill-feedback-summary {
+  font-size: .9rem;
+  color: var(--fg-2);
+  margin: 0 0 14px;
+}
+.drill-feedback-list {
+  list-style: none;
+  padding: 0; margin: 0 0 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.feedback-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: .9rem;
+  line-height: 1.5;
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+}
+.feedback-good   { background: var(--approved-wash); color: var(--approved-ink); }
+.feedback-tip    { background: var(--caution-wash);  color: var(--caution-ink);  }
+.feedback-remind { background: var(--measure-wash);  color: var(--measure-ink);  }
+.feedback-neutral{ background: var(--neutral-wash);  color: var(--neutral-ink);  }
+.feedback-icon   { font-size: 1rem; flex-shrink: 0; margin-top: 1px; font-weight: 700; }
+.feedback-text   { flex: 1; }
+.drill-feedback-note {
+  font-size: .75rem;
+  color: var(--fg-3);
+  margin: 0;
+}

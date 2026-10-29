@@ -497,8 +497,8 @@ const mmss = seconds => {
 };
 
 /* ------------------------------------------------------------------ routing */
-const VIEWS = ['new', 'review', 'report', 'progress'];
-const VIEW_TITLES = {new: 'New session', review: 'Review', report: 'Report', progress: 'Progress'};
+const VIEWS = ['new', 'review', 'report', 'progress', 'drills'];
+const VIEW_TITLES = {new: 'New session', review: 'Review', report: 'Report', progress: 'Progress', drills: 'Drills'};
 function setView(name, {push = true} = {}) {
   const view = VIEWS.includes(name) ? name : 'new';
   for (const section of document.querySelectorAll('[data-view]')) section.hidden = section.dataset.view !== view;
@@ -512,6 +512,7 @@ function setView(name, {push = true} = {}) {
   document.title = `${VIEW_TITLES[view]} · Baseline Shot Lab`;
   if (view === 'progress') loadPlayerHistory(progressPlayer.value || playerIdInput.value);
   if (view === 'report') showReport(reportSessionId || activeSessionId);
+  if (view === 'drills') initDrillsView();
   window.scrollTo({top: 0});
   moveNavIndicator();
   const section = document.querySelector(`[data-view="${view}"]`);
@@ -1877,3 +1878,498 @@ async function loadPhoneCard() {
   loadPhoneCard();
   document.fonts?.ready.then(() => { moveNavIndicator(false); moveSegmentThumb(false); });
 })();
+
+
+
+/* ========================================================================
+   DRILLS MODULE v2
+   - 4 video-backed dribbling drills
+   - Side-by-side: reference video (9:16 shorts) + live camera feed
+   - Rep counter via frame-diff motion tracking
+   - Post-drill form feedback card
+   ======================================================================== */
+
+const drillsState = {
+  catalog: null,
+  activeDrill: null,
+  stream: null,
+  animFrame: null,
+  timerInterval: null,
+  elapsedSeconds: 0,
+  repCount: 0,
+  repTimestamps: [],       // epoch ms of each counted rep (for rhythm graph)
+  counting: false,
+  // dribble detection
+  prevY: null,
+  direction: null,
+  lastValley: null,
+  lastPeak: null,
+  BOUNCE_THRESHOLD: 16,
+  prevFrameData: null,
+};
+
+// ---------------------------------------------------------------- DOM refs
+const drillsCatalog      = document.getElementById('drills-catalog');
+const drillRunner        = document.getElementById('drill-runner');
+const drillRefVideo      = document.getElementById('drill-ref-video');
+const drillCamVideo      = document.getElementById('drill-cam-video');
+const drillCamCanvas     = document.getElementById('drill-cam-canvas');
+const drillCamStatus     = document.getElementById('drill-cam-status');
+const drillRepCount      = document.getElementById('drill-rep-count');
+const drillBigCount      = document.getElementById('drill-big-count');
+const drillTimerEl       = document.getElementById('drill-timer');
+const drillStartCam      = document.getElementById('drill-start-cam');
+const drillStopBtn       = document.getElementById('drill-stop');
+const drillDoneBtn       = document.getElementById('drill-done');
+const drillBackBtn       = document.getElementById('drill-back');
+const drillRunnerName    = document.getElementById('drill-runner-name');
+const drillRunnerCat     = document.getElementById('drill-runner-category');
+const drillRunnerDiff    = document.getElementById('drill-runner-difficulty');
+const drillRunnerHow     = document.getElementById('drill-runner-how');
+const drillRunnerCues    = document.getElementById('drill-runner-cues');
+const drillFeedbackPanel = document.getElementById('drill-feedback-panel');
+const drillFeedbackList  = document.getElementById('drill-feedback-list');
+const drillFeedbackSummary = document.getElementById('drill-feedback-summary');
+const filterCategory     = document.getElementById('drills-filter-category');
+const filterDifficulty   = document.getElementById('drills-filter-difficulty');
+
+const DIFFICULTY_COLOURS = {
+  beginner:     'approved',
+  intermediate: 'caution',
+  advanced:     'review',
+};
+
+// ---------------------------------------------------------------- init
+let drillsViewInitialised = false;
+function initDrillsView() {
+  if (drillsViewInitialised) return;
+  drillsViewInitialised = true;
+  loadDrillCatalog();
+  if (filterCategory)   filterCategory.addEventListener('change', renderDrillCards);
+  if (filterDifficulty) filterDifficulty.addEventListener('change', renderDrillCards);
+  if (drillStartCam)    drillStartCam.addEventListener('click', startDrillSession);
+  if (drillStopBtn)     drillStopBtn.addEventListener('click', stopDrillSession);
+  if (drillDoneBtn)     drillDoneBtn.addEventListener('click', showDrillCatalogView);
+  if (drillBackBtn)     drillBackBtn.addEventListener('click', showDrillCatalogView);
+}
+
+// ---------------------------------------------------------------- catalog
+async function loadDrillCatalog() {
+  try {
+    drillsState.catalog = await api('/api/drills');
+    renderDrillCards();
+  } catch (err) {
+    if (drillsCatalog) drillsCatalog.innerHTML =
+      `<p class="form-error">Could not load drills: ${err.message}</p>`;
+  }
+}
+
+function renderDrillCards() {
+  if (!drillsState.catalog) return;
+  const catFilter  = filterCategory  ? filterCategory.value  : '';
+  const diffFilter = filterDifficulty ? filterDifficulty.value : '';
+  let drills = drillsState.catalog.drills;
+  if (catFilter)  drills = drills.filter(d => d.category === catFilter);
+  if (diffFilter) drills = drills.filter(d => d.difficulty === diffFilter);
+
+  // Remove any previous grid but keep the page-head inside drills-catalog
+  const oldGrid = drillsCatalog.querySelector('.drills-grid');
+  if (oldGrid) oldGrid.remove();
+  const oldMsg = drillsCatalog.querySelector('.hint');
+  if (oldMsg) oldMsg.remove();
+
+  if (!drills.length) {
+    drillsCatalog.append(el('p', {class: 'hint', text: 'No drills match that filter.'}));
+    return;
+  }
+
+  const grid = el('div', {class: 'drills-grid'}, ...drills.map(buildDrillCard));
+  drillsCatalog.append(grid);
+}
+
+function buildDrillCard(drill) {
+  const diffColour = DIFFICULTY_COLOURS[drill.difficulty] || 'neutral';
+  return el('article', {
+      class: 'drill-card', 'data-drill-id': drill.id,
+      role: 'button', tabindex: '0',
+      onclick: () => openDrillRunner(drill),
+      onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrillRunner(drill); } },
+    },
+    // thumbnail on top — 9:16 shorts aspect, capped by CSS max-height
+    el('div', {class: 'drill-card-thumb'},
+      el('video', {
+        src: `/drills/${drill.video}`,
+        class: 'drill-card-thumb-video',
+        muted: true, preload: 'metadata', playsinline: true,
+        'aria-hidden': 'true',
+      }),
+      el('span', {class: 'drill-card-play-icon', 'aria-hidden': 'true'},
+        iconEl('i-play')
+      )
+    ),
+    // text body below the thumbnail
+    el('div', {class: 'drill-card-body'},
+      el('div', {class: 'drill-card-header'},
+        el('span', {class: `difficulty-badge difficulty-${diffColour}`, text: drill.difficulty}),
+        el('span', {class: 'drill-card-dur', text: drill.duration})
+      ),
+      el('h3', {class: 'drill-card-title', text: drill.name}),
+      el('p',  {class: 'drill-card-how',   text: drill.how}),
+      el('div', {class: 'drill-card-skills'},
+        ...(drill.skills || []).map(s => el('span', {class: 'skill-chip', text: s}))
+      )
+    )
+  );
+}
+
+// ---------------------------------------------------------------- runner
+function openDrillRunner(drill) {
+  drillsState.activeDrill = drill;
+
+  // Fill runner header
+  drillRunnerName.textContent = drill.name;
+  drillRunnerCat.textContent  = (drillsState.catalog.categories || {})[drill.category] || drill.category;
+  drillRunnerDiff.textContent = drill.difficulty;
+  drillRunnerDiff.className   = `difficulty-badge difficulty-${DIFFICULTY_COLOURS[drill.difficulty] || 'neutral'}`;
+  drillRunnerHow.textContent  = drill.how;
+
+  // Cues list
+  drillRunnerCues.replaceChildren(
+    ...(drill.cues || []).map(cue =>
+      el('li', {class: 'drill-cue-item'},
+        el('span', {class: 'drill-cue-dot', 'aria-hidden': 'true'}),
+        cue
+      )
+    )
+  );
+
+  // Load reference video
+  if (drillRefVideo) {
+    drillRefVideo.src = `/drills/${drill.video}`;
+    drillRefVideo.loop = true;
+    drillRefVideo.load();
+  }
+
+  // Reset
+  resetDrillCounters();
+  if (drillFeedbackPanel) drillFeedbackPanel.hidden = true;
+
+  // Hide catalog, show runner
+  drillsCatalog.hidden = true;
+  drillRunner.hidden   = false;
+  drillStartCam.hidden  = false;
+  drillStopBtn.hidden   = true;
+  drillDoneBtn.hidden   = true;
+  if (drillCamStatus) drillCamStatus.textContent = '';
+  // show placeholder, hide actual video elements until camera starts
+  const placeholder = document.getElementById('drill-cam-placeholder');
+  if (placeholder) placeholder.classList.remove('hidden');
+}
+
+function showDrillCatalogView() {
+  stopDrillSession();
+  if (drillRefVideo) { drillRefVideo.pause(); drillRefVideo.src = ''; }
+  drillRunner.hidden   = true;
+  drillsCatalog.hidden = false;
+  drillsState.activeDrill = null;
+  window.scrollTo({top: 0});
+}
+
+// ---------------------------------------------------------------- counters
+function resetDrillCounters() {
+  drillsState.repCount       = 0;
+  drillsState.elapsedSeconds = 0;
+  drillsState.repTimestamps  = [];
+  drillsState.prevY          = null;
+  drillsState.direction      = null;
+  drillsState.lastPeak       = null;
+  drillsState.lastValley     = null;
+  drillsState.prevFrameData  = null;
+  updateRepDisplay(0);
+  updateTimerDisplay(0);
+}
+
+function updateRepDisplay(n) {
+  if (drillRepCount) drillRepCount.textContent = n;
+  if (drillBigCount) drillBigCount.textContent = n;
+}
+
+function updateTimerDisplay(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  if (drillTimerEl) drillTimerEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// ---------------------------------------------------------------- camera session
+async function startDrillSession() {
+  if (drillCamStatus) drillCamStatus.textContent = 'Requesting camera…';
+  drillStartCam.disabled = true;
+
+  try {
+    drillsState.stream = await navigator.mediaDevices.getUserMedia({
+      video: {width: {ideal: 640}, height: {ideal: 480}, facingMode: 'user'},
+      audio: false,
+    });
+  } catch (err) {
+    if (drillCamStatus) drillCamStatus.textContent =
+      `Camera unavailable: ${err.message}. You can still follow along with the video.`;
+    drillStartCam.disabled = false;
+    // Still play the reference video
+    drillRefVideo?.play();
+    return;
+  }
+
+  drillCamVideo.srcObject = drillsState.stream;
+  await new Promise(resolve => { drillCamVideo.onloadedmetadata = resolve; });
+  drillCamVideo.play();
+
+  drillCamCanvas.width  = drillCamVideo.videoWidth  || 640;
+  drillCamCanvas.height = drillCamVideo.videoHeight || 480;
+
+  // hide placeholder
+  const placeholder = document.getElementById('drill-cam-placeholder');
+  if (placeholder) placeholder.classList.add('hidden');
+
+  // Play the reference video alongside
+  drillRefVideo?.play();
+
+  if (drillCamStatus) drillCamStatus.textContent = '';
+  drillStartCam.hidden = true;
+  drillStopBtn.hidden  = false;
+
+  drillsState.counting = true;
+  startDrillTimer();
+  startFrameLoop();
+}
+
+function stopDrillSession() {
+  drillsState.counting = false;
+
+  if (drillsState.stream) {
+    drillsState.stream.getTracks().forEach(t => t.stop());
+    drillsState.stream = null;
+    drillCamVideo.srcObject = null;
+  }
+  if (drillsState.animFrame) {
+    cancelAnimationFrame(drillsState.animFrame);
+    drillsState.animFrame = null;
+  }
+  if (drillsState.timerInterval) {
+    clearInterval(drillsState.timerInterval);
+    drillsState.timerInterval = null;
+  }
+
+  drillRefVideo?.pause();
+
+  // restore placeholder
+  const placeholder = document.getElementById('drill-cam-placeholder');
+  if (placeholder) placeholder.classList.remove('hidden');
+
+  drillStopBtn.hidden  = true;
+  drillDoneBtn.hidden  = false;
+  drillStartCam.hidden = false;
+  drillStartCam.disabled = false;
+
+  // Show form feedback
+  showFormFeedback();
+}
+
+function startDrillTimer() {
+  if (drillsState.timerInterval) clearInterval(drillsState.timerInterval);
+  drillsState.timerInterval = setInterval(() => {
+    drillsState.elapsedSeconds++;
+    updateTimerDisplay(drillsState.elapsedSeconds);
+  }, 1000);
+}
+
+// ---------------------------------------------------------------- frame loop
+function startFrameLoop() {
+  const ctx = drillCamCanvas.getContext('2d');
+
+  function loop() {
+    if (!drillsState.counting) return;
+    drillsState.animFrame = requestAnimationFrame(loop);
+    const w = drillCamCanvas.width;
+    const h = drillCamCanvas.height;
+
+    // Draw mirrored camera feed
+    ctx.save();
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(drillCamVideo, 0, 0, w, h);
+    ctx.restore();
+
+    detectDribble(ctx, w, h);
+    drawCamHud(ctx, w, h);
+  }
+
+  drillsState.animFrame = requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------- dribble detection
+// Motion centroid in lower 45% of frame: track down→up bounce cycles.
+function detectDribble(ctx, w, h) {
+  const ROI_TOP  = Math.floor(h * 0.45);
+  const ROI_H    = h - ROI_TOP;
+  const STEP_W   = Math.max(1, Math.floor(w / 4));
+  const STEP_H   = Math.max(1, Math.floor(ROI_H / 4));
+
+  const imageData = ctx.getImageData(0, ROI_TOP, w, ROI_H);
+  const pixels    = imageData.data;
+  const prev      = drillsState.prevFrameData;
+
+  if (!prev || prev.length !== pixels.length) {
+    drillsState.prevFrameData = new Uint8ClampedArray(pixels);
+    return;
+  }
+
+  let totalWeight = 0, weightedY = 0;
+  for (let py = 0; py < ROI_H; py += STEP_H) {
+    for (let px = 0; px < w; px += STEP_W) {
+      const i = (py * w + px) * 4;
+      const motion = (Math.abs(pixels[i]-prev[i]) + Math.abs(pixels[i+1]-prev[i+1]) + Math.abs(pixels[i+2]-prev[i+2])) / 3;
+      if (motion > 20) { totalWeight += motion; weightedY += py * motion; }
+    }
+  }
+  drillsState.prevFrameData = new Uint8ClampedArray(pixels);
+  if (totalWeight < 200) return;
+
+  const centroidY = weightedY / totalWeight;
+  const prevY = drillsState.prevY;
+  drillsState.prevY = centroidY;
+  if (prevY === null) return;
+
+  const dy = centroidY - prevY;
+  const THRESH = drillsState.BOUNCE_THRESHOLD;
+
+  if (dy > 2) {
+    if (drillsState.direction !== 'down') {
+      drillsState.direction = 'down';
+      drillsState.lastValley = centroidY;
+    }
+  } else if (dy < -2 && drillsState.direction === 'down') {
+    const excursion = (drillsState.lastValley || centroidY) - (drillsState.lastPeak || 0);
+    if (excursion > THRESH) {
+      drillsState.repCount++;
+      drillsState.repTimestamps.push(Date.now());
+      updateRepDisplay(drillsState.repCount);
+      flashRepIndicator();
+    }
+    drillsState.direction = 'up';
+    drillsState.lastPeak  = centroidY;
+  }
+}
+
+function flashRepIndicator() {
+  if (!drillBigCount) return;
+  drillBigCount.classList.remove('rep-flash');
+  void drillBigCount.offsetWidth;
+  drillBigCount.classList.add('rep-flash');
+}
+
+function drawCamHud(ctx, w, h) {
+  const reps = drillsState.repCount;
+  const m = Math.floor(drillsState.elapsedSeconds / 60);
+  const s = drillsState.elapsedSeconds % 60;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.beginPath();
+  ctx.roundRect(10, 10, 120, 62, 8);
+  ctx.fill();
+  ctx.fillStyle = '#ff8a3d';
+  ctx.font = 'bold 20px system-ui,sans-serif';
+  ctx.fillText(`${reps} reps`, 20, 36);
+  ctx.fillStyle = '#aab3bf';
+  ctx.font = '14px system-ui,sans-serif';
+  ctx.fillText(`${m}:${String(s).padStart(2,'0')}`, 20, 58);
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- form feedback
+/*
+  Heuristic form checks based on:
+  - repTimestamps → rhythm consistency (are the gaps even?)
+  - elapsedSeconds + repCount → dribble rate (too slow = not low enough / not powered)
+  - No pose model in browser; these are pattern-based estimates with honest caveats.
+*/
+function showFormFeedback() {
+  if (!drillFeedbackPanel || !drillFeedbackList) return;
+  const drill    = drillsState.activeDrill;
+  const reps     = drillsState.repCount;
+  const secs     = drillsState.elapsedSeconds;
+  const checks   = drill?.form_checks || [];
+  const labels   = (drillsState.catalog?.form_check_labels) || {};
+  const stamps   = drillsState.repTimestamps;
+
+  // --- compute rhythm score (0–1): std dev of inter-rep intervals
+  let rhythmScore = null;
+  let avgRate = null;
+  if (stamps.length >= 4) {
+    const gaps = [];
+    for (let i = 1; i < stamps.length; i++) gaps.push(stamps[i] - stamps[i-1]);
+    const mean = gaps.reduce((a,b) => a+b, 0) / gaps.length;
+    const variance = gaps.reduce((a,b) => a + (b-mean)**2, 0) / gaps.length;
+    const cv = Math.sqrt(variance) / mean; // coefficient of variation; lower = more consistent
+    rhythmScore = Math.max(0, 1 - cv * 2);   // 0–1
+    avgRate = reps / Math.max(1, secs);       // reps per second
+  }
+
+  // --- build feedback items
+  const items = [];
+
+  if (reps === 0) {
+    items.push({status: 'neutral', text: 'No reps were counted. Make sure your dribbling hand is visible in the lower part of the camera frame.'});
+  } else {
+    // Rep count context
+    const expected = secs > 0 ? Math.round(secs * 2.5) : null; // ~2.5 reps/sec is a reasonable active pace
+    if (expected && reps >= expected * 0.75) {
+      items.push({status: 'good', text: `Solid pace — ${reps} reps in ${secs}s. Keep that energy up.`});
+    } else if (expected && reps < expected * 0.5) {
+      items.push({status: 'tip', text: `${reps} reps in ${secs}s is on the slower side. Try to push the ball down harder and faster to build rhythm.`});
+    } else {
+      items.push({status: 'good', text: `${reps} reps counted in ${secs}s.`});
+    }
+
+    // Rhythm feedback
+    if (rhythmScore !== null) {
+      if (rhythmScore >= 0.75) {
+        items.push({status: 'good', text: 'Good rhythm — your dribble timing was consistent.'});
+      } else if (rhythmScore >= 0.45) {
+        items.push({status: 'tip', text: 'Rhythm was a bit uneven. Try counting "1-2-1-2" out loud to lock in the beat.'});
+      } else {
+        items.push({status: 'tip', text: 'Inconsistent rhythm detected. Slow down first, get the timing smooth, then build speed.'});
+      }
+    }
+  }
+
+  // Drill-specific cue reminders (these are always shown as reminders, not measurements)
+  for (const checkKey of checks) {
+    const label = labels[checkKey];
+    if (label) {
+      items.push({status: 'remind', text: label});
+    }
+  }
+
+  // Render
+  drillFeedbackList.replaceChildren(
+    ...items.map(item =>
+      el('li', {class: `feedback-item feedback-${item.status}`},
+        el('span', {class: 'feedback-icon', 'aria-hidden': 'true'},
+          item.status === 'good'   ? '✓' :
+          item.status === 'tip'    ? '↑' :
+          item.status === 'remind' ? '●' : '○'
+        ),
+        el('span', {class: 'feedback-text', text: item.text})
+      )
+    )
+  );
+
+  if (drillFeedbackSummary) {
+    drillFeedbackSummary.textContent = reps > 0
+      ? `You completed ${reps} rep${reps !== 1 ? 's' : ''} in ${secs}s. Compare your technique with the reference video above.`
+      : 'Drill ended. Watch the reference video and try again.';
+  }
+
+  drillFeedbackPanel.hidden = false;
+  drillFeedbackPanel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
