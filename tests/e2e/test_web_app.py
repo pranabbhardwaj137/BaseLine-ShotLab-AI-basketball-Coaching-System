@@ -123,6 +123,25 @@ class WebAppApiTest(unittest.TestCase):
         status, _, _ = self.request("GET", "/assets/../web_app.py")
         self.assertEqual(status, 404)
 
+    def test_drills_api_and_video_streaming(self):
+        status, payload = self.json_request("GET", "/api/drills")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["total"], 4)
+        self.assertEqual(len(payload["drills"]), 4)
+
+        status, payload = self.json_request("GET", "/api/drills?difficulty=beginner")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["total"], 2)
+
+        status, raw, headers = self.request("GET", "/drills/pound_dribble.mp4")
+        self.assertEqual(status, 200)
+        self.assertIn("video/mp4", headers["Content-Type"])
+        self.assertEqual(headers["Accept-Ranges"], "bytes")
+        self.assertGreater(len(raw), 1000)
+
+        status, _, _ = self.request("GET", "/drills/non_existent.mp4")
+        self.assertEqual(status, 404)
+
     def test_upload_validation_errors(self):
         status, payload = self.upload(filename="notes.txt")
         self.assertEqual(status, 415)

@@ -129,3 +129,8 @@ def get_catalog(category: str | None = None, difficulty: str | None = None) -> d
         "drills": drills,
         "total": len(drills),
     }
+
+
+def get_drill_by_id(drill_id: str) -> dict[str, Any] | None:
+    """Return drill dict by ID, or None if not found."""
+    return DRILL_BY_ID.get(drill_id)

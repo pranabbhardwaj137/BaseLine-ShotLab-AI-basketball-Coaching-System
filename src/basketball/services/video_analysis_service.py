@@ -611,7 +611,11 @@ def analyze_video(
             "shot_count": len(shots),
             "outcomes": {
                 "human": "unknown_pending_review",
-                "automated": f"{auto_makes_count} makes, {auto_misses_count} misses" if (auto_makes_count or auto_misses_count) else "not_detected"
+                "automated": (
+                    f"{auto_makes_count} makes, {auto_misses_count} misses"
+                    if (auto_makes_count or auto_misses_count)
+                    else ("not_detected" if (ball_tracker and shots) else "not_run")
+                ),
             },
             "ball_rim_tracking": getattr(ball_tracker, "mode", "unavailable") if ball_tracker else "unavailable",
             "pose_cache": "available" if cache_path else "not_saved",
