@@ -1,4 +1,4 @@
-"""Server tests: Grok chat route (mocked xAI), HTTPS handshake diagnostics and the certificate setup page."""
+"""Server tests: AI chat route (mocked Groq primary + Gemini backup), HTTPS diagnostics and the setup page."""
 
 import io
 import json
@@ -21,12 +21,20 @@ import basketball.coaching.llm_coach as llm
 from basketball.persistence.shot_lab_db import ShotLabDB
 
 try:
+    import groq  # noqa: F401
+    import httpx
+except ImportError:  # pragma: no cover
+    httpx = None
+
+try:
     import cryptography  # noqa: F401
     import basketball.app.local_tls as local_tls
 except ImportError:  # pragma: no cover
     local_tls = None
 
-FAKE_KEY = "xai-test-not-a-real-key-456"
+FAKE_KEY = "gsk_test_not_a_real_key_456"
+FAKE_GEMINI_KEY = "AIza_test_not_a_real_key_789"
+CHAIN = [("groq", "openai/gpt-oss-120b"), ("gemini", "gemini-3.8-flash")]
 
 
 def make_server(tmp, *, chat=False):
@@ -41,8 +49,9 @@ def make_server(tmp, *, chat=False):
     server.worker_slots = threading.BoundedSemaphore(2)
     server.session_locks = {}
     server.llm_chat_enabled = chat
-    server.llm_provider = "xai" if chat else None
-    server.llm_model = "grok-4.7" if chat else None
+    server.llm_provider = CHAIN[0][0] if chat else None
+    server.llm_model = CHAIN[0][1] if chat else None
+    server.llm_chain = list(CHAIN) if chat else None
     return server
 
 
@@ -65,7 +74,7 @@ class ChatRouteTest(unittest.TestCase):
         cls.session_id = ShotLabDB(cls.server.db_path).create_session(
             player_id="chat_player", camera_view="side_90", shot_type="catch_and_shoot", shot_style="jump_shot",
             fps=30.0, model_version="test", notes="{}")
-        cls.env = mock.patch.dict(os.environ, {"XAI_API_KEY": FAKE_KEY})
+        cls.env = mock.patch.dict(os.environ, {"GROQ_API_KEY": FAKE_KEY, "GEMINI_API_KEY": FAKE_GEMINI_KEY})
         cls.env.start()
 
     @classmethod
@@ -100,12 +109,15 @@ class ChatRouteTest(unittest.TestCase):
         status, health = self.call(self.server, "GET", "/api/health")
         self.assertEqual(status, 200)
         self.assertTrue(health["llm_chat_enabled"])
-        self.assertEqual(health["llm_provider"], "xai")
-        self.assertEqual(health["llm_model"], "grok-4.7")
+        self.assertEqual(health["llm_provider"], "groq")
+        self.assertEqual(health["llm_model"], "openai/gpt-oss-120b")
+        self.assertEqual(health["llm_backup"]["provider"], "gemini")
+        self.assertEqual(health["llm_backup"]["model"], "gemini-3.8-flash")
         self.assertNotIn(FAKE_KEY, json.dumps(health))
+        self.assertNotIn(FAKE_GEMINI_KEY, json.dumps(health))
         status, health = self.call(self.off, "GET", "/api/health")
         self.assertFalse(health["llm_chat_enabled"])
-        self.assertIn("XAI_API_KEY", health["llm_setup"])
+        self.assertIn("GROQ_API_KEY", health["llm_setup"])
 
     def test_disabled_chat_explains_setup(self):
         sid = ShotLabDB(self.off.db_path).create_session(player_id="p2", camera_view="side_90", shot_type="catch_and_shoot",
@@ -115,37 +127,126 @@ class ChatRouteTest(unittest.TestCase):
         self.assertEqual(body["code"], "not_configured")
         self.assertIn(".env", body["error"])
 
-    def test_answer_and_error_paths(self):
-        reply = {"output": [{"type": "message", "content": [{"type": "output_text", "text": "Work on balance."}]}]}
-        with mock.patch.object(llm, "urlopen", return_value=FakeResponse(json.dumps(reply).encode())) as fake:
-            status, body = self.ask()
-        self.assertEqual(status, 200, body)
-        self.assertEqual(body["answer"], "Work on balance.")
-        self.assertEqual(body["provider"], "xai")
-        self.assertNotIn(FAKE_KEY, json.dumps(body))
-        sent = json.loads(fake.call_args[0][0].data.decode())
-        self.assertNotIn(FAKE_KEY, json.dumps(sent))   # the key travels only in the Authorization header
+    # Groq goes through the official SDK (HTTP mocked with httpx.MockTransport); Gemini through urllib (mocked).
+    def groq_replies(self, handler):
+        llm.GROQ_HTTP_CLIENT = httpx.Client(transport=httpx.MockTransport(handler))
+        self.addCleanup(setattr, llm, "GROQ_HTTP_CLIENT", None)
 
-        no_credits = urllib.error.HTTPError(llm.XAI_ENDPOINT, 403, "x", {},
-                                            io.BytesIO(b'{"error":"Your team does not have any credits"}'))
-        with mock.patch.object(llm, "urlopen", side_effect=no_credits):
-            status, body = self.ask()
-        self.assertEqual((status, body["code"]), (502, "no_credits"))
-        self.assertIn("credits", body["error"])
+    @staticmethod
+    def groq_stream(*texts, finish=True):
+        events = [{"choices": [{"index": 0, "delta": {"content": t}, "finish_reason": None}]} for t in texts]
+        if finish:
+            events.append({"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]})
+        body = "".join(f"data: {json.dumps(e)}\n\n" for e in events) + ("data: [DONE]\n\n" if finish else "")
+        return lambda request: httpx.Response(200, headers={"content-type": "text/event-stream"}, content=body.encode())
+
+    @staticmethod
+    def groq_error(status, code):
+        body = json.dumps({"error": {"message": "x", "type": "invalid_request_error", "code": code}}).encode()
+        return lambda request: httpx.Response(status, headers={"content-type": "application/json"}, content=body)
+
+    @staticmethod
+    def gemini(text=None, error=None):
+        def fake(req, timeout):
+            if error is not None:
+                raise error
+            return FakeResponse(json.dumps({"candidates": [{"content": {"parts": [{"text": text}]}}]}).encode())
+        return fake
+
+    def stream(self, question="What should I practise?"):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.server.server_address[1]}/api/sessions/{self.session_id}/coach-chat",
+            data=json.dumps({"question": question}).encode(), method="POST",
+            headers={"Content-Type": "application/json", "Accept": "application/x-ndjson", "X-Shotlab": "1"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                self.assertIn("application/x-ndjson", response.headers["Content-Type"])
+                return response.status, [json.loads(line) for line in response.read().decode().splitlines() if line.strip()]
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read())
+
+    @unittest.skipIf(httpx is None, "groq SDK / httpx not installed")
+    def test_streamed_answer_and_fallback_in_the_same_response(self):
+        self.groq_replies(self.groq_stream("Work ", "", "on balance."))
+        with mock.patch.object(llm, "urlopen", side_effect=AssertionError("no fallback")):
+            status, events = self.stream()
+        self.assertEqual(status, 200)
+        self.assertEqual([e["type"] for e in events], ["start", "delta", "delta", "done"])
+        self.assertEqual("".join(e["text"] for e in events if e["type"] == "delta"), "Work on balance.")
+        self.assertEqual(events[-1]["provider"], "groq")
+        self.assertNotIn(FAKE_KEY, json.dumps(events))
+
+        self.groq_replies(self.groq_error(429, "rate_limit_exceeded"))
+        with mock.patch.object(llm, "urlopen", side_effect=self.gemini("Backup answer: land softly.")):
+            status, events = self.stream()
+        self.assertEqual(status, 200)
+        types = [e["type"] for e in events]
+        self.assertEqual(types, ["start", "fallback", "start", "delta", "done"])
+        self.assertEqual((events[1]["http_status"], events[1]["provider_code"]), (429, "rate_limit_exceeded"))
+        self.assertEqual(events[-1]["provider"], "gemini")
+        self.assertEqual(events[3]["text"], "Backup answer: land softly.")
+
+        self.groq_replies(self.groq_stream("Half", finish=False))   # HTTP 200 but the stream never finished
+        with mock.patch.object(llm, "urlopen", side_effect=self.gemini("Complete backup answer.")):
+            status, events = self.stream()
+        fallback = next(e for e in events if e["type"] == "fallback")
+        self.assertEqual((fallback["code"], fallback["reset"]), ("incomplete", True))
+        self.assertEqual(events[-1]["provider"], "gemini")
+
+    @unittest.skipIf(httpx is None, "groq SDK / httpx not installed")
+    def test_stream_errors(self):
+        self.groq_replies(self.groq_error(429, "rate_limit_exceeded"))
+        down = urllib.error.HTTPError(llm.GEMINI_BASE, 503, "x", {}, io.BytesIO(b"{}"))
+        with mock.patch.object(llm, "urlopen", side_effect=self.gemini(error=down)):
+            status, events = self.stream()
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertIn("No AI answer is available right now", events[-1]["error"])
+
+        self.groq_replies(self.groq_error(401, "invalid_api_key"))
+        with mock.patch.object(llm, "urlopen", side_effect=AssertionError("no fallback for a bad key")):
+            status, events = self.stream()
+        self.assertEqual((events[-1]["type"], events[-1]["code"], events[-1]["http_status"]), ("error", "invalid_key", 401))
         status, health = self.call(self.server, "GET", "/api/health")
-        self.assertEqual(health["llm_status"]["state"], "no_credits")
-
-        limited = urllib.error.HTTPError(llm.XAI_ENDPOINT, 429, "x", {}, io.BytesIO(b"{}"))
-        with mock.patch.object(llm, "urlopen", side_effect=limited):
-            status, body = self.ask()
-        self.assertEqual((status, body["code"]), (429, "rate_limited"))
-        with mock.patch.object(llm, "urlopen", side_effect=TimeoutError()):
-            status, body = self.ask()
-        self.assertEqual((status, body["code"]), (504, "timeout"))
-        status, body = self.ask("x" * 1001)
+        self.assertEqual(health["llm_status"]["state"], "invalid_key")
+        status, body = self.stream(question="x" * 1001)
         self.assertEqual(status, 400)
-        status, _ = self.call(self.server, "POST", "/api/sessions/nope/coach-chat", {"question": "hi"})
-        self.assertEqual(status, 404)
+
+    @unittest.skipIf(httpx is None, "groq SDK / httpx not installed")
+    def test_closing_the_browser_connection_stops_groq(self):
+        closed = threading.Event()
+
+        class Slow(httpx.SyncByteStream):
+            def __iter__(self):
+                for index in range(60):
+                    if closed.is_set():
+                        return
+                    event = {"choices": [{"index": 0, "delta": {"content": f"word{index} "}, "finish_reason": None}]}
+                    yield f"data: {json.dumps(event)}\n\n".encode()
+                    time.sleep(0.05)
+
+            def close(self):
+                closed.set()
+        self.groq_replies(lambda request: httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=Slow()))
+        port = self.server.server_address[1]
+        body = json.dumps({"question": "Long answer please"}).encode()
+        with socket.create_connection(("127.0.0.1", port), timeout=10) as sock:
+            sock.sendall((f"POST /api/sessions/{self.session_id}/coach-chat HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                          "Content-Type: application/json\r\nAccept: application/x-ndjson\r\nX-Shotlab: 1\r\n"
+                          f"Content-Length: {len(body)}\r\n\r\n").encode() + body)
+            received = b""
+            while b'"delta"' not in received:
+                received += sock.recv(4096)
+        self.assertTrue(closed.wait(10), "the server closed the Groq stream after the browser disconnected")
+
+    def test_json_route_still_works(self):
+        """The non-streaming JSON reply (scripts, older pages) uses the same provider chain."""
+        if httpx is None:
+            self.skipTest("groq SDK / httpx not installed")
+        self.groq_replies(self.groq_error(503, "service_unavailable"))
+        with mock.patch.object(llm, "urlopen", side_effect=self.gemini("Backup via JSON.")):
+            status, body = self.ask()
+        self.assertEqual(status, 200)
+        self.assertEqual((body["provider"], body["fallback_from"], body["answer"]), ("gemini", "groq", "Backup via JSON."))
 
     def test_chat_requires_csrf_header(self):
         status, _ = self.call(self.server, "POST", f"/api/sessions/{self.session_id}/coach-chat", {"question": "hi"},

@@ -1628,3 +1628,18 @@ code.fingerprint { display: inline-block; max-width: 100%; overflow-wrap: anywhe
 .camera-diagnostics dl { display: grid; grid-template-columns: minmax(120px, 34%) 1fr; gap: 4px 12px; margin: 8px 0 0; }
 .camera-diagnostics dt { font-weight: 650; color: var(--fg); }
 .camera-diagnostics dd { margin: 0; overflow-wrap: anywhere; }
+/* coach chat answer formatting (readability only; card layout unchanged) */
+.chat-answer.is-formatted { white-space: normal; line-height: 1.55; }
+.chat-answer.is-formatted > :first-child { margin-top: 0; }
+.chat-answer.is-formatted > :last-child { margin-bottom: 0; }
+.chat-answer.is-formatted p { margin: 0 0 10px; }
+.chat-answer.is-formatted .chat-heading { margin: 14px 0 6px; font-size: .98rem; font-weight: 750; }
+.chat-answer.is-formatted ul, .chat-answer.is-formatted ol { margin: 0 0 10px; padding-left: 1.2em; }
+.chat-answer.is-formatted li { margin: 0 0 5px; }
+.chat-answer.is-formatted .chat-source { margin-top: 12px; color: var(--fg-3); font-size: .8rem; }
+.chat-answer .chat-table-wrap { overflow-x: auto; margin: 0 0 10px; }
+.chat-answer .chat-table { border-collapse: collapse; font-size: .84rem; min-width: 100%; }
+.chat-answer .chat-table th, .chat-answer .chat-table td { border-bottom: 1px solid var(--border); padding: 5px 8px; text-align: left; vertical-align: top; }
+.chat-answer .chat-evidence { margin-top: 10px; font-size: .82rem; color: var(--fg-2); }
+.chat-answer .chat-evidence summary { cursor: pointer; font-weight: 650; }
+.chat-answer .chat-evidence p { margin: 6px 0 0; overflow-wrap: anywhere; }
