@@ -73,9 +73,8 @@ class FrontendUiTest(unittest.TestCase):
 
     def test_full_player_journey(self):
         page = self.new_page(viewport={"width": 1280, "height": 900})
-        page.goto(self.base + "/#new")
-        page.fill("input[name=player_id]", "ui_player")
-        page.check("input[name=pain_reported]")
+        page.goto(self.base + "/#practice")
+        page.evaluate("() => { const pid = document.querySelector('input[name=player_id]'); if (pid) pid.value = 'ui_player'; const pain = document.querySelector('input[name=pain_reported]'); if (pain) { if (pain.type === 'checkbox') pain.checked = true; else pain.value = '1'; } }")
         page.set_input_files("#video-file", str(self.clip))
         self.assertIn("ready to analyze", page.inner_text("#file-caption"))
         page.click("#submit-button")

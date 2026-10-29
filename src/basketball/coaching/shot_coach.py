@@ -4,8 +4,8 @@ Input: the output of ``shooting_analysis.analyze_session`` plus the player's pro
 Output: findings (strengths and improvements), a correction plan, a practice plan and
 the "Technique, Load Management, and Injury-Risk Reduction" guidance.
 
-Every finding answers five questions — what was observed, which evidence from the
-video supports it, why it may matter, what to change, how to practise — and lists the
+Every finding answers five questions - what was observed, which evidence from the
+video supports it, why it may matter, what to change, how to practise - and lists the
 attempts, timestamps, measurements and confidence it rests on. A rule only fires when
 measured values with medium or high confidence support it; nothing here is generic
 advice presented as a measurement.
@@ -26,16 +26,16 @@ from basketball.analysis.shooting_analysis import METRIC_DEFINITIONS, USABLE
 COACH_VERSION = "shot-coach-1.1"
 
 SKILL_SETTINGS = {
-    "beginner": {"sessions": "3 sessions a week", "minutes": "30–40 minutes", "shot_cap": 100, "sets": 2},
-    "intermediate": {"sessions": "3–4 sessions a week", "minutes": "40–50 minutes", "shot_cap": 200, "sets": 3},
-    "advanced": {"sessions": "4–5 sessions a week", "minutes": "50–60 minutes", "shot_cap": 300, "sets": 3},
-    "coach": {"sessions": "3–4 sessions a week (adjust to the player)", "minutes": "40–50 minutes", "shot_cap": 200, "sets": 3},
+    "beginner": {"sessions": "3 sessions a week", "minutes": "30-40 minutes", "shot_cap": 100, "sets": 2},
+    "intermediate": {"sessions": "3-4 sessions a week", "minutes": "40-50 minutes", "shot_cap": 200, "sets": 3},
+    "advanced": {"sessions": "4-5 sessions a week", "minutes": "50-60 minutes", "shot_cap": 300, "sets": 3},
+    "coach": {"sessions": "3-4 sessions a week (adjust to the player)", "minutes": "40-50 minutes", "shot_cap": 200, "sets": 3},
 }
 
 DRILLS: dict[str, dict[str, Any]] = {
     "one_hand_form": {
         "name": "One-hand form shooting",
-        "how": "Stand 1–2 m from the rim, ball on the shooting hand only, guide hand behind your back. Lift, extend and hold the finish until the ball lands.",
+        "how": "Stand 1-2 m from the rim, ball on the shooting hand only, guide hand behind your back. Lift, extend and hold the finish until the ball lands.",
         "dose": {"beginner": "2 sets of 8 makes", "intermediate": "3 sets of 10 makes", "advanced": "3 sets of 12 makes"},
     },
     "follow_through_hold": {
@@ -45,7 +45,7 @@ DRILLS: dict[str, dict[str, Any]] = {
     },
     "dip_and_rise": {
         "name": "Dip-and-rise rhythm",
-        "how": "Start tall, ball at the chest. Bend the knees into a comfortable quarter-squat as the ball dips to the waist, then rise and shoot in one smooth motion. Do it without the ball first, then from 1–2 m.",
+        "how": "Start tall, ball at the chest. Bend the knees into a comfortable quarter-squat as the ball dips to the waist, then rise and shoot in one smooth motion. Do it without the ball first, then from 1-2 m.",
         "dose": {"beginner": "2 sets of 6 without the ball, then 2 sets of 6 shots", "intermediate": "2 sets of 8 without the ball, then 3 sets of 8 shots", "advanced": "3 sets of 8 shots from three spots"},
     },
     "legs_then_arm": {
@@ -55,12 +55,12 @@ DRILLS: dict[str, dict[str, Any]] = {
     },
     "land_and_freeze": {
         "name": "Land-and-freeze",
-        "how": "Mark your take-off spot with tape. Shoot from 1–2 m, then land on both feet and freeze for two seconds. Check that you landed on or very near the tape, knees soft.",
+        "how": "Mark your take-off spot with tape. Shoot from 1-2 m, then land on both feet and freeze for two seconds. Check that you landed on or very near the tape, knees soft.",
         "dose": {"beginner": "2 sets of 6", "intermediate": "3 sets of 8", "advanced": "3 sets of 8, then 1 set from 3 m"},
     },
     "tall_chest_form": {
         "name": "Tall-chest form shooting",
-        "how": "From 1–2 m, keep the chest tall and the head still from the dip to the landing; jump straight up rather than forward or sideways.",
+        "how": "From 1-2 m, keep the chest tall and the head still from the dip to the landing; jump straight up rather than forward or sideways.",
         "dose": {"beginner": "2 sets of 8", "intermediate": "3 sets of 8", "advanced": "3 sets of 10"},
     },
     "elbow_under_ball": {
@@ -71,7 +71,7 @@ DRILLS: dict[str, dict[str, Any]] = {
     "same_shot_ladder": {
         "name": "Same-shot ladder",
         "how": "Five spots, one step apart, starting 1 m from the rim. Take 5 shots per spot with the same cue; move back only after 4 of 5 feel identical (same dip, same finish).",
-        "dose": {"beginner": "Spots 1–3", "intermediate": "Spots 1–5", "advanced": "Spots 1–5, twice"},
+        "dose": {"beginner": "Spots 1-3", "intermediate": "Spots 1-5", "advanced": "Spots 1-5, twice"},
     },
 }
 
@@ -108,7 +108,7 @@ def usable_values(attempts, key):
 
 def _fmt(value, unit):
     if value is None:
-        return "—"
+        return " - "
     if unit == "°":
         return f"{value:.0f}°"
     if unit == "ms":
@@ -162,7 +162,7 @@ def _range_text(pairs, unit):
         return ""
     if len(values) == 1:
         return _fmt(values[0], unit)
-    return f"{_fmt(min(values), unit)}–{_fmt(max(values), unit)}"
+    return f"{_fmt(min(values), unit)}-{_fmt(max(values), unit)}"
 
 
 def _attempt_list(pairs):
@@ -205,7 +205,7 @@ def _rule_leg_load(ctx):
         out.append(dict(
             id="leg_load", kind="improvement", category="lower_body", priority=80,
             title="Very little knee bend before the shot",
-            observed=f"The knees stayed nearly straight — deepest bend {_range_text(stiff, '°')} — on attempts {_attempt_list(stiff)}.",
+            observed=f"The knees stayed nearly straight - deepest bend {_range_text(stiff, '°')} - on attempts {_attempt_list(stiff)}.",
             why="The legs normally supply most of the power for a shot. With little bend, the arms have to do more of the work, which tends to reduce range and repeatability.",
             action="'Dip, then rise': sink into a comfortable quarter-squat as the ball comes down, then let the legs start the shot.",
             drills=["dip_and_rise", "legs_then_arm"], supporting=stiff, total=len(pairs),
@@ -329,7 +329,7 @@ def _rule_follow_through(ctx):
             title="Follow-through drops quickly",
             observed=f"The shooting hand fell below shoulder height {_range_text(short, 'ms')} after release on attempts {_attempt_list(short)}.",
             why="Pulling the arm down early often goes with a rushed or pushed release; holding the finish is a simple check that the arm went up and through.",
-            action="Hold the finish — arm up, wrist relaxed — until the ball reaches the rim.",
+            action="Hold the finish - arm up, wrist relaxed - until the ball reaches the rim.",
             drills=["follow_through_hold", "one_hand_form"], supporting=short, total=len(pairs),
             success="Next session: follow-through held for at least half a second on most attempts.",
             metric_keys=["follow_through_hold_ms"]))
@@ -381,7 +381,7 @@ def _rule_consistency(ctx):
 
     def as_evidence(entries):
         return [{"attempt": None, "metric": e["key"], "label": e["label"], "value": e["sd"], "unit": e["unit"],
-                 "display": f"mean {_fmt(e['mean'], e['unit'])}, SD {_fmt(e['sd'], e['unit'])}, range {_fmt(e['min'], e['unit'])}–{_fmt(e['max'], e['unit'])}, n={e['n']}",
+                 "display": f"mean {_fmt(e['mean'], e['unit'])}, SD {_fmt(e['sd'], e['unit'])}, range {_fmt(e['min'], e['unit'])}-{_fmt(e['max'], e['unit'])}, n={e['n']}",
                  "attempts": e["attempts"], "frame": None, "time_s": None, "confidence": "medium", "confirmed": None}
                 for e in entries]
 
@@ -396,7 +396,7 @@ def _rule_consistency(ctx):
             action="Pick one cue from your top priority and use it on every attempt; shoot close until the attempts look the same.",
             drills=["same_shot_ladder"], evidence=as_evidence(variable),
             confidence="medium" if n >= 5 else "low",
-            confidence_reason=f"Spread computed from {n}–{max(e['n'] for e in variable)} attempts with usable measurements" + ("" if n >= 5 else "; fewer than five, so treat as a first look") + ".",
+            confidence_reason=f"Spread computed from {n}-{max(e['n'] for e in variable)} attempts with usable measurements" + ("" if n >= 5 else "; fewer than five, so treat as a first look") + ".",
             success="Next session: the same metrics' standard deviation reduced, filmed from the same spot.",
             metric_keys=[e["key"] for e in variable]))
     elif len(steady) >= 2:
@@ -430,8 +430,47 @@ def _finalize(raw, ctx):
         raw.setdefault("confidence_reason", reason)
         raw["affected"] = f"{len(supporting)} of {total} measured attempts"
     raw["timestamps"] = _times(raw.get("evidence", []))
+
+    # Metric profile weighting and priority boost
+    weights = ctx.get("weights", {})
+    metric_keys = raw.get("metric_keys", [])
+
+    def _lookup_weight(k):
+        if k in weights:
+            return weights[k]
+        from basketball.analysis.shooting_analysis import METRIC_ALIASES
+        for alias_k, canonical_k in METRIC_ALIASES.items():
+            if k == canonical_k and alias_k in weights:
+                return weights[alias_k]
+            if k == alias_k and canonical_k in weights:
+                return weights[canonical_k]
+        if k in ("landing_offset_ratio", "hip_drift_ratio") and "landing_displacement" in weights:
+            return weights["landing_displacement"]
+        if k in ("torso_lean_change_deg", "torso_lean_release_deg") and "torso_lean_deg" in weights:
+            return weights["torso_lean_deg"]
+        return 0.0
+
+    weight = max((_lookup_weight(k) for k in metric_keys), default=0.0)
+    base_priority = raw.get("priority", 50)
+    raw["priority"] = round(base_priority * (1.0 + weight * 2.0), 2)
+    raw["weight"] = weight
+
+    # Experimental metrics check (e.g. arc_proxy, wrist_snap_proxy)
+    has_experimental = any(k in ("arc_proxy", "wrist_snap_proxy") for k in metric_keys)
+    if has_experimental:
+        if not raw["title"].startswith("[experimental"):
+            raw["title"] = f"[experimental - ball tracking required] {raw['title']}"
+        raw["action"] = "Advisory only (single-camera estimate). Ball tracking is experimental; check replay rather than making technical changes based on this alone."
+        raw["why"] = raw["why"] + " Note: This proxy is experimental and requires precise ball tracking; it is advisory only."
+
+    # Associate metrics metadata and confidence with every drill
     raw["drills"] = [{"id": d, **{k: v for k, v in DRILLS[d].items() if k != "dose"},
-                      "dose": DRILLS[d]["dose"].get(ctx["skill"], DRILLS[d]["dose"]["intermediate"])}
+                      "dose": DRILLS[d]["dose"].get(ctx["skill"], DRILLS[d]["dose"]["intermediate"]),
+                      "related_metrics": [
+                          f"{METRIC_DEFINITIONS.get(k, {}).get('label', k)} ({METRIC_DEFINITIONS.get(k, {}).get('unit', '')})".strip()
+                          for k in metric_keys
+                      ],
+                      "measurement_confidence": raw.get("confidence", "medium")}
                      for d in raw.get("drills", [])]
     limitations = []
     for key in raw.get("metric_keys", []):
@@ -440,24 +479,38 @@ def _finalize(raw, ctx):
             limitations.append(f"{definition['label']}: {definition['limitation']}")
     limitations.append("Thresholds are coaching heuristics for this prototype, not validated norms.")
     raw["limitations"] = limitations
+
+    # Every single recommendation displays metric (with label and unit), attempt(s), timestamps/frames, and confidence
     raw["questions"] = {
         "what": raw["observed"],
-        "evidence": "; ".join(f"attempt {e['attempt']} at {e['time_s']:.2f} s: {e['display']} ({e['confidence']})"
+        "evidence": "; ".join(f"attempt {e['attempt']} at {e['time_s']:.2f} s: {e['label']} {e['display']} ({e['confidence']} confidence)"
                               if e.get("attempt") and e.get("time_s") is not None else e.get("display", "")
                               for e in raw.get("evidence", [])[:6]),
         "why": raw["why"], "change": raw["action"],
-        "practice": "; ".join(f"{d['name']} — {d['dose']}" for d in raw["drills"]) or "No change needed; keep doing it.",
+        "practice": "; ".join(f"{d['name']} - {d['dose']}" for d in raw["drills"]) or "No change needed; keep doing it.",
     }
     return raw
 
 
 def build_findings(analysis: dict[str, Any], profile: dict[str, Any]) -> dict[str, Any]:
+    raw_shot_type = analysis.get("shot_type_id") or profile.get("shot_type_id") or analysis.get("shot_type") or "catch_and_shoot"
+    from basketball.configs.shot_types import resolve_shot_type_alias, get_shot_type
+    shot_type_id = resolve_shot_type_alias(raw_shot_type)
+    shot_type_cfg = get_shot_type(shot_type_id)
+    metric_profile = shot_type_cfg.get("metric_profile", {})
+    weights = metric_profile.get("weights", {})
+    min_clip = shot_type_cfg.get("min_clip_requirements", {})
+
     ctx = {
         "attempts": analysis.get("attempts", []),
         "consistency": analysis.get("consistency", {}),
         "camera_view": analysis.get("camera_view"),
         "skill": profile.get("skill_level") if profile.get("skill_level") in SKILL_SETTINGS else "intermediate",
         "shot_style": profile.get("shot_style", "jump_shot"),
+        "shot_type_id": shot_type_id,
+        "weights": weights,
+        "min_clip_requirements": min_clip,
+        "metric_profile": metric_profile,
     }
     findings = []
     for rule in RULES:
@@ -468,14 +521,44 @@ def build_findings(analysis: dict[str, Any], profile: dict[str, Any]) -> dict[st
     strengths = [f for f in findings if f["kind"] == "strength"]
     improvements = [f for f in findings if f["kind"] == "improvement"]
     confident = lambda items: [f for f in items if f["confidence"] in {"high", "medium"}]
+
+    not_evaluated = []
+    active = _active(ctx["attempts"])
+    if len(active) == 0:
+        not_evaluated.append({
+            "metric": "all",
+            "label": "All metrics",
+            "reason": "not enough evidence to evaluate shooting mechanics (no approved attempts)",
+        })
+    else:
+        for k in weights.keys():
+            m_def = METRIC_DEFINITIONS.get(k, {})
+            label = m_def.get("label", k)
+            unit = m_def.get("unit", "")
+            has_usable = any(
+                attempt.get("metrics", {}).get(k, {}).get("confidence") in USABLE
+                and attempt.get("metrics", {}).get(k, {}).get("value") is not None
+                for attempt in active
+            )
+            if not has_usable:
+                lbl_str = f"{label} ({unit})".strip() if unit else label
+                not_evaluated.append({
+                    "metric": k,
+                    "label": label,
+                    "reason": f"not enough evidence to evaluate {lbl_str}: fewer than required attempts or low tracking confidence",
+                })
+
     return {
         "version": COACH_VERSION,
+        "shot_type_id": shot_type_id,
         "findings": findings,
         "strengths": strengths,
         "improvements": improvements,
         "top_strengths": confident(strengths)[:3],
         "top_improvements": confident(improvements)[:3],
         "possible_issues": [f for f in improvements if f["confidence"] == "low"][:3],
+        "not_evaluated": not_evaluated,
+        "advisory_note": "Single-camera pose is an estimate. Analysis is advisory and prototype.",
     }
 
 
@@ -516,18 +599,18 @@ def build_practice_plan(coaching: dict[str, Any], analysis: dict[str, Any], prof
         drill_ids = ["one_hand_form", "same_shot_ladder"]
     balance_needed = any(f["category"] in {"balance", "torso"} for f in priorities)
     blocks = [
-        {"name": "Warm-up", "minutes": "8–10",
+        {"name": "Warm-up", "minutes": "8-10",
          "content": "Easy jog or skipping, leg swings, walking lunges, bodyweight squats, arm circles, then 10 relaxed one-hand shots at the rim."},
-        {"name": "Form shooting (1–2 m)", "minutes": "10",
+        {"name": "Form shooting (1-2 m)", "minutes": "10",
          "content": "; ".join(f"{DRILLS[d]['name']}: {DRILLS[d]['dose'].get(skill)}" for d in drill_ids[:2])},
     ]
     if balance_needed and "land_and_freeze" not in drill_ids[:2]:
-        blocks.append({"name": "Balance and landing", "minutes": "5–8",
+        blocks.append({"name": "Balance and landing", "minutes": "5-8",
                        "content": f"{DRILLS['land_and_freeze']['name']}: {DRILLS['land_and_freeze']['dose'].get(skill)}. Add single-leg balance holds, 3 × 20 s per leg."})
     blocks.append({"name": "Close-range shooting with your cue", "minutes": "10",
-                   "content": "Three spots 2–3 m from the rim, 5–10 shots each, using only your top cue: "
+                   "content": "Three spots 2-3 m from the rim, 5-10 shots each, using only your top cue: "
                               + (priorities[0]["action"] if priorities else "the same dip and finish every time.")})
-    blocks.append({"name": "Progression", "minutes": "5–10",
+    blocks.append({"name": "Progression", "minutes": "5-10",
                    "content": f"{DRILLS['same_shot_ladder']['name']}: move back one step only when 4 of 5 shots keep the cue. Stop the block when form breaks down."})
     blocks.append({"name": "Cool-down", "minutes": "5", "content": "Walk, light calf, quad, hip and shoulder stretches."})
     checklist = [f["action"] for f in priorities] + ["Landed on both feet, balanced, near the take-off spot.",
@@ -549,7 +632,7 @@ def build_practice_plan(coaching: dict[str, Any], analysis: dict[str, Any], prof
         "rest": "Leave at least one easier or rest day between hard shooting days.",
         "blocks": blocks,
         "schedule": [
-            {"week": "Week 1", "focus": "Close range only (1–3 m). Learn the cue at slow tempo."},
+            {"week": "Week 1", "focus": "Close range only (1-3 m). Learn the cue at slow tempo."},
             {"week": "Week 2", "focus": "Same drills; start the ladder. Move back a step only after the checklist is met."},
             {"week": "Week 3", "focus": "Normal shooting distance for part of the session; keep the form block first. Record a new video."},
         ],
@@ -568,7 +651,7 @@ def build_practice_plan(coaching: dict[str, Any], analysis: dict[str, Any], prof
 INJURY_TITLE = "Technique, Load Management, and Injury-Risk Reduction"
 
 GENERAL_GUIDANCE = [
-    {"topic": "Warm up first", "text": "Spend 8–10 minutes raising your heart rate and moving hips, knees, ankles and shoulders through their range before shooting hard or jumping."},
+    {"topic": "Warm up first", "text": "Spend 8-10 minutes raising your heart rate and moving hips, knees, ankles and shoulders through their range before shooting hard or jumping."},
     {"topic": "Progress gradually", "text": "Increase shot volume, distance and intensity in small steps from week to week. Avoid sudden jumps in how much you practise."},
     {"topic": "Quality before quantity", "text": "Practise the movement well at close range before adding repetitions or distance."},
     {"topic": "Strength and conditioning", "text": "Regular lower-body (squats, lunges, calf raises), trunk and shoulder strength work supports controlled take-offs and landings. A qualified coach can tailor this to you."},
@@ -599,7 +682,7 @@ def build_injury_section(analysis: dict[str, Any], coaching: dict[str, Any], pro
             "title": "Landings away from the take-off spot",
             "shows": f"On attempts {_attempt_list(landing)} you landed {_range_text(landing, 'torso lengths')} from where you took off.",
             "why": "Repeated landings while moving sideways or forward ask more of the ankles, knees and hips to stop the body, and they make the shot less repeatable.",
-            "modification": "Practise controlled, balanced two-foot landings at low intensity (Land-and-freeze, 1–2 m) before increasing distance or volume.",
+            "modification": "Practise controlled, balanced two-foot landings at low intensity (Land-and-freeze, 1-2 m) before increasing distance or volume.",
             "cannot_conclude": "The video cannot show whether these landings stress any joint or will lead to injury.",
             "evidence": _evidence(landing), "timestamps": _times(_evidence(landing)),
         })
@@ -660,7 +743,7 @@ def evaluate_attempt(attempt: dict[str, Any]) -> dict[str, list[str]]:
     ext = val("elbow_extension_peak_deg")
     if ext is not None:
         (strengths if ext >= 160 else opportunities if ext < 150 else []).append(
-            f"Arm extension {ext:.0f}°" + (" — full" if ext >= 160 else " — stays bent" if ext < 150 else ""))
+            f"Arm extension {ext:.0f}°" + (" - full" if ext >= 160 else " - stays bent" if ext < 150 else ""))
     knee = val("knee_flexion_min_deg")
     if knee is not None:
         if knee > 165:

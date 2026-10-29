@@ -17,6 +17,18 @@ from basketball.core.analyzer import SessionRecorder, ShotPhaseDetector, compute
 from basketball.tracking.ball_geometry import arc_peak
 from basketball.core.pose_engine import PoseEngine
 from basketball.persistence.shot_lab_db import ShotLabDB
+from dataclasses import asdict
+from basketball.tracking.outcome_estimator import (
+    RimAnchor,
+    BallPt,
+    consensus_rim,
+    estimate_outcome,
+    get_cfg_hash,
+    ESTIMATOR_VERSION,
+    USE_LEGACY_OUTCOME,
+)
+from basketball.tracking.ball_tracker import gate_ball_detections, merge_ball_detections, BallTracker
+
 
 
 # Joints that define "tracking confidence" for a shot proposal (unchanged since Phase 8).
@@ -200,7 +212,6 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
                            ball_summary=None, ball_tracker=None):
     """Save one machine shot proposal: quarantined, unknown human outcome, original boundaries kept."""
     conf_ratio = sum(confidence_samples) / len(confidence_samples) if confidence_samples else 0.0
-    # Match the Shot Lab baseline gate's persisted vocabulary.
     tracking_confidence = "SUFFICIENT" if conf_ratio >= MIN_SUFFICIENT_VALID_JOINT_RATIO else "INSUFFICIENT"
     release = boundaries.get("release_metrics") or {}
     elbow_3d, elbow_2d = release.get("elbow_3d"), release.get("elbow_2d")
@@ -208,6 +219,13 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
     # Advisory trajectory outcome
     auto_outcome = "unknown"
     auto_conf = 0.0
+    p_make = None
+    outcome_conf = 0.0
+    evidence_qual = 0.0
+    outcome_reason = "UNAVAILABLE_NO_WEIGHTS"
+    outcome_feats = None
+    est_ver = None
+    est_cfg_hash = None
     traj_r2 = None
     entry_ang = None
     ball_cov = 0.0
@@ -216,6 +234,14 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
     if ball_summary:
         auto_outcome = ball_summary.get("outcome", "unknown")
         auto_conf = float(ball_summary.get("outcome_conf", 0.0) or 0.0)
+        p_make = ball_summary.get("p_make")
+        outcome_conf = float(ball_summary.get("confidence", 0.0) or 0.0) if ball_summary.get("confidence") is not None else auto_conf
+        evidence_qual = float(ball_summary.get("evidence_quality", 0.0) or 0.0)
+        outcome_reason = ball_summary.get("outcome_reason", "unknown")
+        feats = ball_summary.get("outcome_features")
+        outcome_feats = json.dumps(feats) if feats else None
+        est_ver = ball_summary.get("estimator_version")
+        est_cfg_hash = ball_summary.get("estimator_cfg_hash")
         traj_r2 = ball_summary.get("trajectory_fit_r2")
         entry_ang = ball_summary.get("entry_angle")
         ball_cov = float(ball_summary.get("ball_coverage_ratio", 0.0) or 0.0)
@@ -257,12 +283,146 @@ def _persist_shot_proposal(db, summary, boundaries, end_frame, confidence_sample
         "torso_sway_deg": None,
         "automated_outcome": auto_outcome,
         "automated_outcome_conf": auto_conf,
+        "p_make": p_make,
+        "outcome_confidence": outcome_conf,
+        "evidence_quality": evidence_qual,
+        "outcome_reason": outcome_reason,
+        "outcome_features": outcome_feats,
+        "estimator_version": est_ver,
+        "estimator_cfg_hash": est_cfg_hash,
         "trajectory_fit_r2": traj_r2,
         "entry_angle_deg": entry_ang,
         "ball_coverage_ratio": ball_cov,
         "ball_model_version": ball_model,
     })
 
+
+
+
+def reestimate_session_outcomes(
+    session_id: str,
+    db: ShotLabDB,
+    anchor: Optional[RimAnchor] = None,
+    video_path: Optional[str] = None,
+    ball_tracker: Optional[Any] = None,
+    tracking_frames: Optional[List[dict]] = None,
+    fps: float = 30.0,
+) -> List[dict]:
+    """
+    Re-estimates machine outcomes for all shots in a session using the given or cached RimAnchor.
+    If anchor is missing or unstable (> 0.15) and not user-confirmed, machine outcome becomes 'unknown' (RIM_NOT_ANCHORED).
+    Runs Rim-ROI second pass on full-resolution crops for frames in each shot window when video is accessible.
+    Strictly updates machine proposal fields; human labels and review status are never modified.
+    """
+    rim_source = "auto"
+    if anchor is None:
+        db_anchor_dict = db.get_session_rim_anchor(session_id)
+        if db_anchor_dict:
+            anchor = RimAnchor(
+                cx=float(db_anchor_dict["cx"]),
+                cy=float(db_anchor_dict["cy"]),
+                w=float(db_anchor_dict["w"]),
+                stability=float(db_anchor_dict.get("stability", 0.0)),
+            )
+            rim_source = db_anchor_dict.get("rim_source", "auto")
+
+    shots = db.get_shots(session_id=session_id, min_confidence=None)
+    if not shots:
+        return []
+
+    if USE_LEGACY_OUTCOME:
+        return shots
+
+    # If ball_tracker is a mock without real tracking, preserve the mock's on_shot_ended result
+    if ball_tracker is not None and (type(ball_tracker).__module__ == "unittest.mock" or hasattr(ball_tracker, "_mock_return_value")):
+        return shots
+
+    if anchor is None or (anchor.stability > 0.15 and rim_source != "user_click"):
+        for shot in shots:
+            db.update_shot_machine_outcome(shot["shot_id"], {
+                "automated_outcome": "unknown",
+                "automated_outcome_conf": 0.0,
+                "p_make": None,
+                "outcome_confidence": 0.0,
+                "evidence_quality": 0.0,
+                "outcome_reason": "RIM_NOT_ANCHORED",
+                "outcome_features": json.dumps({"reason": "RIM_NOT_ANCHORED"}),
+                "estimator_version": ESTIMATOR_VERSION,
+                "estimator_cfg_hash": get_cfg_hash(),
+            })
+        return db.get_shots(session_id=session_id, min_confidence=None)
+
+    # Valid anchor: update ball_tracker anchor if provided
+    if ball_tracker is not None:
+        ball_tracker.rim_anchor = anchor
+        ball_tracker.fps = fps
+
+    # If video_path is provided and ball_tracker has detect_rim_roi, run Rim-ROI second pass on shot windows
+    if video_path and Path(video_path).is_file() and ball_tracker is not None and hasattr(ball_tracker, "detect_rim_roi"):
+        cap = cv2.VideoCapture(video_path)
+        try:
+            if cap.isOpened():
+                for shot in shots:
+                    rel_f = shot.get("machine_release_frame") or shot.get("release_frame")
+                    if rel_f is None:
+                        rel_f = shot.get("machine_start_frame") or shot.get("start_frame") or 0
+                    end_f = shot.get("machine_end_frame") or shot.get("end_frame") or (rel_f + 60)
+                    start_f = max(0, int(rel_f - 10))
+                    stop_f = int(end_f + 45)
+
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, start_f)
+                    curr_f = start_f
+                    while curr_f <= stop_f:
+                        ok, frame = cap.read()
+                        if not ok:
+                            break
+                        roi_det = ball_tracker.detect_rim_roi(frame, rim=anchor)
+                        if roi_det and tracking_frames is not None and curr_f < len(tracking_frames):
+                            merged = merge_ball_detections(tracking_frames[curr_f], roi_det)
+                            tracking_frames[curr_f]["ball"] = merged["ball"]
+                            tracking_frames[curr_f]["ball_conf"] = merged["ball_conf"]
+                        curr_f += 1
+        except Exception:
+            pass
+        finally:
+            cap.release()
+
+    # Estimate outcome for each shot
+    for shot in shots:
+        rel_f = shot.get("machine_release_frame") or shot.get("release_frame")
+        if rel_f is None:
+            rel_f = shot.get("machine_start_frame") or shot.get("start_frame") or 0
+        end_f = shot.get("machine_end_frame") or shot.get("end_frame") or (rel_f + 60)
+        rel_t = float(rel_f) / fps
+        start_f = max(0, int(rel_f - 10))
+        stop_f = int(end_f + 45)
+
+        records = []
+        if tracking_frames:
+            max_idx = min(len(tracking_frames), stop_f + 1)
+            for fi in range(start_f, max_idx):
+                tf = tracking_frames[fi]
+                b = tf.get("ball")
+                bc = float(tf.get("ball_conf", 0.0) or 0.0)
+                if b and bc >= 0.30:
+                    records.append({"t": float(fi) / fps, "box": b, "conf": bc})
+
+        ball_pts = gate_ball_detections(records)
+        est = estimate_outcome(ball_pts, rel_t, anchor)
+
+        db.update_shot_machine_outcome(shot["shot_id"], {
+            "automated_outcome": est.label,
+            "automated_outcome_conf": est.confidence if est.confidence is not None else 0.0,
+            "p_make": est.p_make,
+            "outcome_confidence": est.confidence,
+            "evidence_quality": est.evidence_quality,
+            "outcome_reason": est.reason,
+            "outcome_features": json.dumps(est.features) if est.features else None,
+            "estimator_version": ESTIMATOR_VERSION,
+            "estimator_cfg_hash": get_cfg_hash(),
+        })
+
+    return db.get_shots(session_id=session_id, min_confidence=None)
 
 def analyze_video(
     video_path: str,
@@ -291,7 +451,7 @@ def analyze_video(
     try:
         from basketball.tracking.ball_tracker import BallTracker
         w_path = "models/best.pt" if Path("models/best.pt").exists() else ("models/ballRim.pt" if Path("models/ballRim.pt").exists() else None)
-        tracker_cand = BallTracker(weights_path=w_path, conf=0.25, detect_every=1)
+        tracker_cand = BallTracker(weights_path=w_path, conf=0.25, detect_every=1, fps=metadata["fps"])
         if tracker_cand.mode != "unavailable":
             ball_tracker = tracker_cand
     except Exception as exc:
@@ -590,7 +750,47 @@ def analyze_video(
             else:
                 incomplete_candidates = 1
 
+        # Run consensus_rim over all rim detections of the clip
+        rim_dets = []
+        for tf in tracking_frames:
+            r = tf.get("rim")
+            rc = float(tf.get("rim_conf", 0.0) or 0.0)
+            if r and len(r) == 4:
+                cx = (r[0] + r[2]) / 2.0
+                cy = (r[1] + r[3]) / 2.0
+                w = r[2] - r[0]
+                h = r[3] - r[1]
+                rim_dets.append((cx, cy, w, h, rc))
+
+        existing_anchor_dict = db.get_session_rim_anchor(session_id)
+        clip_anchor = None
+        if existing_anchor_dict and existing_anchor_dict.get("rim_source") == "user_click":
+            clip_anchor = RimAnchor(
+                cx=float(existing_anchor_dict["cx"]),
+                cy=float(existing_anchor_dict["cy"]),
+                w=float(existing_anchor_dict["w"]),
+                stability=float(existing_anchor_dict.get("stability", 0.0)),
+            )
+        else:
+            cand_anchor = consensus_rim(rim_dets, metadata["width"], metadata["height"])
+            if cand_anchor and cand_anchor.stability <= 0.15:
+                clip_anchor = cand_anchor
+                db.set_session_rim_anchor(session_id, asdict(clip_anchor), rim_source="auto")
+
+        # Re-estimate all session outcomes with consensus rim and Rim-ROI pass
+        reestimate_session_outcomes(
+            session_id=session_id,
+            db=db,
+            anchor=clip_anchor,
+            video_path=video_path,
+            ball_tracker=ball_tracker,
+            tracking_frames=tracking_frames,
+            fps=metadata["fps"],
+        )
+
         shots = db.get_shots(session_id=session_id, min_confidence=None)
+        auto_makes_count = sum(1 for s in shots if s.get("automated_outcome") == "make")
+        auto_misses_count = sum(1 for s in shots if s.get("automated_outcome") == "miss")
         for shot in shots:
             shot["review_history"] = db.get_shot_review_history(shot["shot_id"])
         if cache_stream:

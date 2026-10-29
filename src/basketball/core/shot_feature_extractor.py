@@ -281,3 +281,119 @@ class ShotFeatureExtractor:
                 classes[start:end + 1] = c_id
 
         return binary, classes
+
+    @staticmethod
+    def compute_torso_lean_deg(landmarks: Dict[int, Any], side: str = "right") -> Optional[float]:
+        """Compute torso sagittal lean angle relative to vertical in degrees."""
+        if not landmarks:
+            return None
+        sh_idx = 11 if side == "left" else 12
+        hip_idx = 23 if side == "left" else 24
+        sh = landmarks.get(sh_idx)
+        hip = landmarks.get(hip_idx)
+        if not sh or not hip:
+            return None
+        dx = sh["norm_x"] - hip["norm_x"]
+        dy = sh["norm_y"] - hip["norm_y"]
+        # In image coords, shoulder is above hip, so dy is negative when standing upright
+        angle_rad = math.atan2(abs(dx), abs(dy))
+        return round(math.degrees(angle_rad), 1)
+
+    @staticmethod
+    def compute_hip_shoulder_separation_deg(landmarks: Dict[int, Any]) -> Optional[float]:
+        """Compute rotational separation angle between shoulder and hip lines in image plane (degrees)."""
+        if not landmarks:
+            return None
+        l_sh = landmarks.get(11)
+        r_sh = landmarks.get(12)
+        l_hip = landmarks.get(23)
+        r_hip = landmarks.get(24)
+        if not (l_sh and r_sh and l_hip and r_hip):
+            return None
+        sh_angle = math.degrees(math.atan2(r_sh["norm_y"] - l_sh["norm_y"], r_sh["norm_x"] - l_sh["norm_x"]))
+        hip_angle = math.degrees(math.atan2(r_hip["norm_y"] - l_hip["norm_y"], r_hip["norm_x"] - l_hip["norm_x"]))
+        diff = abs(sh_angle - hip_angle)
+        if diff > 180.0:
+            diff = 360.0 - diff
+        return round(diff, 1)
+
+    @classmethod
+    def compute_stop_balance_sway(
+        cls,
+        frame_history: List[Dict[str, Any]],
+        start_idx: int,
+        stop_idx: int
+    ) -> Optional[float]:
+        """Compute normalized lateral hip sway range during deceleration or plant window."""
+        if not frame_history or start_idx >= stop_idx:
+            return None
+        start = max(0, start_idx)
+        end = min(len(frame_history), stop_idx + 1)
+        window = frame_history[start:end]
+        if len(window) < 2:
+            return None
+        xs: List[float] = []
+        for f in window:
+            lm = f.get("landmarks") or {}
+            lh = lm.get(23)
+            rh = lm.get(24)
+            if lh and rh and lh.get("norm_x") is not None and rh.get("norm_x") is not None:
+                xs.append((lh["norm_x"] + rh["norm_x"]) / 2.0)
+        if len(xs) < 2:
+            return None
+        scale = cls.compute_torso_scale((window[0].get("landmarks") or {}))
+        return round((max(xs) - min(xs)) / max(0.1, scale), 2)
+
+    @classmethod
+    def compute_backward_displacement(
+        cls,
+        frame_history: List[Dict[str, Any]],
+        start_idx: int,
+        plant_idx: int,
+        side: str = "right"
+    ) -> Optional[float]:
+        """Compute horizontal backward displacement normalized by torso length (for step-back shots)."""
+        if not frame_history or start_idx >= plant_idx:
+            return None
+        s_idx = max(0, start_idx)
+        p_idx = min(len(frame_history) - 1, plant_idx)
+        start_lm = frame_history[s_idx].get("landmarks") or {}
+        plant_lm = frame_history[p_idx].get("landmarks") or {}
+        hip_idx = 23 if side == "left" else 24
+        s_hip = start_lm.get(hip_idx)
+        p_hip = plant_lm.get(hip_idx)
+        if not s_hip or not p_hip:
+            return None
+        dx = abs(p_hip["norm_x"] - s_hip["norm_x"])
+        scale = cls.compute_torso_scale(start_lm, side=side)
+        return round(dx / max(0.1, scale), 2)
+
+    @classmethod
+    def compute_landing_displacement(
+        cls,
+        frame_history: List[Dict[str, Any]],
+        takeoff_idx: int,
+        landing_idx: int
+    ) -> Optional[float]:
+        """Compute horizontal distance between takeoff spot and landing spot in torso lengths."""
+        if not frame_history or takeoff_idx >= landing_idx:
+            return None
+        t_idx = max(0, takeoff_idx)
+        l_idx = min(len(frame_history) - 1, landing_idx)
+        t_lm = frame_history[t_idx].get("landmarks") or {}
+        l_lm = frame_history[l_idx].get("landmarks") or {}
+        t_ankles = [t_lm.get(j) for j in (27, 28) if t_lm.get(j)]
+        l_ankles = [l_lm.get(j) for j in (27, 28) if l_lm.get(j)]
+        if not t_ankles or not l_ankles:
+            return None
+        t_x = sum(a["norm_x"] for a in t_ankles) / len(t_ankles)
+        l_x = sum(a["norm_x"] for a in l_ankles) / len(l_ankles)
+        scale = cls.compute_torso_scale(t_lm)
+        return round(abs(l_x - t_x) / max(0.1, scale), 2)
+
+    @staticmethod
+    def compute_load_to_release_ms(dip_frame: int, release_frame: int, fps: float = 30.0) -> float:
+        """Compute time duration in ms between dip and release frames."""
+        dt_frames = max(0, release_frame - dip_frame)
+        return round(dt_frames * 1000.0 / max(1.0, fps), 1)
+

@@ -38,6 +38,10 @@ from basketball.coaching.drills_catalog import get_catalog as get_drills_catalog
 from basketball.services.video_analysis_service import (AnalysisCancelled, analyze_video, make_browser_replay,
                                     prepare_video_for_analysis)
 from basketball.services.live_service import LiveCameraEngine
+from basketball.services.drill_service import DrillTrackingEngine
+from dataclasses import asdict
+from basketball.tracking.outcome_estimator import RimAnchor
+from basketball.services.video_analysis_service import reestimate_session_outcomes
 import basketball.services.report_service as report_service
 import basketball.analysis.shooting_analysis as shooting_analysis
 from basketball.services.video_analysis_service import KEY_JOINTS, MIN_SUFFICIENT_VALID_JOINT_RATIO
@@ -54,7 +58,9 @@ if not WEB_ROOT.exists() and (Path.cwd() / "web").exists():
 MAX_UPLOAD_BYTES = 250 * 1024 * 1024
 ALLOWED_EXTENSIONS = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
 VALID_CAMERA_VIEWS = {"frontal", "side_90", "oblique_45", "rear"}
-VALID_SHOT_TYPES = {"catch_and_shoot", "off_dribble", "free_throw"}
+from basketball.configs.shot_types import SHOT_TYPE_REGISTRY, SHOT_TYPE_ALIASES, resolve_shot_type, CONFIG_VERSION
+
+VALID_SHOT_TYPES = set(SHOT_TYPE_REGISTRY.keys()) | set(SHOT_TYPE_ALIASES.keys()) | {"off_dribble", "off_the_dribble"}
 VALID_SHOT_STYLES = {"jump_shot", "set_shot"}
 VALID_HANDEDNESS = {"left", "right", "ambidextrous", "unspecified"}
 VALID_SKILL_LEVELS = {"beginner", "intermediate", "advanced", "coach"}
@@ -628,19 +634,26 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/auth/me":
             return self._json(200, {"user": self._get_current_user()})
+        if parsed.path == "/api/shot-types":
+            return self._json(200, {
+                "version": CONFIG_VERSION,
+                "shot_types": SHOT_TYPE_REGISTRY,
+                "aliases": SHOT_TYPE_ALIASES,
+            })
         if parsed.path == "/api/connection":
             if not self._is_local_request():
                 return self._text_error(403, "Connection details are only shown on the computer running the app.")
+            client_ip = self.client_address[0] if self.client_address else None
+            if client_ip and hasattr(self.server, "tls_events") and client_ip in self.server.tls_events:
+                with getattr(self.server, "_tls_lock", contextlib.nullcontext()):
+                    self.server.tls_events.pop(client_ip, None)
             return self._json(200, {
                 "lan_enabled": bool(self.server.lan_mode), "urls": self.server.lan_urls,
                 "access_code": self.server.access_token if self.server.lan_mode else None,
                 "tls": bool(self.server.tls_enabled),
                 "https_builtin": bool(self.server.ca_der_path),
                 "setup_url": self.server.setup_url,
-                "tls_problems": [{"ip": ip, "reason": event["reason"], "hint": event["hint"],
-                                  "seconds_ago": int(time.time() - event["at"])}
-                                 for ip, event in sorted(getattr(self.server, "tls_events", {}).items(),
-                                                         key=lambda kv: -kv[1]["at"])][:5],
+                "tls_problems": [],
                 "ca_url": "/shotlab-ca.crt" if self.server.ca_der_path else None,
                 "ca_fingerprint": self.server.ca_fingerprint,
                 "how_to_enable": "Restart with --lan to let phones on the same Wi-Fi connect (see README).",
@@ -677,6 +690,10 @@ class AppHandler(BaseHTTPRequestHandler):
             folder = self.server.keyframe_dir / session_id
             return self._stream_local_file(str(folder / name), self.server.keyframe_dir, allow_range=False,
                                            content_type="image/jpeg")
+        if parsed.path == "/api/live/recap":
+            return self._handle_live_recap()
+        if parsed.path == "/api/drills/session/status":
+            return self._handle_drills_status()
         if parsed.path == "/api/drills":
             params = parse_qs(parsed.query)
             category = params.get("category", [None])[0]
@@ -754,6 +771,16 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._stream_local_file(str(pose_path), self.server.pose_cache_dir, allow_range=False,
                                            content_type="application/json", content_encoding="gzip")
 
+        rim_anchor_match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/rim-anchor", parsed.path)
+        if rim_anchor_match:
+            session_id = rim_anchor_match.group(1)
+            if not ShotLabDB(self.server.db_path).get_session(session_id):
+                return self._text_error(404, "Session not found")
+            return self._json(200, {
+                "session_id": session_id,
+                "rim_anchor": ShotLabDB(self.server.db_path).get_session_rim_anchor(session_id),
+            })
+
         match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})", parsed.path)
         insights_match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/insights", parsed.path)
         if insights_match:
@@ -775,6 +802,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 shot["review_history"] = db.get_shot_review_history(shot["shot_id"])
             return self._json(200, {
                 "session_id": session_id,
+                "rim_anchor": db.get_session_rim_anchor(session_id),
                 "shots": shots,
                 "shot_count": len(shots),
                 "outcomes": {"human": "unknown_pending_review", "automated": "not_run"},
@@ -815,10 +843,20 @@ class AppHandler(BaseHTTPRequestHandler):
                   "/assets/app.css": ("app.css", "text/css; charset=utf-8"),
                   "/assets/report.js": ("report.js", "text/javascript; charset=utf-8"),
                   "/assets/workout.js": ("workout.js", "text/javascript; charset=utf-8"),
+                  "/assets/practice_voice.js": ("practice_voice.js", "text/javascript; charset=utf-8"),
                   "/assets/hero.jpg": ("assets/hero.jpg", "image/jpeg"),
                   "/assets/4918497.jpg": ("assets/4918497.jpg", "image/jpeg"),
                   "/assets/fonts/archivo-variable.woff2": ("fonts/archivo-variable.woff2", "font/woff2")}
         asset = assets.get(parsed.path)
+        if not asset and parsed.path.startswith("/assets/"):
+            rel_name = parsed.path[len("/assets/"):]
+            candidate = (WEB_ROOT / rel_name).resolve()
+            if candidate.is_file() and str(candidate).startswith(str(WEB_ROOT.resolve())):
+                content_type = "text/javascript; charset=utf-8" if rel_name.endswith(".js") else \
+                               "text/css; charset=utf-8" if rel_name.endswith(".css") else \
+                               "image/jpeg" if rel_name.endswith((".jpg", ".jpeg")) else \
+                               "image/png" if rel_name.endswith(".png") else "application/octet-stream"
+                asset = (rel_name, content_type)
         if asset:
             path = WEB_ROOT / asset[0]
             try:
@@ -924,6 +962,7 @@ class AppHandler(BaseHTTPRequestHandler):
             height_cm = data.get("height_cm")
             wingspan_cm = data.get("wingspan_cm")
             goals = data.get("goals")
+            pain_reported = bool(data.get("pain_reported", False))
             onboarding_completed = data.get("onboarding_completed", False)
 
             db = ShotLabDB(self.server.db_path)
@@ -941,6 +980,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     height_cm=float(height_cm) if height_cm else None,
                     wingspan_cm=float(wingspan_cm) if wingspan_cm else None,
                     goals=goals,
+                    pain_reported=pain_reported,
                     onboarding_completed=bool(onboarding_completed)
                 )
             except ValueError as exc:
@@ -1008,10 +1048,19 @@ class AppHandler(BaseHTTPRequestHandler):
             updated = db.update_user_profile(user["id"], data)
             return self._json(200, {"user": updated})
 
+        if path == "/api/drills/session/start":
+            return self._handle_drills_start()
+        if path == "/api/drills/process-frame":
+            return self._handle_drills_process_frame()
+        if path == "/api/drills/session/stop":
+            return self._handle_drills_stop()
+
         if path == "/api/live/process-frame":
             return self._handle_live_process_frame()
         if path == "/api/live/reset":
             return self._handle_live_reset()
+        if path == "/api/live/recap":
+            return self._handle_live_recap()
 
         create_workout = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/workouts", path)
         if create_workout:
@@ -1029,6 +1078,10 @@ class AppHandler(BaseHTTPRequestHandler):
         manual_match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/shots", path)
         if manual_match:
             return self._add_manual_attempt(manual_match.group(1))
+
+        rim_anchor_post = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/rim-anchor", path)
+        if rim_anchor_post:
+            return self._set_session_rim_anchor(rim_anchor_post.group(1))
 
         refresh_match = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/refresh-pose", path)
         if refresh_match:
@@ -1143,18 +1196,24 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._text_error(status_code, msg)
 
         query = parse_qs(urlparse(self.path).query)
+        curr_user = self._get_current_user()
         get_value = lambda key, default: query.get(key, [default])[0].strip()
-        player_id = get_value("player_id", "player")
+        player_id = get_value("player_id", curr_user["player_id"] if curr_user else "player")
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", player_id):
             return fail_upload(400, "Player ID may contain only letters, numbers, underscore, or hyphen")
 
         camera_view = get_value("camera_view", "frontal")
-        shot_type = get_value("shot_type", "catch_and_shoot")
-        shot_style = get_value("shot_style", "jump_shot")
-        handedness = get_value("handedness", "unspecified")
-        skill_level = get_value("skill_level", "beginner")
+        raw_shot_type = get_value("shot_type_id", get_value("shot_type", "catch_and_shoot"))
+        shot_type_id = resolve_shot_type(raw_shot_type)
+        shot_type = shot_type_id
+        shot_style = get_value("shot_style", curr_user.get("shot_style", "jump_shot") if curr_user else "jump_shot")
+        handedness = get_value("handedness", curr_user.get("handedness", "unspecified") if curr_user else "unspecified")
+        skill_level = get_value("skill_level", curr_user.get("skill_level", "beginner") if curr_user else "beginner")
         goals = get_value("goals", "")
-        pain_reported = get_value("pain_reported", "0") in {"1", "true", "yes"}
+        if "pain_reported" in query:
+            pain_reported = get_value("pain_reported", "0") in {"1", "true", "yes"}
+        else:
+            pain_reported = bool(curr_user.get("pain_reported", False)) if curr_user else False
         if camera_view not in VALID_CAMERA_VIEWS or shot_type not in VALID_SHOT_TYPES or shot_style not in VALID_SHOT_STYLES:
             return fail_upload(400, "Choose a supported camera view, shot type, and shot style")
         if handedness not in VALID_HANDEDNESS or skill_level not in VALID_SKILL_LEVELS or len(goals) > 500:
@@ -1208,6 +1267,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 fps=video_metadata["fps"],
                 model_version="mediapipe_pose_current",
                 notes=json.dumps(profile, ensure_ascii=False),
+                shot_type_id=shot_type_id,
             )
         except Exception as exc:
             upload_path.unlink(missing_ok=True)
@@ -1215,7 +1275,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 Path(analysis_video_path).unlink(missing_ok=True)
             self.server.worker_slots.release()
             return self._text_error(500, f"Could not create a session record: {exc}")
-        metadata = {"camera_view": camera_view, "shot_type": shot_type, "shot_style": shot_style}
+        metadata = {"camera_view": camera_view, "shot_type": shot_type, "shot_style": shot_style, "shot_type_id": shot_type_id}
         job_created = False
         try:
             self.server.job_store.create(job_id, session_id, player_id, str(upload_path))
@@ -1301,10 +1361,197 @@ class AppHandler(BaseHTTPRequestHandler):
                 engine = None
         if engine is None:
             return self._text_error(503, "Live camera engine is not available")
-        res = engine.reset_session()
+        player_id = None
+        shot_style = None
+        camera_view = None
+        shot_type = None
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+            if size > 0:
+                body = json.loads(self.rfile.read(size))
+                player_id = body.get("player_id")
+                shot_style = body.get("shot_style")
+                camera_view = body.get("camera_view")
+                shot_type = resolve_shot_type(body.get("shot_type_id") or body.get("shot_type"))
+        except Exception:
+            pass
+        res = engine.reset_session(
+            player_id=player_id,
+            shot_style=shot_style,
+            camera_view=camera_view,
+            shot_type=shot_type,
+        )
         payload = {"status": "ok", "stats": res}
         payload.update(res)
         return self._json(200, payload)
+
+    def _handle_live_recap(self):
+        engine = getattr(self.server, "live_engine", None)
+        if engine is None:
+            return self._json(200, {
+                "event_type": "recap",
+                "text": "Practice session ended. Good session.",
+                "caption": "Practice session ended",
+                "speak": True,
+                "total_shots": 0,
+            })
+        recap = engine.get_session_recap()
+        return self._json(200, recap)
+
+    def _get_drill_engine(self):
+        engine = getattr(self.server, "drill_engine", None)
+        if engine is None:
+            try:
+                engine = DrillTrackingEngine()
+                self.server.drill_engine = engine
+            except Exception:
+                engine = None
+        return engine
+
+    def _handle_drills_start(self):
+        engine = self._get_drill_engine()
+        if engine is None:
+            return self._text_error(503, "Drill tracking engine is not available")
+        drill_id = "pound_dribble"
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 0:
+                payload = self._read_json(16 * 1024)
+                drill_id = payload.get("drill_id", drill_id)
+        except Exception:
+            pass
+        res = engine.start_session(drill_id)
+        return self._json(200, res)
+
+    def _handle_drills_process_frame(self):
+        engine = self._get_drill_engine()
+        if engine is None:
+            return self._text_error(503, "Drill tracking engine is not available")
+        try:
+            content_type = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            size = int(self.headers.get("Content-Length", "0"))
+            if size <= 0 or size > 8 * 1024 * 1024:
+                return self._text_error(400, "Frame must be between 1 byte and 8 MB")
+
+            client_ts = None
+            if self.headers.get("X-Timestamp-Ms"):
+                try:
+                    client_ts = int(self.headers["X-Timestamp-Ms"])
+                except ValueError:
+                    pass
+
+            if content_type == "application/json":
+                payload = json.loads(self.rfile.read(size))
+                img_data = payload.get("image", "")
+                if "," in img_data:
+                    img_data = img_data.split(",", 1)[1]
+                import base64
+                frame_bytes = base64.b64decode(img_data)
+                if payload.get("timestamp_ms") is not None:
+                    client_ts = int(payload["timestamp_ms"])
+            else:
+                frame_bytes = self.rfile.read(size)
+
+            if not frame_bytes:
+                return self._text_error(400, "Empty frame data")
+
+            np_arr = np.frombuffer(frame_bytes, np.uint8)
+            frame_bgr = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+            if frame_bgr is None:
+                return self._text_error(400, "Could not decode frame as image")
+
+            result = engine.process_frame(frame_bgr, client_ts)
+            return self._json(200, result)
+        except Exception as exc:
+            return self._text_error(500, f"Drill frame error: {exc}")
+
+    def _handle_drills_stop(self):
+        engine = self._get_drill_engine()
+        if engine is None:
+            return self._text_error(503, "Drill tracking engine is not available")
+        summary = engine.stop_session()
+        return self._json(200, summary)
+
+    def _handle_drills_status(self):
+        engine = self._get_drill_engine()
+        if engine is None:
+            return self._json(200, {"is_active": False, "available": False})
+        return self._json(200, {
+            "available": True,
+            "is_active": engine.is_active,
+            "drill_id": engine.drill_id,
+            "rep_count": engine.bounce_tracker.reps,
+        })
+
+    def _set_session_rim_anchor(self, session_id: str):
+        db = ShotLabDB(self.server.db_path)
+        if not db.get_session(session_id):
+            return self._text_error(404, "Session not found")
+        data = self._read_json()
+        if not isinstance(data, dict):
+            return self._text_error(400, "Expected JSON object")
+        try:
+            cx = float(data.get("cx", 0.0))
+            cy = float(data.get("cy", 0.0))
+            w = float(data.get("w", 0.0))
+        except (ValueError, TypeError):
+            return self._text_error(400, "cx, cy, and w must be valid numbers")
+
+        if w <= 0.0:
+            return self._text_error(400, "Rim width must be greater than zero")
+
+        anchor = RimAnchor.from_user_click(cx, cy, w)
+        db.set_session_rim_anchor(session_id, asdict(anchor), rim_source="user_click")
+
+        cache_file = self.server.pose_cache_dir / f"{session_id}.json.gz"
+        tracking_frames = None
+        fps = 30.0
+        cdata = None
+        if cache_file.is_file():
+            try:
+                with gzip.open(cache_file, "rt", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                    tracking_frames = cdata.get("ball_rim", [])
+                    fps = float(cdata.get("fps", 30.0))
+            except Exception:
+                pass
+
+        media = self.server.job_store.media_for_session(session_id) or {}
+        video_path = media.get("video_path") or media.get("replay_path")
+        tracker = None
+        try:
+            from basketball.tracking.ball_tracker import BallTracker
+            w_path = "models/best.pt" if Path("models/best.pt").exists() else ("models/ballRim.pt" if Path("models/ballRim.pt").exists() else None)
+            tracker = BallTracker(weights_path=w_path, conf=0.25, detect_every=1, fps=fps, rim_anchor=anchor)
+        except Exception:
+            tracker = None
+
+        shots = reestimate_session_outcomes(
+            session_id=session_id,
+            db=db,
+            anchor=anchor,
+            video_path=video_path,
+            ball_tracker=tracker,
+            tracking_frames=tracking_frames,
+            fps=fps,
+        )
+
+        if cache_file.is_file() and cdata is not None and tracking_frames is not None:
+            try:
+                cdata["ball_rim"] = tracking_frames
+                with gzip.open(cache_file, "wt", encoding="utf-8") as f:
+                    json.dump(cdata, f, separators=(",", ":"))
+            except Exception:
+                pass
+
+        for shot in shots:
+            shot["review_history"] = db.get_shot_review_history(shot["shot_id"])
+
+        return self._json(200, {
+            "status": "ok",
+            "rim_anchor": asdict(anchor),
+            "shots": shots,
+        })
 
     def _add_manual_attempt(self, session_id):
         """Add an attempt the detector missed. Human-made, so it is approved with provenance."""
@@ -1327,7 +1574,7 @@ class AppHandler(BaseHTTPRequestHandler):
             if isinstance(value, bool) or not isinstance(value, int):
                 return self._text_error(400, f"{key} must be a whole frame number")
             if not 0 <= value < media["frame_count"]:
-                return self._text_error(400, f"{key} must be within this video's frame range (0–{media['frame_count'] - 1})")
+                return self._text_error(400, f"{key} must be within this video's frame range (0-{media['frame_count'] - 1})")
             frames[key] = value
         ordered = [frames[k] for k in ("start_frame", "set_frame", "release_frame", "end_frame") if k in frames]
         if any(b < a for a, b in zip(ordered, ordered[1:])) or frames["end_frame"] - frames["start_frame"] < 3:
@@ -1819,6 +2066,7 @@ class LocalAppServer(ThreadingHTTPServer):
             print(f"[https] {ip}: {reason}. {hint}", flush=True)
         try:
             self.live_engine = LiveCameraEngine()
+            self.drill_engine = DrillTrackingEngine()
         except Exception:
             self.live_engine = None
 
@@ -1856,7 +2104,7 @@ choose <b>Shot Lab Local CA</b> and tap <b>Install</b>.</li>
 Install a certificate › CA certificate</b> (names vary by phone; search Settings for "CA certificate"), and pick
 <code>shotlab-local-ca.crt</code>.</li></ol>
 <h2>Then open Shot Lab securely</h2>
-<p><a href="__HTTPS__"><code>__HTTPS__</code></a> — enter the access code shown on the computer.
+<p><a href="__HTTPS__"><code>__HTTPS__</code></a> - enter the access code shown on the computer.
 There should be <b>no certificate warning</b>; if there is, the certificate is not trusted yet (repeat the steps).
 Do not bypass the warning.</p>
 <p class="note">This setup page only offers the public certificate. It cannot be used to open Shot Lab, and the
@@ -2103,6 +2351,10 @@ def main():
                 print(f"AI coach chat key check ({llm_coach.PROVIDER_LABELS[name]}, {role}): {status['message']}")
         threading.Thread(target=_check_keys, daemon=True, name="llm-key-check").start()
     server.live_engine = LiveCameraEngine()
+    try:
+        server.drill_engine = DrillTrackingEngine()
+    except Exception:
+        server.drill_engine = None
     server.lan_mode = bool(args.lan)
     server.access_token = access_code
     server.tls_enabled = scheme == "https"

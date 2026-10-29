@@ -15,7 +15,9 @@ from typing import Dict, Any, List, Optional, Tuple
 import contextlib
 import hashlib, base64, os, secrets, re
 
-SCHEMA_VERSION = 8
+from basketball.configs.shot_types import CONFIG_VERSION, resolve_shot_type
+
+SCHEMA_VERSION = 9
 
 TAXONOMY_HARD_NEGATIVES = [
     "dribble_drive",
@@ -89,6 +91,7 @@ class ShotLabDB:
                     height_cm REAL,
                     wingspan_cm REAL,
                     goals TEXT,
+                    pain_reported INTEGER DEFAULT 0,
                     onboarding_completed INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -113,9 +116,12 @@ class ShotLabDB:
                     player_id TEXT NOT NULL,
                     camera_view TEXT NOT NULL, -- 'frontal', 'side_90', 'oblique_45'
                     shot_type TEXT NOT NULL,   -- 'catch_and_shoot', 'off_dribble', 'free_throw'
+                    shot_type_id TEXT DEFAULT 'catch_and_shoot',
                     shot_style TEXT DEFAULT 'jump_shot', -- 'jump_shot', 'set_shot'
                     fps REAL DEFAULT 30.0,
                     model_version TEXT,
+                    rim_anchor TEXT,
+                    rim_source TEXT DEFAULT 'auto',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     notes TEXT,
                     FOREIGN KEY (player_id) REFERENCES players (player_id)
@@ -130,7 +136,10 @@ class ShotLabDB:
                     player_id TEXT NOT NULL,
                     camera_view TEXT NOT NULL,
                     shot_type TEXT NOT NULL,
+                    shot_type_id TEXT DEFAULT 'catch_and_shoot',
                     shot_style TEXT DEFAULT 'jump_shot',
+                    config_version TEXT,
+                    detector_profile_id TEXT,
 
                     -- Machine detected event boundaries (Immutable from capture)
                     machine_start_frame INTEGER,
@@ -173,9 +182,16 @@ class ShotLabDB:
                     -- Raw reference
                     raw_landmarks_ref TEXT,
 
-                    -- Advisory / Shadow Ball & Rim Outcome Tracking (Phase 7)
+                    -- Advisory / Shadow Ball & Rim Outcome Tracking (Phase 7 & 8)
                     automated_outcome TEXT DEFAULT 'unknown',
                     automated_outcome_conf REAL DEFAULT 0.0,
+                    p_make REAL,
+                    outcome_confidence REAL,
+                    evidence_quality REAL,
+                    outcome_reason TEXT,
+                    outcome_features TEXT,
+                    estimator_version TEXT,
+                    estimator_cfg_hash TEXT,
                     trajectory_fit_r2 REAL,
                     entry_angle_deg REAL,
                     ball_coverage_ratio REAL DEFAULT 0.0,
@@ -195,6 +211,7 @@ class ShotLabDB:
                     player_id TEXT NOT NULL,
                     camera_view TEXT NOT NULL,
                     shot_type TEXT NOT NULL,
+                    shot_type_id TEXT DEFAULT 'catch_and_shoot',
                     shot_style TEXT DEFAULT 'jump_shot',
                     sample_size_makes INTEGER NOT NULL,
                     sample_size_misses INTEGER NOT NULL,
@@ -273,6 +290,7 @@ class ShotLabDB:
                     file_sha256 TEXT,
                     player_id TEXT NOT NULL,
                     camera_view TEXT NOT NULL,
+                    shot_type_id TEXT DEFAULT 'catch_and_shoot',
                     shot_style TEXT DEFAULT 'jump_shot',
                     fps REAL DEFAULT 30.0,
                     frame_count INTEGER,
@@ -366,6 +384,9 @@ class ShotLabDB:
                     analysis_version TEXT NOT NULL,
                     boundaries_key TEXT NOT NULL,
                     analysis_json TEXT NOT NULL,
+                    config_version TEXT,
+                    detector_profile_id TEXT,
+                    shot_type_id TEXT,
                     computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (shot_id) REFERENCES shots (shot_id)
                 )
@@ -424,19 +445,36 @@ class ShotLabDB:
     def _migrate_columns(self, cursor: sqlite3.Cursor) -> None:
         """Add missing columns to existing tables if schema was initialized earlier."""
         table_columns = {
-            "sessions": [("shot_style", "TEXT DEFAULT 'jump_shot'")],
+            "users": [("pain_reported", "INTEGER DEFAULT 0")],
+            "sessions": [
+                ("shot_style", "TEXT DEFAULT 'jump_shot'"),
+                ("shot_type_id", "TEXT DEFAULT 'catch_and_shoot'"),
+                ("rim_anchor", "TEXT"),
+                ("rim_source", "TEXT DEFAULT 'auto'"),
+            ],
             "shots": [
                 ("shot_style", "TEXT DEFAULT 'jump_shot'"),
+                ("shot_type_id", "TEXT DEFAULT 'catch_and_shoot'"),
+                ("config_version", "TEXT"),
+                ("detector_profile_id", "TEXT"),
                 ("review_status", "TEXT DEFAULT 'quarantined'"),
                 ("automated_outcome", "TEXT DEFAULT 'unknown'"),
                 ("automated_outcome_conf", "REAL DEFAULT 0.0"),
+                ("p_make", "REAL"),
+                ("outcome_confidence", "REAL"),
+                ("evidence_quality", "REAL"),
+                ("outcome_reason", "TEXT"),
+                ("outcome_features", "TEXT"),
+                ("estimator_version", "TEXT"),
+                ("estimator_cfg_hash", "TEXT"),
                 ("trajectory_fit_r2", "REAL"),
                 ("entry_angle_deg", "REAL"),
                 ("ball_coverage_ratio", "REAL DEFAULT 0.0"),
-                ("ball_model_version", "TEXT")
+                ("ball_model_version", "TEXT"),
             ],
             "baselines": [
                 ("shot_style", "TEXT DEFAULT 'jump_shot'"),
+                ("shot_type_id", "TEXT DEFAULT 'catch_and_shoot'"),
                 ("sample_size_total", "INTEGER DEFAULT 0"),
                 ("mean_elbow_release_all", "REAL"),
                 ("std_elbow_release_all", "REAL"),
@@ -445,7 +483,15 @@ class ShotLabDB:
                 ("mean_knee_dip_all", "REAL"),
                 ("std_knee_dip_all", "REAL"),
                 ("mean_torso_sway_all", "REAL"),
-                ("std_torso_sway_all", "REAL")
+                ("std_torso_sway_all", "REAL"),
+            ],
+            "labeled_clips": [
+                ("shot_type_id", "TEXT DEFAULT 'catch_and_shoot'"),
+            ],
+            "attempt_analysis": [
+                ("config_version", "TEXT"),
+                ("detector_profile_id", "TEXT"),
+                ("shot_type_id", "TEXT"),
             ],
             "remediations": [
                 ("shot_style", "TEXT DEFAULT 'jump_shot'"),
@@ -455,7 +501,7 @@ class ShotLabDB:
                 ("pre_make_count", "INTEGER DEFAULT 0"),
                 ("pre_total_count", "INTEGER DEFAULT 0"),
                 ("post_make_count", "INTEGER DEFAULT 0"),
-                ("post_total_count", "INTEGER DEFAULT 0")
+                ("post_total_count", "INTEGER DEFAULT 0"),
             ]
         }
         for table, cols in table_columns.items():
@@ -464,6 +510,40 @@ class ShotLabDB:
             for col_name, col_def in cols:
                 if col_name not in existing:
                     cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
+
+        # Backfill shot_type_id mapping: off_the_dribble/off_dribble -> pull_up, unknown -> other
+        cursor.execute("""
+            UPDATE sessions
+            SET shot_type_id = CASE
+                WHEN shot_type IN ('off_the_dribble', 'off_dribble') THEN 'pull_up'
+                WHEN shot_type IS NULL OR shot_type = '' THEN 'other'
+                ELSE shot_type
+            END
+            WHERE shot_type_id IS NULL OR shot_type_id = '' OR (shot_type_id = 'catch_and_shoot' AND shot_type != 'catch_and_shoot')
+        """)
+        cursor.execute("""
+            UPDATE shots
+            SET shot_type_id = CASE
+                WHEN shot_type IN ('off_the_dribble', 'off_dribble') THEN 'pull_up'
+                WHEN shot_type IS NULL OR shot_type = '' THEN 'other'
+                ELSE shot_type
+            END
+            WHERE shot_type_id IS NULL OR shot_type_id = '' OR (shot_type_id = 'catch_and_shoot' AND shot_type != 'catch_and_shoot')
+        """)
+        cursor.execute("""
+            UPDATE baselines
+            SET shot_type_id = CASE
+                WHEN shot_type IN ('off_the_dribble', 'off_dribble') THEN 'pull_up'
+                WHEN shot_type IS NULL OR shot_type = '' THEN 'other'
+                ELSE shot_type
+            END
+            WHERE shot_type_id IS NULL OR shot_type_id = '' OR (shot_type_id = 'catch_and_shoot' AND shot_type != 'catch_and_shoot')
+        """)
+        cursor.execute("""
+            UPDATE labeled_clips
+            SET shot_type_id = 'catch_and_shoot'
+            WHERE shot_type_id IS NULL OR shot_type_id = ''
+        """)
 
 
     def upsert_player(self, player_id: str, name: str, height_m: Optional[float] = None, wingspan_m: Optional[float] = None) -> str:
@@ -498,11 +578,14 @@ class ShotLabDB:
         shot_style: str = "jump_shot",
         fps: float = 30.0,
         model_version: str = "1.0.0",
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        shot_type_id: Optional[str] = None,
     ) -> str:
         """Create a new shot analysis session."""
         if not session_id:
             session_id = f"sess_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:6]}"
+
+        canon_shot_type = resolve_shot_type(shot_type_id or shot_type)
 
         # Ensure player exists
         self.upsert_player(player_id, player_id)
@@ -510,9 +593,9 @@ class ShotLabDB:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO sessions (session_id, player_id, camera_view, shot_type, shot_style, fps, model_version, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (session_id, player_id, camera_view, shot_type, shot_style, fps, model_version, notes))
+                INSERT INTO sessions (session_id, player_id, camera_view, shot_type, shot_type_id, shot_style, fps, model_version, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, player_id, camera_view, shot_type, canon_shot_type, shot_style, fps, model_version, notes))
             conn.commit()
             return session_id
 
@@ -631,16 +714,22 @@ class ShotLabDB:
     def save_session_analysis(self, session_id: str, analysis: Dict[str, Any], input_key: str) -> None:
         """Replace the stored analysis for a session and its attempts in one transaction."""
         attempts = analysis.get("attempts", [])
+        config_ver = analysis.get("config_version") or CONFIG_VERSION
+        detector_prof = analysis.get("detector_profile_id")
+        shot_type_id = resolve_shot_type(analysis.get("shot_type_id") or analysis.get("shot_type"))
         with self._get_connection() as conn:
             conn.execute("DELETE FROM attempt_analysis WHERE session_id = ?", (session_id,))
             for attempt in attempts:
                 if not attempt.get("shot_id"):
                     continue
                 key = f"{attempt.get('start_frame')}:{attempt.get('release_frame')}:{attempt.get('end_frame')}"
+                att_cver = attempt.get("config_version") or config_ver
+                att_dprof = attempt.get("detector_profile_id") or detector_prof
+                att_stid = attempt.get("shot_type_id") or shot_type_id
                 conn.execute(
-                    "INSERT OR REPLACE INTO attempt_analysis (shot_id, session_id, analysis_version, boundaries_key, analysis_json, computed_at) "
-                    "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                    (attempt["shot_id"], session_id, analysis.get("analysis_version", ""), key, json.dumps(attempt)),
+                    "INSERT OR REPLACE INTO attempt_analysis (shot_id, session_id, analysis_version, boundaries_key, analysis_json, config_version, detector_profile_id, shot_type_id, computed_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                    (attempt["shot_id"], session_id, analysis.get("analysis_version", ""), key, json.dumps(attempt), att_cver, att_dprof, att_stid),
                 )
             conn.execute(
                 "INSERT OR REPLACE INTO session_analysis (session_id, analysis_version, input_key, analysis_json, computed_at) "
@@ -735,11 +824,17 @@ class ShotLabDB:
 
         tracking_conf = shot_data.get("tracking_confidence", "SUFFICIENT")
 
+        st_raw = shot_data.get("shot_type", "catch_and_shoot")
+        st_id = resolve_shot_type(shot_data.get("shot_type_id") or st_raw)
+        cfg_ver = shot_data.get("config_version") or CONFIG_VERSION
+        det_prof_id = shot_data.get("detector_profile_id")
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO shots (
-                    shot_id, session_id, player_id, camera_view, shot_type, shot_style,
+                    shot_id, session_id, player_id, camera_view, shot_type, shot_type_id, shot_style,
+                    config_version, detector_profile_id,
                     machine_start_frame, machine_dip_frame, machine_set_frame, machine_release_frame, machine_end_frame,
                     annotated_start_frame, annotated_dip_frame, annotated_set_frame, annotated_release_frame, annotated_end_frame,
                     outcome, outcome_source, review_status, review_notes,
@@ -749,11 +844,15 @@ class ShotLabDB:
                     sequence_lag_ms, sequence_order_valid, torso_sway_deg,
                     raw_landmarks_ref,
                     automated_outcome, automated_outcome_conf,
+                    p_make, outcome_confidence, evidence_quality,
+                    outcome_reason, outcome_features,
+                    estimator_version, estimator_cfg_hash,
                     trajectory_fit_r2, entry_angle_deg,
                     ball_coverage_ratio, ball_model_version,
                     created_at, updated_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?,
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?,
                     ?, ?, ?, ?,
@@ -762,6 +861,9 @@ class ShotLabDB:
                     ?, ?,
                     ?, ?, ?,
                     ?,
+                    ?, ?,
+                    ?, ?, ?,
+                    ?, ?,
                     ?, ?,
                     ?, ?,
                     ?, ?,
@@ -772,8 +874,11 @@ class ShotLabDB:
                 shot_data.get("session_id", "default_session"),
                 shot_data.get("player_id", "default_player"),
                 shot_data.get("camera_view", "frontal"),
-                shot_data.get("shot_type", "catch_and_shoot"),
+                st_raw,
+                st_id,
                 shot_style,
+                cfg_ver,
+                det_prof_id,
                 m_start, m_dip, m_set, m_release, m_end,
                 a_start, a_dip, a_set, a_release, a_end,
                 outcome, outcome_source, review_status, shot_data.get("review_notes"),
@@ -789,6 +894,13 @@ class ShotLabDB:
                 shot_data.get("raw_landmarks_ref"),
                 shot_data.get("automated_outcome", "unknown"),
                 float(shot_data.get("automated_outcome_conf", 0.0) or 0.0),
+                shot_data.get("p_make"),
+                shot_data.get("outcome_confidence"),
+                shot_data.get("evidence_quality"),
+                shot_data.get("outcome_reason"),
+                json.dumps(shot_data.get("outcome_features")) if isinstance(shot_data.get("outcome_features"), dict) else shot_data.get("outcome_features"),
+                shot_data.get("estimator_version"),
+                shot_data.get("estimator_cfg_hash"),
                 shot_data.get("trajectory_fit_r2"),
                 shot_data.get("entry_angle_deg") or shot_data.get("entry_angle"),
                 float(shot_data.get("ball_coverage_ratio", 0.0) or 0.0),
@@ -916,6 +1028,83 @@ class ShotLabDB:
             history.append(item)
         return history
 
+    def update_shot_machine_outcome(self, shot_id: str, outcome_data: Dict[str, Any]) -> bool:
+        """
+        Update only the machine-proposed outcome fields for a shot attempt.
+        Never touches human label, outcome_source, review_status, or boundary annotations.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT shot_id FROM shots WHERE shot_id = ?", (shot_id,))
+            if not cursor.fetchone():
+                return False
+
+            now = datetime.datetime.now().isoformat()
+            features_raw = outcome_data.get("features") or outcome_data.get("outcome_features")
+            features_json = json.dumps(features_raw) if isinstance(features_raw, dict) else features_raw
+
+            cursor.execute("""
+                UPDATE shots
+                SET automated_outcome = ?,
+                    automated_outcome_conf = ?,
+                    p_make = ?,
+                    outcome_confidence = ?,
+                    evidence_quality = ?,
+                    outcome_reason = ?,
+                    outcome_features = ?,
+                    estimator_version = ?,
+                    estimator_cfg_hash = ?,
+                    updated_at = ?
+                WHERE shot_id = ?
+            """, (
+                outcome_data.get("label") or outcome_data.get("automated_outcome", "unknown"),
+                outcome_data.get("confidence") if outcome_data.get("confidence") is not None else outcome_data.get("automated_outcome_conf", 0.0),
+                outcome_data.get("p_make"),
+                outcome_data.get("confidence") if outcome_data.get("confidence") is not None else outcome_data.get("outcome_confidence"),
+                outcome_data.get("evidence_quality"),
+                outcome_data.get("reason") or outcome_data.get("outcome_reason"),
+                features_json,
+                outcome_data.get("estimator_version"),
+                outcome_data.get("estimator_cfg_hash"),
+                now,
+                shot_id
+            ))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def set_session_rim_anchor(self, session_id: str, anchor_data: Dict[str, Any], rim_source: str = "auto") -> bool:
+        """Persist confirmed or consensus rim anchor for a session."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT session_id FROM sessions WHERE session_id = ?", (session_id,))
+            if not cursor.fetchone():
+                return False
+            anchor_json = json.dumps(anchor_data) if isinstance(anchor_data, dict) else anchor_data
+            cursor.execute("""
+                UPDATE sessions
+                SET rim_anchor = ?,
+                    rim_source = ?
+                WHERE session_id = ?
+            """, (anchor_json, rim_source, session_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def get_session_rim_anchor(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve persisted rim anchor for a session."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT rim_anchor, rim_source FROM sessions WHERE session_id = ?", (session_id,))
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                return None
+            try:
+                data = json.loads(row[0])
+                if isinstance(data, dict):
+                    data["source"] = row[1] or "auto"
+                return data
+            except Exception:
+                return None
+
     def get_shot(self, shot_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a single shot record as a dict."""
         with self._get_connection() as conn:
@@ -932,7 +1121,8 @@ class ShotLabDB:
         shot_type: Optional[str] = None,
         shot_style: Optional[str] = None,
         review_status: Optional[str] = None,
-        min_confidence: Optional[str] = "SUFFICIENT"
+        min_confidence: Optional[str] = "SUFFICIENT",
+        shot_type_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Query shots with optional filters."""
         query = "SELECT * FROM shots WHERE 1=1"
@@ -947,9 +1137,11 @@ class ShotLabDB:
         if camera_view:
             query += " AND camera_view = ?"
             params.append(camera_view)
-        if shot_type:
-            query += " AND shot_type = ?"
-            params.append(shot_type)
+        target_type = shot_type_id or shot_type
+        if target_type:
+            canon = resolve_shot_type(target_type)
+            query += " AND (shot_type_id = ? OR shot_type = ?)"
+            params.extend([canon, target_type])
         if shot_style:
             query += " AND shot_style = ?"
             params.append(shot_style)
@@ -970,11 +1162,13 @@ class ShotLabDB:
     def save_baseline(self, baseline_data: Dict[str, Any]) -> str:
         """Save a computed player baseline profile."""
         baseline_id = baseline_data.get("baseline_id") or f"base_{str(uuid.uuid4())[:8]}"
+        st_val = baseline_data.get("shot_type", "catch_and_shoot")
+        st_id = resolve_shot_type(baseline_data.get("shot_type_id") or st_val)
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO baselines (
-                    baseline_id, player_id, camera_view, shot_type, shot_style,
+                    baseline_id, player_id, camera_view, shot_type, shot_type_id, shot_style,
                     sample_size_makes, sample_size_misses, sample_size_total,
                     mean_elbow_release_make, std_elbow_release_make,
                     mean_elbow_release_miss, std_elbow_release_miss,
@@ -990,7 +1184,7 @@ class ShotLabDB:
                     mean_torso_sway_all, std_torso_sway_all,
                     computed_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?,
                     ?, ?, ?,
                     ?, ?,
                     ?, ?,
@@ -1010,7 +1204,8 @@ class ShotLabDB:
                 baseline_id,
                 baseline_data["player_id"],
                 baseline_data.get("camera_view", "frontal"),
-                baseline_data.get("shot_type", "catch_and_shoot"),
+                st_val,
+                st_id,
                 baseline_data.get("shot_style", "jump_shot"),
                 baseline_data.get("sample_size_makes", 0),
                 baseline_data.get("sample_size_misses", 0),
@@ -1048,11 +1243,13 @@ class ShotLabDB:
         player_id: str,
         camera_view: str,
         shot_type: str,
-        shot_style: Optional[str] = "jump_shot"
+        shot_style: Optional[str] = "jump_shot",
+        shot_type_id: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Get the most recent baseline for a player in a specific context."""
-        query = "SELECT * FROM baselines WHERE player_id = ? AND camera_view = ? AND shot_type = ?"
-        params = [player_id, camera_view, shot_type]
+        target_st = resolve_shot_type(shot_type_id or shot_type)
+        query = "SELECT * FROM baselines WHERE player_id = ? AND camera_view = ? AND (shot_type_id = ? OR shot_type = ?)"
+        params = [player_id, camera_view, target_st, target_st]
         if shot_style:
             query += " AND shot_style = ?"
             params.append(shot_style)
@@ -1193,18 +1390,20 @@ class ShotLabDB:
         data = dict(clip_data or {})
         data.update(kwargs)
         clip_id = data.get("clip_id") or f"clip_{uuid.uuid4().hex[:8]}"
+        st_id = resolve_shot_type(data.get("shot_type_id") or data.get("shot_type") or "catch_and_shoot")
         with self._get_connection() as conn:
             c = conn.cursor()
             c.execute("""
                 INSERT INTO labeled_clips (
                     clip_id, file_path, file_sha256, player_id, camera_view,
-                    shot_style, fps, frame_count, width, height, split, license, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    shot_type_id, shot_style, fps, frame_count, width, height, split, license, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(clip_id) DO UPDATE SET
                     file_path=excluded.file_path,
                     file_sha256=excluded.file_sha256,
                     player_id=excluded.player_id,
                     camera_view=excluded.camera_view,
+                    shot_type_id=excluded.shot_type_id,
                     shot_style=excluded.shot_style,
                     fps=excluded.fps,
                     frame_count=excluded.frame_count,
@@ -1219,6 +1418,7 @@ class ShotLabDB:
                 data.get("file_sha256"),
                 data.get("player_id", "unknown_player"),
                 data.get("camera_view", "unknown_view"),
+                st_id,
                 data.get("shot_style", "jump_shot"),
                 data.get("fps", 30.0),
                 data.get("frame_count"),
@@ -1463,6 +1663,7 @@ class ShotLabDB:
         height_cm: Optional[float] = None,
         wingspan_cm: Optional[float] = None,
         goals: Optional[str] = None,
+        pain_reported: bool = False,
         onboarding_completed: bool = False
     ) -> Dict[str, Any]:
         """Register a new user and link to player registry."""
@@ -1498,13 +1699,13 @@ class ShotLabDB:
                 INSERT INTO users (
                     id, player_id, name, email, password_hash,
                     skill_level, handedness, shot_style,
-                    height_cm, wingspan_cm, goals,
+                    height_cm, wingspan_cm, goals, pain_reported,
                     onboarding_completed, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 user_id, player_id, name_clean, email_clean, pwd_hash,
                 skill_level, handedness, shot_style,
-                height_cm, wingspan_cm, goals or "",
+                height_cm, wingspan_cm, goals or "", 1 if pain_reported else 0,
                 1 if onboarding_completed else 0, now, now
             ))
             conn.commit()
@@ -1526,7 +1727,7 @@ class ShotLabDB:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, player_id, name, email, skill_level, handedness,
-                       shot_style, height_cm, wingspan_cm, goals,
+                       shot_style, height_cm, wingspan_cm, goals, pain_reported,
                        onboarding_completed, created_at, updated_at
                 FROM users WHERE id = ?
             """, (user_id,))
@@ -1534,6 +1735,7 @@ class ShotLabDB:
             if not row:
                 return None
             res = dict(row)
+            res["pain_reported"] = bool(res.get("pain_reported"))
             res["onboarding_completed"] = bool(res.get("onboarding_completed"))
             return res
 
@@ -1550,7 +1752,7 @@ class ShotLabDB:
         """Update profile fields and sync player attributes."""
         allowed_fields = {
             "name", "skill_level", "handedness", "shot_style",
-            "height_cm", "wingspan_cm", "goals", "onboarding_completed"
+            "height_cm", "wingspan_cm", "goals", "pain_reported", "onboarding_completed"
         }
         fields_to_update = {k: v for k, v in updates.items() if k in allowed_fields}
         if not fields_to_update:

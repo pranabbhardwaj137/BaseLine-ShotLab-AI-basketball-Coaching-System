@@ -35,7 +35,8 @@
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></symbol>
     <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></symbol>
     <symbol id="i-workout" viewBox="0 0 24 24"><path d="M3 12h18M6.5 7.5v9M3.75 9.5v5M17.5 7.5v9M20.25 9.5v5"/></symbol>
-    <symbol id="i-voice" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
+    <symbol id="i-voice" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-voice-muted" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z" fill="currentColor"/><line x1="22" y1="9" x2="16" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="16" y1="9" x2="22" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
     <symbol id="i-empty-review" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="m10 8.5 4.5 2.5-4.5 2.5Z"/><path d="M7 20.5h10"/></symbol>
     <symbol id="i-drills" viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.5"/><path d="M12 12.5v9M9 21.5h6M7 9a5 5 0 0 1 10 0"/><path d="M5.5 6.5a8 8 0 0 1 13 0"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M10 8.5l6 3.5-6 3.5z"/></symbol>
@@ -222,7 +223,7 @@
       </a>
       <p class="sidebar-label" aria-hidden="true">Workspace</p>
       <nav class="view-nav" aria-label="App sections">
-        <a href="#new" data-nav="new"><svg class="icon" aria-hidden="true"><use href="#i-new"/></svg><span class="nav-text">New<span class="nav-long"> session</span></span></a>
+        <a href="#practice" data-nav="practice"><svg class="icon" aria-hidden="true"><use href="#i-basketball"/></svg><span class="nav-text">Practice</span></a>
         <a href="#review" data-nav="review"><svg class="icon" aria-hidden="true"><use href="#i-review"/></svg><span class="nav-text">Review</span> <span id="nav-review-count" class="nav-count hidden"></span></a>
         <a href="#report" data-nav="report"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg><span class="nav-text">Report</span></a>
         <a href="#workout" data-nav="workout"><svg class="icon" aria-hidden="true"><use href="#i-workout"/></svg><span class="nav-text">Workout</span></a>
@@ -241,11 +242,11 @@
     <div class="main-col">
       <header class="topbar">
         <div class="topbar-inner">
-          <a class="brand brand-compact" href="#new" aria-label="Baseline Shot Lab, new session">
+          <a class="brand brand-compact" href="#practice" aria-label="Baseline Shot Lab, practice">
             <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14.5"/><path d="M1.5 16h29M16 1.5v29M5.5 5.8c4.6 4 4.6 16.4 0 20.4M26.5 5.8c-4.6 4-4.6 16.4 0 20.4"/></svg>
             <span class="brand-name">Baseline</span>
           </a>
-          <p class="crumbs" aria-hidden="true"><span>Shot Lab</span><span class="crumb-sep">/</span><span id="topbar-title">New session</span></p>
+          <p class="crumbs" aria-hidden="true"><span>Shot Lab</span><span class="crumb-sep">/</span><span id="topbar-title">Practice</span></p>
           <span class="local-pill" title="Video and analysis stay on this computer"><i aria-hidden="true"></i>Runs on this computer</span>
           <div class="auth-toolbar" id="auth-toolbar">
             <button type="button" class="btn-auth-trigger" id="btn-open-login"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg><span>Sign In</span></button>
@@ -259,17 +260,22 @@
       </header>
 
       <main id="main" class="shell">
-        <!-- ============================ NEW SESSION ============================ -->
-        <section id="view-new" class="view" data-view="new" aria-labelledby="new-title">
-          <div class="hero monitor">
+        <!-- ============================ PRACTICE & RECORD ============================ -->
+        <section id="view-practice" class="view" data-view="practice" aria-labelledby="practice-title">
+          <div class="hero monitor hero-practice" id="practice-hero">
             <div class="hero-copy">
-              <p class="eyebrow eyebrow-on-dark"><span class="live-dot" aria-hidden="true"></span>New session</p>
-              <h1 id="new-title">Film the rep.<br>Review the evidence.<br><em>Fix one thing.</em></h1>
-              <p>Upload a practice clip. The app estimates your pose on this computer, proposes each shot attempt, and waits for you to confirm what really happened before it gives any feedback.</p>
+              <div class="hero-head-row">
+                <p class="eyebrow eyebrow-on-dark"><span class="live-dot" aria-hidden="true"></span>Practice</p>
+                <button type="button" class="btn-hero-toggle" id="btn-hero-collapse" aria-label="Toggle compact view">
+                  <span id="hero-collapse-label">Compact view</span>
+                </button>
+              </div>
+              <h1 id="practice-title">Start a practice.<br>Film or upload.<br><em>Track your form.</em></h1>
+              <p>Record live practice reps with your camera or analyze an uploaded practice clip. Single-camera estimates run locally on this computer.</p>
               <ol class="flow-steps" aria-label="How a session works">
                 <li class="is-current"><b>1</b> Set up</li>
-                <li><b>2</b> Analyze</li>
-                <li><b>3</b> Review</li>
+                <li><b>2</b> Record or upload</li>
+                <li><b>3</b> Review &amp; insights</li>
               </ol>
             </div>
             <figure class="hero-stage" aria-hidden="true">
@@ -324,17 +330,201 @@
               <section class="card setup-card form-step" aria-labelledby="profile-title">
                 <header class="step-head">
                   <span class="step-num" aria-hidden="true">01</span>
-                  <div><h2 id="profile-title">Player and session</h2><p>Sessions are grouped by player, camera view, shot type and style, so only like-for-like practice is compared.</p></div>
+                  <div>
+                    <h2 id="profile-title">Today's practice</h2>
+                    <p>Sessions are grouped by camera view and shot style for consistent, like-for-like biomechanical comparisons.</p>
+                  </div>
                 </header>
-                <div class="field-grid">
-                  <label class="field">Player ID<input name="player_id" value="player" maxlength="64" required pattern="[A-Za-z0-9_\-]{1,64}" autocomplete="off"><small>Letters, numbers, - or _. Keeps this player's history together.</small></label>
-                  <label class="field">Shooting hand<select name="handedness"><option value="unspecified">Not set</option><option value="right">Right</option><option value="left">Left</option><option value="ambidextrous">Both</option></select></label>
-                  <label class="field">Experience<select name="skill_level"><option value="beginner">Just getting started</option><option value="intermediate">Developing consistency</option><option value="advanced">Experienced player</option><option value="coach">Coach or reviewer</option></select></label>
-                  <label class="field">Camera view<select name="camera_view"><option value="side_90">Side (90°)</option><option value="oblique_45">Angled (45°)</option><option value="frontal">Front</option><option value="rear">Behind the shooter</option></select></label>
-                  <label class="field">Shot style<select name="shot_style"><option value="jump_shot">Jump shot</option><option value="set_shot">Set shot</option></select></label>
-                  <label class="field">Shot type<select name="shot_type"><option value="catch_and_shoot">Catch and shoot</option><option value="off_dribble">Off the dribble</option><option value="free_throw">Free throw</option></select></label>
-                  <label class="field field-wide"><span>What are you working on? <span class="optional">(optional)</span></span><textarea name="goals" rows="2" maxlength="500" placeholder="For example: a repeatable release, landing balanced"></textarea></label>
-                  <label class="check-field field-wide"><input type="checkbox" name="pain_reported" value="1"><span>I have pain, discomfort, a previous injury or restricted movement that affects my shooting<small>The report will put safety advice first. It does not assess injuries.</small></span></label>
+
+                <!-- Compact Player Summary Card -->
+                <div class="athlete-summary-card" id="athlete-summary-card">
+                  <div class="athlete-summary-left">
+                    <div class="athlete-avatar-disc" id="athlete-summary-disc">PB</div>
+                    <div class="athlete-summary-details">
+                      <div class="athlete-name-row">
+                        <strong id="athlete-summary-name">Pranab Bhardwaj</strong>
+                        <span class="badge-role" id="athlete-summary-level">INTERMEDIATE</span>
+                      </div>
+                      <p class="athlete-meta-line" id="athlete-summary-meta">Shooting Hand: Right &middot; Profile Baselines Active</p>
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-quiet btn-small" id="btn-edit-athlete-profile">Edit profile</button>
+                  <!-- Hidden inputs preserving payload compatibility for upload -->
+                  <input type="hidden" name="player_id" id="session-player-id" value="player">
+                  <input type="hidden" name="handedness" id="session-handedness" value="right">
+                  <input type="hidden" name="skill_level" id="session-skill-level" value="intermediate">
+                  <input type="hidden" name="pain_reported" id="session-pain-reported" value="0">
+                </div>
+
+                <div class="practice-setup-fields">
+                  <!-- What are you working on? (Shot Type) -->
+                  <div class="practice-field-block">
+                    <div class="shot-type-field-head">
+                      <label class="field-label" id="label-shot-type">What are you working on?</label>
+                      <span class="badge-prototype" id="shot-type-active-badge">Prototype</span>
+                    </div>
+                    <div class="shot-type-advisory-note" id="shot-type-advisory-note">
+                      Analysis for this shot type is advisory and still being calibrated. Single-camera pose is an estimate.
+                    </div>
+
+                    <!-- Hidden input to guarantee shot_type_id is submitted -->
+                    <input type="hidden" name="shot_type_id" id="session-shot-type-id" value="catch_and_shoot">
+
+                    <!-- Grouped Shot Types Container -->
+                    <div class="shot-groups-wrapper" id="shot-groups-wrapper" role="radiogroup" aria-labelledby="label-shot-type">
+                      <div class="shot-group" data-group="stationary">
+                        <div class="shot-group-header"><span>Stationary</span></div>
+                        <div class="shot-card-grid">
+                          <label class="chip-option" data-shot-type-id="catch_and_shoot">
+                            <input type="radio" name="shot_type" value="catch_and_shoot" checked>
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Catch &amp; shoot</span></span>
+                              <span class="chip-desc">Spot up, quick release</span>
+                              <span class="chip-tags"><span class="chip-tag">Knees</span><span class="chip-tag">Release</span></span>
+                            </span>
+                          </label>
+                          <label class="chip-option" data-shot-type-id="free_throw">
+                            <input type="radio" name="shot_type" value="free_throw">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Free throw</span></span>
+                              <span class="chip-desc">Stationary charity stripe</span>
+                              <span class="chip-tags"><span class="chip-tag">Elbow</span><span class="chip-tag">Knees</span></span>
+                            </span>
+                          </label>
+                          <label class="chip-option" data-shot-type-id="form_shooting">
+                            <input type="radio" name="shot_type" value="form_shooting">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Form shooting</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Close range, one hand</span>
+                              <span class="chip-tags"><span class="chip-tag">Elbow</span><span class="chip-tag">Arc</span></span>
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="shot-group" data-group="dynamic">
+                        <div class="shot-group-header"><span>Dynamic</span></div>
+                        <div class="shot-card-grid">
+                          <label class="chip-option" data-shot-type-id="pull_up">
+                            <input type="radio" name="shot_type" value="pull_up">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Pull-up jumper</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Dribble, stop, rise</span>
+                              <span class="chip-tags"><span class="chip-tag">Balance</span><span class="chip-tag">Knees</span></span>
+                            </span>
+                          </label>
+                          <label class="chip-option" data-shot-type-id="step_back">
+                            <input type="radio" name="shot_type" value="step_back">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Step-back</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Create space, then shoot</span>
+                              <span class="chip-tags"><span class="chip-tag">Balance</span><span class="chip-tag">Lean</span></span>
+                            </span>
+                          </label>
+                          <label class="chip-option" data-shot-type-id="fadeaway">
+                            <input type="radio" name="shot_type" value="fadeaway">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Fadeaway</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Lean back, high release</span>
+                              <span class="chip-tags"><span class="chip-tag">Lean</span><span class="chip-tag">Arc</span></span>
+                            </span>
+                          </label>
+                          <label class="chip-option" data-shot-type-id="turnaround">
+                            <input type="radio" name="shot_type" value="turnaround">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Turnaround jumper</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Pivot, then shoot</span>
+                              <span class="chip-tags"><span class="chip-tag">Rotation</span><span class="chip-tag">Balance</span></span>
+                            </span>
+                          </label>
+                          <label class="chip-option" data-shot-type-id="off_screen">
+                            <input type="radio" name="shot_type" value="off_screen">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Off a screen</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Curl or fade, then shoot</span>
+                              <span class="chip-tags"><span class="chip-tag">Knees</span><span class="chip-tag">Balance</span></span>
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="shot-group" data-group="range">
+                        <div class="shot-group-header"><span>Range</span></div>
+                        <div class="shot-card-grid">
+                          <label class="chip-option" data-shot-type-id="mid_range">
+                            <input type="radio" name="shot_type" value="mid_range">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Mid-range</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Elbow or baseline spot</span>
+                              <span class="chip-tags"><span class="chip-tag">Knees</span><span class="chip-tag">Arc</span></span>
+                            </span>
+                          </label>
+                          <label class="chip-option" data-shot-type-id="three_pointer">
+                            <input type="radio" name="shot_type" value="three_pointer">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Three-pointer</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Deep range</span>
+                              <span class="chip-tags"><span class="chip-tag">Arc</span><span class="chip-tag">Knees</span></span>
+                            </span>
+                          </label>
+                          <label class="chip-option" data-shot-type-id="bank_shot">
+                            <input type="radio" name="shot_type" value="bank_shot">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Bank shot</span><span class="badge-prototype-mini">Proto</span></span>
+                              <span class="chip-desc">Angle off the glass</span>
+                              <span class="chip-tags"><span class="chip-tag">Arc</span><span class="chip-tag">Elbow</span></span>
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="shot-group" data-group="other">
+                        <div class="shot-group-header"><span>Other</span></div>
+                        <div class="shot-card-grid">
+                          <label class="chip-option" data-shot-type-id="other">
+                            <input type="radio" name="shot_type" value="other">
+                            <span class="chip-content">
+                              <span class="chip-head"><span class="chip-title">Other</span></span>
+                              <span class="chip-desc">Custom practice</span>
+                              <span class="chip-tags"><span class="chip-tag">Balance</span><span class="chip-tag">Release</span></span>
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Shot Style & Camera View Grid -->
+                  <div class="field-grid practice-two-col">
+                    <div class="field">
+                      <label for="select-shot-style">Shot style</label>
+                      <select id="select-shot-style" name="shot_style">
+                        <option value="jump_shot" selected>Jump shot (elevation, apex release)</option>
+                        <option value="set_shot">Set shot (ground-energy, minimal jump)</option>
+                      </select>
+                      <small class="field-tip">Shot style describes how you produce vertical lift (jump vs. set), while shot type describes game action before shooting.</small>
+                    </div>
+
+                    <div class="field">
+                      <label for="select-camera-view">Camera angle</label>
+                      <select id="select-camera-view" name="camera_view">
+                        <option value="side_90" selected>Side (90°) - recommended for knee dip &amp; release angle</option>
+                        <option value="oblique_45">Angled (45°) - recommended for alignment &amp; elbow flare</option>
+                        <option value="frontal">Front (0°) - hoop alignment</option>
+                        <option value="rear">Behind shooter (180°)</option>
+                      </select>
+                      <div class="camera-confirmation-pill" id="camera-confirmation-pill">
+                        <span class="pill-dot"></span>
+                        <span id="camera-confirmation-text">Angle confirmed: Side (90°)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Optional Practice Focus Note -->
+                  <label class="field field-wide">
+                    <span>What are you focusing on today? <span class="optional">(optional)</span></span>
+                    <textarea name="goals" rows="2" maxlength="500" placeholder="For example: a repeatable high release, balanced landing, fluid knee dip"></textarea>
+                  </label>
                 </div>
               </section>
 
@@ -372,13 +562,23 @@
 
                       <!-- Top Status HUD Bar (matches reference broadcast design) -->
                       <div class="camera-hud-top" id="camera-hud-top">
-                        <!-- Top Left: Exit & Toggle Skeleton -->
+                        <!-- Top Left: Exit, Fullscreen & Toggle Skeleton -->
                         <div class="hud-top-left">
                           <button type="button" class="btn-hud-round" id="hud-btn-close" title="Close camera">
                             <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" style="width:16px;height:16px;"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
                           </button>
+                          <button type="button" class="btn-hud-round" id="hud-btn-fullscreen" title="Enter full screen (Immersive)">
+                            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" style="width:16px;height:16px;"><path d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4-5 5M4 16v4m0 0h4m-4 0 5-5m11 5h-4m4 0v-4m0 4-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                          </button>
+                          <button type="button" class="btn-hud-round" id="hud-btn-toggle-metrics" title="Toggle metrics display">
+                            <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" style="width:16px;height:16px;"><path d="M3 3v18h18M7 16l4-4 4 4 5-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                          </button>
                           <button type="button" class="btn-hud-round btn-hud-player active" id="hud-btn-skeleton" title="Toggle skeleton overlay">
                             <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" style="width:18px;height:18px;"><circle cx="12" cy="5" r="2.5" fill="#f97316"/><path d="M12 7.5v6M9 9.5l3 2 3-2M9.5 18l2.5-4.5 2.5 4.5" stroke="#f97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                          </button>
+                          <button type="button" class="btn-hud-round btn-hud-voice active" id="hud-btn-voice" title="Mute audio coach (voice on)" aria-label="Toggle audio coach">
+                            <svg class="icon icon-voice-on" aria-hidden="true" style="width:17px;height:17px;"><use href="#i-voice"/></svg>
+                            <svg class="icon icon-voice-off hidden" aria-hidden="true" style="width:17px;height:17px;"><use href="#i-voice-muted"/></svg>
                           </button>
                         </div>
 
@@ -386,22 +586,22 @@
                         <div class="hud-pill-dual" id="hud-metrics-dual">
                           <div class="dual-col">
                             <small>RIM (LIVE)</small>
-                            <b id="hud-panier-live">—</b>
+                            <b id="hud-panier-live"> - </b>
                           </div>
                           <div class="dual-sep"></div>
                           <div class="dual-col">
                             <small>PEAK MAX</small>
-                            <b id="hud-pic-max">—</b>
+                            <b id="hud-pic-max"> - </b>
                           </div>
                           <div class="dual-sep"></div>
                           <div class="dual-col">
                             <small>KNEE</small>
-                            <b id="hud-knee-val">—</b>
+                            <b id="hud-knee-val"> - </b>
                           </div>
                           <div class="dual-sep"></div>
                           <div class="dual-col">
                             <small>ARM</small>
-                            <b id="hud-elbow-val">—</b>
+                            <b id="hud-elbow-val"> - </b>
                           </div>
                           <div class="dual-sep"></div>
                           <div class="dual-col">
@@ -427,6 +627,18 @@
                         <span id="hud-outcome-text">SHOT MADE!</span>
                       </div>
 
+                      <!-- Live Audio Coach Caption Banner -->
+                      <div class="hud-coach-banner" id="hud-coach-banner" aria-live="polite">
+                        <span class="hud-coach-icon" aria-hidden="true"><svg viewBox="0 0 24 24" class="icon" style="width:14px;height:14px;"><use href="#i-voice"/></svg></span>
+                        <span class="hud-coach-caption" id="hud-coach-caption">Focus: Set feet and balance before shooting</span>
+                      </div>
+
+                      <!-- Exit Fullscreen Floating Button -->
+                      <button type="button" class="btn-hud-exit-fullscreen hidden" id="hud-btn-exit-fullscreen" title="Exit full screen">
+                        <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" style="width:16px;height:16px;"><path d="M4 14h6v6m10-10h-6V4m0 6 7-7M4 20l6-6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>Exit full screen</span>
+                      </button>
+
                       <!-- Bottom Live Broadcast Stats HUD Bar (matches reference image) -->
                       <div class="camera-hud-bottom" id="camera-hud-bottom">
                         <div class="hud-stats-card">
@@ -439,8 +651,8 @@
                             <span class="stat-label">FAILURES</span>
                           </div>
                           <div class="stat-col stat-acc">
-                            <span class="stat-number" id="hud-acc-val">0%</span>
-                            <span class="stat-label">SUCCESS</span>
+                            <span class="stat-number" id="hud-acc-val"> - </span>
+                            <span class="stat-label">SUCCESS RATE</span>
                           </div>
                         </div>
 
@@ -455,6 +667,12 @@
                           </button>
                         </div>
                       </div>
+                    </div>
+
+                    <!-- Orientation advisory for mobile phone framing -->
+                    <div class="orientation-hint hidden" id="orientation-hint">
+                      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true" style="width:16px;height:16px;"><rect x="2" y="6" width="20" height="12" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="18" cy="12" r="1" fill="currentColor"/></svg>
+                      <span>Landscape orientation recommended for court-wide framing</span>
                     </div>
 
                     <div class="camera-controls" id="camera-controls">
@@ -472,7 +690,7 @@
                   </div>
                 </div>
                 <p id="form-error" class="form-error hidden" role="alert"></p>
-                <button id="submit-button" class="btn btn-primary btn-block" type="submit">Analyze this session<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
+                <button id="submit-button" class="btn btn-primary btn-block" type="submit">Analyze Practice Clip<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></button>
                 <p class="privacy-note">Video is saved to <code>user_data/uploads</code> on this computer and never sent to a cloud service. Delete a session in Progress to remove its video and pose data.</p>
               </section>
             </div>
@@ -495,6 +713,13 @@
                   <li>Good light, no one crossing in front</li>
                   <li>One shooter per clip</li>
                 </ul>
+                <div class="shot-type-camera-tip-card" id="shot-type-camera-tip-card">
+                  <div class="tip-card-head">
+                    <svg class="icon" aria-hidden="true" style="width:14px;height:14px;"><use href="#i-camera"/></svg>
+                    <strong id="camera-tip-shot-name">Catch &amp; shoot setup</strong>
+                  </div>
+                  <p id="camera-tip-text">Set camera side-on (90°) or at 45°. Keep head to feet and the ball in frame throughout the motion.</p>
+                </div>
                 <p class="guide-note">Single-camera pose is an estimate. The app proposes attempts; you confirm them. It does not decide makes or misses for you.</p>
               </aside>
 
@@ -653,8 +878,29 @@
                       <span class="drill-stat-label">Time</span>
                       <span class="drill-stat-value" id="drill-timer">0:00</span>
                     </div>
+                    <div class="drill-stat drill-stat-knee">
+                      <span class="drill-stat-label">Knee Bend</span>
+                      <span class="drill-stat-value" id="drill-knee-val">--°</span>
+                    </div>
+                    <div class="drill-stat drill-stat-combo">
+                      <span class="drill-stat-label">Combos</span>
+                      <span class="drill-stat-value" id="drill-combo-count">0</span>
+                    </div>
+                    <div class="drill-stat drill-stat-move">
+                      <span class="drill-stat-label">Move</span>
+                      <span class="drill-stat-value" id="drill-move-val">Ready</span>
+                    </div>
                   </div>
 
+                  <div class="drill-combo-pill" id="drill-combo-pill" hidden>
+                    <span class="drill-combo-badge" id="drill-combo-badge">Combo 0</span>
+                    <span id="drill-combo-progress-text">Step 0/3</span>
+                  </div>
+
+                  <div class="drill-live-cue-pill" id="drill-live-cue-pill" hidden>
+                    <span class="drill-cue-dot"></span>
+                    <span id="drill-live-cue-text">Step into camera view</span>
+                  </div>
                   <p class="drill-cam-status" id="drill-cam-status" aria-live="polite"></p>
 
                   <!-- camera placeholder when not started -->
@@ -680,13 +926,19 @@
               </button>
               <button type="button" id="drill-done" class="btn btn-quiet" hidden>
                 <svg class="icon" aria-hidden="true"><use href="#i-check-circle"/></svg>
-                Done — back to drills
+                Done - back to drills
               </button>
 
               <!-- big rep counter beside the buttons -->
               <div class="drill-live-count" aria-live="polite" aria-atomic="true">
                 <span class="drill-big-count" id="drill-big-count">0</span>
                 <span class="drill-count-label">dribbles</span>
+              </div>
+
+              <!-- combo counter for combo drills -->
+              <div class="drill-live-combo" id="drill-live-combo" aria-live="polite" aria-atomic="true" hidden>
+                <span class="drill-big-combo" id="drill-big-combo">0</span>
+                <span class="drill-combo-label">combos</span>
               </div>
 
               <p class="drill-privacy-note">Camera stays on this computer.</p>
@@ -711,9 +963,10 @@
                 <h3>Session feedback</h3>
               </div>
               <p id="drill-feedback-summary" class="drill-feedback-summary"></p>
+              <div id="drill-bio-stats" class="drill-bio-stats-grid" hidden></div>
               <ul id="drill-feedback-list" class="drill-feedback-list"></ul>
-              <p class="hint drill-feedback-note">Rep count is based on motion tracking, not a pose model.
-                Rhythm and pace are estimates — use them as a guide, not a score.</p>
+              <p class="hint drill-feedback-note">Measured via YOLO ball tracking and MediaPipe pose kinematics calibrated against reference athlete biomechanics.</p>
+
             </div>
 
           </div><!-- /#drill-runner -->
@@ -835,6 +1088,10 @@
           <label class="field">Shooting Focus / Goals <span class="optional">(optional)</span>
             <textarea id="signup-goals" name="goals" rows="2" maxlength="300" placeholder="e.g. repeatable high release, minimize elbow flare, balanced landing"></textarea>
           </label>
+          <label class="check-field field-wide auth-injury-field">
+            <input type="checkbox" id="signup-pain-reported" name="pain_reported" value="1">
+            <span>I have pain, discomfort, a previous injury or restricted movement that affects my shooting<small>The coaching report prioritizes safety and biomechanical preservation.</small></span>
+          </label>
           <div class="auth-actions-row">
             <button type="button" class="btn-auth-secondary" id="btn-back-step-1">&larr; Back</button>
             <button type="submit" class="btn-auth-submit" id="btn-finish-signup">Complete Onboarding &amp; Sign Up</button>
@@ -888,6 +1145,10 @@
           <label class="field">Shooting Focus / Goals
             <textarea id="profile-goals" name="goals" rows="2" maxlength="300"></textarea>
           </label>
+          <label class="check-field field-wide auth-injury-field">
+            <input type="checkbox" id="profile-pain-reported" name="pain_reported" value="1">
+            <span>I have pain, discomfort, a previous injury or restricted movement that affects my shooting<small>The coaching report prioritizes safety and biomechanical preservation.</small></span>
+          </label>
           <div class="auth-actions-row">
             <button type="submit" class="btn-auth-submit" id="btn-save-profile">Save Profile Changes</button>
             <button type="button" class="btn-auth-danger" id="btn-logout-action">Sign Out</button>
@@ -898,6 +1159,7 @@
     </div>
   </div>
 
+  <script src="/assets/practice_voice.js" defer></script>
   <script src="/assets/app.js" defer></script>
   <script src="/assets/workout.js" defer></script>
 </body>

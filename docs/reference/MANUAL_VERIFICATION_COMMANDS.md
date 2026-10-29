@@ -418,16 +418,41 @@ curl -I http://127.0.0.1:8000/drills/pound_dribble.mp4
 # Expected: HTTP/1.1 200 OK, Content-Type: video/mp4, Accept-Ranges: bytes
 ```
 
-**Test the Drills UI in the browser:**
+**Test the YOLO Ball Tracking, Ground Bounce & Dribble Style Engine:**
 
-1. Open `http://127.0.0.1:8000/#drills`
+Run the dedicated unit and integration tests:
+
+```powershell
+$env:PYTHONPATH="src;."
+python -m unittest tests.unit.test_drill_service tests.integration.test_drills_routes -v
+```
+
+Expected output: 21 tests pass with `OK` (18 unit tests + 3 integration tests).
+
+**Test the Drills UI & Dribble Style Tracking in the browser:**
+
+1. Open `http://127.0.0.1:8765/#drills`
 2. Four drill cards appear, each with a video thumbnail, difficulty badge, and skill chips.
-3. Click any card — the drill runner opens with the reference video on the left and camera placeholder on the right.
+3. Click any combo drill (e.g. **Pound + Crossover** or **Pound + V-Dribble**) — the drill runner opens with the reference demo video on the left and camera placeholder on the right.
 4. Click **Start camera & count reps** — browser requests camera permission; allow it.
-5. The reference video plays automatically; the camera feed appears mirrored on the right.
-6. Dribble in view of the camera — the rep count increments and flashes orange.
-7. Click **Stop drill** — the camera stops and a feedback card appears below with pace, rhythm, and cue reminders.
-8. Click **Done — back to drills** to return to the catalog.
+5. The reference demo video loops; your camera feed starts.
+6. A live MediaPipe skeleton overlay appears on your body (green lines for athletic stance, amber if knees are upright). A real-time knee bend angle badge (e.g. `154°`), live move indicator (`MOVE: POUND (R)`), and dynamic live coaching cue pill appear.
+7. **Strict Ground Dribble Verification**:
+   - Holding or jiggling the ball at waist/knee height will NOT increment the rep counter.
+   - Ball must descend from hip/knee release level all the way to floor level near the feet (Δy ≥ 0.12, y ≥ 0.66) and rebound upward to count as an authentic dribble rep.
+8. **Dribble Style & Demo Sequence Adherence**:
+   - The engine tracks lateral displacement ΔX and body midline position X_mid to classify every bounce as `POUND`, `CROSSOVER`, or `V_DRIBBLE`.
+   - The HUD displays the live move and combo step (e.g. `Step 1/3: Pound` -> `Step 2/3: Pound` -> `Step 3/3: Cross`).
+   - Completing the sequence matching the demo video increments the **Combos Completed** counter and triggers a visual celebration ripple and flash.
+9. Click **Stop drill** — the session stops on the backend and displays genuine measured biomechanics and style adherence:
+   - **Authentic Reps** & Cadence (reps/sec) with ground contact height validation
+   - **Completed Combos** matching the demo video sequence
+   - **Style Match %** (% adherence to demo video movements)
+   - **Average Knee Bend** vs Reference Athlete Target (e.g. 160.5° for Pound + Cross)
+   - **Stance Adherence %** (% time maintaining athletic knee bend)
+   - **Eyes Up %** (% time head held high looking forward)
+   - Detailed evidence-based feedback on move counts, sequence fidelity, and posture.
+10. Click **Done — back to drills** to return to the catalog.
 
 No data is written to the database or uploaded. Camera feed stays local.
 
@@ -462,7 +487,7 @@ macOS/Linux equivalent:
 python web_app.py --host 127.0.0.1 --port 8765 --db shot_lab.db --upload-dir user_data/uploads --pose-cache-dir user_data/pose_cache
 ```
 
-**App layout (redesigned UI):** three views in the top bar. **New session** holds the player/session form, the video source (Upload a file / Record with camera) and the camera setup guide. **Review** shows the open session: summary counts, replay with pose overlay, a clickable clip timeline (each attempt is a coloured segment; the dark tick is its release frame; arrow keys step frames when the timeline is focused), the attempt list, and the review editor, followed by Measured mechanics, Coaching cue, Ask about this session, and Session report. The red number next to Review is the count of attempts still needing review. **Progress** shows the weekly goal ring, streak, counted sessions, current drill, trend charts and every saved session with **Open review** / **Review attempts** and **Delete**. Fonts are bundled in `web/fonts/` (Archivo, SIL OFL), so the page loads no external resources.
+**App layout (redesigned UI):** four primary workspace views in the sidebar and top navigation. **Practice** (`#practice`, with backward-compatible `#new` hash alias) is the capture hub holding the compact toggleable hero, the simplified athlete summary ("Today's practice" with prefilled profile defaults, pain status, and an "Edit profile" trigger), practice focus radio chips ("What are you working on?"), explicit shot style selection (jump shot vs. set shot), camera angle confirmation, and practice video capture (Upload a file / Record with camera). **Review** shows the open session: summary counts, replay with pose overlay, a clickable clip timeline (each attempt is a coloured segment; the dark tick is its release frame; arrow keys step frames when the timeline is focused), the attempt list, and the review editor, followed by Measured mechanics, Coaching cue, Ask about this session, and Session report. The red number next to Review is the count of attempts still needing review. **Report** shows the comprehensive biomechanical analysis report with export capabilities. **Progress** shows the weekly goal ring, streak, counted sessions, current drill, trend charts and every saved session with **Open review** / **Review attempts** and **Delete**. Fonts are bundled in `web/fonts/` (Archivo, SIL OFL), so the page loads no external resources.
 
 **Reopening a session:** in Progress select **Open review** on any session that was uploaded through the web app. Sessions created by `main.py` or other tools have no web job, so they show only **Delete**. Reloading the page reopens the last session in this browser. The job response now returns the current shot rows from SQLite (not the snapshot taken when analysis finished), so saved reviews always appear after a reload.
 
@@ -478,11 +503,26 @@ Copy-Item .\shot_lab.db .\shot_lab_phase8_qa.db
 
 Requires the existing `shot_lab.db`; the copy preserves real labels/metrics but does not copy old upload/job files. New uploads get fresh replay metadata. This creates a second SQLite DB and the corresponding `.web_jobs.sqlite3`, upload, and pose-cache paths. It is recommended for delete/goal/drill UAT so the main database stays intact. For deletion checks, delete only a session uploaded through this QA server; older copied session rows do not have matching copied job/media pointers.
 
-Open `http://127.0.0.1:8765`, complete the profile/session fields, choose a permitted real video, and start analysis. The app accepts MP4, MOV, AVI, MKV, and WebM uploads up to 250 MB. Keep the server bound to loopback; this prototype rejects non-loopback bind addresses.
+Open `http://127.0.0.1:8765` (or `https://` if using `--https`), review the prefilled athlete summary, select practice focus and camera angle, choose a permitted real video or turn on the camera, and start analysis. The app accepts MP4, MOV, AVI, MKV, and WebM uploads up to 250 MB. Keep the server bound to loopback; this prototype rejects non-loopback bind addresses.
 
 **Required inputs/assets:** installed project requirements, `pose_landmarker.task`, and a permitted, readable video file with visible player footage. The full clip is processed. When custom YOLO weights (`models/best.pt` or `models/ballRim.pt`) are present, ball & rim tracking runs automatically during video analysis.
 
-**In-app camera recording:** on `http://127.0.0.1:8765`, in **Practice video** choose **Record with camera**, select **Turn on camera** and allow browser permission, then **Start recording** and **Stop**. A recorded WebM file is placed into the same upload control; choose **Analyze this session** to process it. Browser camera permission and MediaRecorder support are required; the app does not expose the camera to other devices over the network. Recordings are capped at 250 MB, held in browser memory until submitted, then stored under the local upload directory. The app first tries OpenCV directly. If the installed OpenCV build cannot decode the browser's WebM, it uses FFmpeg locally to create a temporary MP4 for analysis; the original WebM is retained for browser replay and the temporary converted file is removed after processing. Install the fallback decoder once if needed: `.venv\Scripts\python.exe -m pip install imageio-ffmpeg`. Check that **Turn off camera** stops its tracks.
+**In-app camera recording & immersive full-screen mode:** on `http://127.0.0.1:8765`, in **Practice video** choose **Record with camera**, select **Turn on camera** and allow browser permission.
+- **Immersive Full-Screen Mode:** Click the fullscreen icon button (`#hud-btn-fullscreen`) on the top-left of the HUD to enter edge-to-edge camera preview. In immersive mode, sidebars and cards are hidden so the shooter has an uncluttered view of live pose tracking and trajectory feedback. Exit immersive mode via the floating "Exit full screen" button, the escape icon, or pressing the `Escape` key.
+- **Secondary Metrics Toggle:** Click `#hud-btn-toggle-metrics` to toggle the top metrics bar (`RIM (LIVE)`, `PEAK MAX`, `KNEE`, `ARM`, `PHASE`) on or off.
+- **Honest HUD Indicators:** When starting a session with no recorded attempts, the success rate shows `—` (dash) instead of misleading `0%`. When a rim is detected, the status pill shows `LOCKED` (or verified confidence %) instead of artificial `100%`.
+- **Mobile Landscape Advisory:** On narrow screens in portrait mode, an orientation advisory recommends landscape framing for full court and hoop capture. During recording, accidental page scrolling is prevented (`is-camera-recording`).
+- **Recording & Submission:** Click **Start recording** and **Stop**. A recorded clip is placed into the upload control; select **Analyze Practice Clip** to process it. Browser camera permission and MediaRecorder support are required; recordings are capped at 250 MB and held in browser memory until submitted. The app tries OpenCV directly with local FFmpeg fallback if the browser's container requires conversion. Check that **Turn off camera** stops all tracks.
+- **Live Practice Audio Coach & Speech Feedback:**
+  - **Speech Synthesis:** In the camera HUD overlay, an audio coach uses the browser's native `speechSynthesis` to speak suggestive form cues (in English) before each rep and brief feedback after completed shots when supported by valid measurements.
+  - **Mute / Voice Toggle:** Click `#hud-btn-voice` (speaker icon) in the top-left HUD toolbar to mute/unmute speech. When muted, voice queue is instantly cancelled and state is persisted in localStorage; the visible text caption banner (`#hud-coach-banner`) remains displayed.
+  - **Evidence Gating & Gating Logic:**
+    1. *Historical Evidence:* If the selected athlete has $\ge 5$ approved, sufficient-confidence shots with a confirmed baseline or active remediation, the pre-rep cue reinforces that focus (e.g. *"Try letting your legs start the shot before your arm extends"* or *"Try finishing with your elbow higher"*).
+    2. *Session Observations:* If history is insufficient, the coach monitors reliable live shot kinematics (elbow release angle and knee dip).
+    3. *Setup Reminder:* If neither history nor session flaws are found, a generic reminder (*"Set your feet and balance before shooting"*) is given.
+    4. *Confidence Gating:* If landmark visibility is insufficient ($< 0.45$) or key shooting joints are occluded, mechanics speech is suppressed.
+    5. *Suggestive Tone & No Outcome Speech:* The coach uses purely suggestive language (never promises or guarantees made shots) and **never announces makes or misses in speech** (outcomes remain on the visual HUD banner).
+    6. *End-of-Set Recap:* When clicking **End Session** (`#hud-finish-btn`) or closing the camera, a short recap summarizes the set reps and primary focus (e.g. *"Set complete: 10 shots tracked. Focus on arm extension in your next set"*).
 
 **Existing desktop OpenCV camera workflow:** this is a separate live-analysis path, not a browser recording upload. Run `.venv\Scripts\python.exe main.py --player player --camera-view side_90 --shot-type catch_and_shoot --shot-style jump_shot --db shot_lab.db --no-ball --windowed`; OpenCV opens the computer's camera, analyzes frames live, and saves detected shot records to SQLite. Press `Q` to end the live run. It does not save the original webcam video or create the web app's replay job, so use the browser recorder above when you need a saved video and seekable replay. This prototype is local testing; a production website will need a separate recording/job/history design.
 
@@ -626,9 +666,10 @@ python web_app.py --lan --access-code MYCODE2026   # or a fixed code (>= 8 lette
    - Prints the generated code: `  Access code: <10-CHAR-CODE>`
    - Prints a direct link: `  One-tap link (keep private): http://<Wi-Fi IP>:8765/?token=<CODE>`
 4. **Connecting on your phone:**
-   - Open your mobile browser (Safari, Chrome, etc.).
-   - Either tap/navigate directly to the **one-tap link** with `?token=...`, or navigate to `http://<Wi-Fi IP>:8765/`, enter the access code on the access prompt screen, and submit.
-   - On success, the server issues a 30-day `HttpOnly`, `SameSite=Strict` authentication cookie, redirecting to the Shot Lab dashboard.
+   - **QR Code Instant Scan (Recommended):** On the host computer, the **Use it from your phone** card displays a live vector QR code. Open your smartphone camera (iOS Camera app or Android Camera/Google Lens), point it at the screen, and tap the recognized URL pop-up. The URL includes the access token (`?token=...`), instantly authenticating and opening the Practice dashboard with zero manual typing.
+   - **Manual connection:** Open Safari or Chrome on your phone, type `http://<Wi-Fi IP>:8765/` (or `https://`), enter the access code on the prompt screen, and submit.
+   - **Copy one-tap link:** Clicking "Copy one-tap link" copies the complete authenticated URL directly to your clipboard.
+   - On success, the server issues a 30-day `HttpOnly`, `SameSite=Strict` authentication cookie, redirecting to the Shot Lab dashboard. Transient local loopback probes (127.0.0.1) are cleared automatically so no spurious TLS warning banners distract during live testing or demo.
    - Ten wrong access codes from one device triggers a 10-minute rate limit lockout (HTTP 429). Requests from non-private addresses get 403. `GET /api/connection` shows the address and code only to the host computer itself.
 5. **Mobile video uploads:**
    - You can upload shooting clips directly from your phone's photo library/camera roll over plain `http://`.
@@ -759,13 +800,26 @@ Defaults: `--db shot_lab.db --upload-dir user_data/uploads --pose-cache-dir user
 **Live Camera Ball & Rim Tracking (Browser):**
 1. Open `http://127.0.0.1:8765/` in Chrome or Edge and navigate to the **Live Camera** tab (`#pane-camera`).
 2. Click **Start Camera & Tracking**.
-3. The interface renders:
+3. Open Developer Tools (`F12` -> Console tab) to monitor live frame processing without errors.
+4. The interface renders:
    - Live video feed with overlaid `<canvas id="camera-overlay">`.
-   - Top broadcast HUD pills: Rim lock status (`Rim Calibrated` in green or `Searching for rim…` in amber), Arc peak (`PEAK MAX`), Live knee angle (`KNEE`), Live arm angle (`ARM`), and Current shot phase (`PHASE`).
+   - Top broadcast HUD pills:
+     - Rim lock status (`Rim Calibrated` in green or `Searching for rim…` in amber).
+     - Arc peak (`PEAK MAX`).
+     - Live knee angle (`KNEE`): displays measured numerical degrees (e.g. `158.4°`) when detected, or `--` when absent or below confidence threshold.
+     - Live arm angle (`ARM`): displays measured numerical degrees (e.g. `92.1°`) when detected, or `--` when absent.
+     - Current shot phase (`PHASE`): displays clean phase strings (`"IDLE"`, `"GATHERING"`, `"DIP"`, `"SET POINT"`, `"RELEASING"`, `"FOLLOW THROUGH"`).
    - Neon orange skeleton overlay, detected basket rim box with concentric target reticle, detected basketball bounding box, and parabolic glowing trajectory trail.
    - Bottom broadcast stats card: Shots made (`SUCCESSES`), shots missed (`FAILURES`), and shooting percentage (`SUCCESS`).
    - Recalibrate button (`Recalibrate Rim`) to reset tracker state via `POST /api/live/reset`.
    - Dynamic popup banner when a shot outcome is detected (`SHOT MADE!` / `SHOT MISSED!`).
+
+**Live Verification Failure Indicators & Symptoms:**
+- **Console TypeError (`p.toUpperCase is not a function`)**: Indicates `current_phase` was sent as a 3-tuple `(state, wrist_v_y, elbow_v_ang)` rather than an unpacked string. The web client expects a string.
+- **Phase HUD Stuck on "IDLE"**: Indicates `compute_all_angles` or `phase_detector.update` positional arguments were misaligned, resulting in invalid kinematic inputs for phase transition logic.
+- **Missing Angle Readouts (`--`) Despite Full Body Visible**: Indicates `world_landmarks` or landmark validity map was misdirected, preventing 2D/3D angle calculation.
+- **Zero Shot Attempts Registered**: Indicates shot lifecycle callbacks (`on_shot_started`, `on_shot_release`, `on_shot_ended`) failed to fire due to tuple comparison failure against phase names.
+- **Invented Angles on Black/Empty Frame**: Check that missing or low-visibility frames yield `knee_angle: null`, `elbow_angle: null`, and `phase: "idle"`.
 
 **Live API Endpoints (Manual verification):**
 ```powershell
@@ -789,8 +843,8 @@ curl -s -X POST http://127.0.0.1:8765/api/live/process-frame -H "X-Shotlab: 1" -
 $env:PYTHONPATH="src;."
 py -3.12 -m unittest discover tests
 # Or run specific test suites:
-py -3.12 -m unittest tests/unit/test_dip_angle_model.py
 py -3.12 -m unittest tests/unit/test_live_camera_service.py
+py -3.12 -m unittest tests/unit/test_dip_angle_model.py
 py -3.12 -m unittest tests/unit/test_video_analysis_ball_tracking.py
 py -3.12 -m unittest tests/e2e/test_web_app.py
 ```
@@ -995,3 +1049,136 @@ OK
 - `export_dataset.py`: `train.jsonl`, `val.jsonl`, `test.jsonl`, and `DATASET_MANIFEST.json` written to the chosen output directory.
 - Evaluation tools: JSON report with input/split/sample metadata and metrics. `EXPLORATORY` means acceptance gates were not met.
 - Unit tests: unittest summary ending in `OK`; this verifies tested software behavior, not real-world accuracy.
+
+
+## 20. Shot Types Registry & Per-Shot-Type Analysis Configuration Layer
+
+### 20.1 Run Shot Types Registry Unit Tests
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python -m unittest tests/unit/test_shot_types_registry.py
+  ```
+- **Inputs**: None (uses in-memory test databases and synthetic fixtures).
+- **Expected Output**:
+  - 9 tests passing cleanly.
+  - Verifies all 12 shot types are present across 4 groups (Stationary, Dynamic, Range, Other).
+  - Confirms metric weights sum to 1.0 for every shot type.
+  - Tests alias resolution (off_the_dribble and off_dribble map to pull_up).
+  - Tests baseline isolation by shot type (pull_up shots do not dilute catch_and_shoot baselines).
+  - Verifies heuristic detector fallback when needs_calibration is true.
+  - Verifies coaching engine priority boost by metric weight: `priority * (1.0 + weight * 2.0)`.
+  - Verifies coaching engine 'not enough evidence' state when attempts are below threshold.
+- **Side Effects**: None (temporary databases deleted on teardown).
+
+### 20.2 Database Schema Version 9 Migration
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python scripts/migrate_shot_types.py --db-path user_data/shot_lab.db
+  ```
+- **Inputs**: Path to existing SQLite database (default: `user_data/shot_lab.db`).
+- **Expected Output**:
+  - `[INFO] Migrated database to schema version 9 with shot_type_id columns.`
+  - Backfills `shot_type_id` on `sessions`, `shots`, `baselines`, `labeled_clips`, and `attempt_analysis`.
+  - Maps existing `off_the_dribble` and `off_dribble` entries to `pull_up`.
+- **Side Effects**: Modifies database schema to version 9.
+
+### 20.3 Annotation Lab with Shot Type Selection
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python tools/annotation_lab.py raw_clips/mikeddunnstud1.mp4 --shot-type pull_up
+  ```
+- **Inputs**: Video file path, optional `--shot-type` (e.g. `pull_up`, `catch_and_shoot`, `step_back`, `free_throw`).
+- **Expected Output**:
+  - Launches annotation interface registering attempts with `shot_type_id="pull_up"`.
+- **Side Effects**: Writes annotated shot records to database.
+
+### 20.4 Web App Shot Type API Verification
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python -m basketball.app.web_app
+  ```
+- **Inputs**: Navigate to `http://localhost:8765/api/shot-types` in browser or curl.
+- **Expected Output**:
+  - Returns JSON containing `version: "1.0"`, `shot_types` dictionary with all 12 canonical entries, and `aliases` mapping.
+
+
+## 21. Ball Tracking Outcome Estimator, Consensus Rim Anchor, and Model Calibration Verification
+
+### 21.1 YOLO Model Comparison
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python scripts/compare_yolo_models.py --db shot_lab.db --frames-per-clip 30
+  ```
+- **Inputs**: Path to SQLite database containing reviewed attempts (default: `shot_lab.db`), optional `--models` list (default: `models/best.pt models/ballRim.pt`), `--frames-per-clip` (default: 60).
+- **Expected Output**:
+  - Reports count of reviewed attempts.
+  - If count < 50, emits notice: `NOTICE: Reviewed attempts count (X) is under 50. Results are strictly anecdotal and cannot be considered a statistically significant benchmark.`
+  - Prints markdown table with columns: `Model`, `Ball Det %`, `Rim Det %`, `Ball Mean Conf`, `Rim Mean Conf`, `Rim Stability`, `FPS`.
+- **Side Effects**: Read-only evaluation; does not modify database or model weights.
+
+### 21.2 Calibration Dataset Export
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python scripts/export_calibration_data.py --db shot_lab.db --output user_data/calibration_data.json
+  ```
+- **Inputs**: SQLite database with reviewed shots (default: `shot_lab.db`), output file path (default: `user_data/calibration_data.json`).
+- **Expected Output**:
+  - `Exported X reviewed attempts (Y makes, Z misses) across N sessions to user_data/calibration_data.json.`
+  - Preserves `session_id`, `player_id`, human label, automated outcome, uncalibrated `p_make`, `evidence_quality`, and full feature dictionary.
+- **Side Effects**: Writes JSON export to destination file.
+
+### 21.3 Outcome Estimator Calibration Gate
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python scripts/calibrate_outcome_model.py --db shot_lab.db --data user_data/calibration_data.json
+  ```
+- **Inputs**: Pre-exported calibration data or reads directly from `shot_lab.db`.
+- **Expected Output**:
+  - Verifies minimum sample size gate (50 reviewed attempts across >= 3 sessions).
+  - If below threshold: prints `STATUS: INSUFFICIENT DATA FOR STATISTICAL CALIBRATION`, shows remaining count needed, and prevents premature fitting.
+  - If above threshold: fits L2-regularized logistic weights across session folds and outputs proposed provisional configuration without touching production CFG.
+- **Side Effects**: None; production CFG is never modified automatically.
+
+### 21.4 Export Hard Frames around Rim Crossing
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python scripts/export_hard_frames.py --db shot_lab.db --out-dir user_data/hard_frames --limit 5
+  ```
+- **Inputs**: SQLite database containing shot reviews (default: `shot_lab.db`), target directory (default: `user_data/hard_frames`), optional `--limit`.
+- **Expected Output**:
+  - Identifies human/machine disagreement and high-uncertainty attempts.
+  - Extracts image sequences around estimated rim crossing (`release_frame + 0.75s`).
+  - Writes JPEG frames and `manifest.json` under `user_data/hard_frames/<shot_id>/`.
+- **Side Effects**: Creates image files and metadata manifests in output folder.
+
+### 21.5 Rim Anchor REST API
+- **Command**:
+  ```powershell
+  # Start web server
+  $env:PYTHONPATH="src;."
+  python -m basketball.app.web_app
+  ```
+  In browser / curl:
+  - `GET http://localhost:8765/api/sessions/{session_id}/rim-anchor`
+    - Returns JSON: `{"session_id": "...", "rim_anchor": {"cx": ..., "cy": ..., "w": ..., "stability": ..., "rim_source": "auto"|"user_click"}}`.
+  - `POST http://localhost:8765/api/sessions/{session_id}/rim-anchor` with payload `{"cx": 500, "cy": 300, "w": 80}`
+    - Replaces session rim anchor with `user_click` provenance.
+    - Re-estimates machine outcomes for all shots in the session using full-resolution Rim-ROI second pass and updated trajectory math.
+    - Returns updated anchor and re-estimated shot list without mutating human labels.
+- **Side Effects**: Updates `sessions` and `shots` machine outcome columns in `shot_lab.db`.
+
+### 21.6 Web Review Rim Confirmation Workflow
+- **Procedure**:
+  1. Open a session in Shot Lab Review (`http://localhost:8765/#review`).
+  2. If the automatic clip rim detector was uncertain (stability > 0.15 or false rim rejected), notice the amber banner: `Rim not confirmed. Click the rim to improve make/miss estimates.`
+  3. Click `Confirm rim` (in banner or overlay controls).
+  4. On the video canvas, cursor changes to a crosshair. Click the rim center and drag to the rim outer edge, then release.
+  5. The client submits `POST /api/sessions/{session_id}/rim-anchor`, updates the session anchor in cyan (`#00f0ff`) with concentric rings and `RIM: CONFIRMED` badge, re-estimates all attempts in the session, and refreshes the attempt list with `Likely make` / `Likely miss` / `Unclear` and reason pills.

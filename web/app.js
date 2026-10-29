@@ -1,5 +1,5 @@
 'use strict';
-/* Baseline Shot Lab — local player app.
+/* Baseline Shot Lab - local player app.
    Talks only to the loopback API in web_app.py. Machine proposals stay separate
    from human review; no outcome, metric or cue is invented in the browser. */
 
@@ -7,7 +7,22 @@ const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const PLAYER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const LABELS = {
   camera_view: {side_90: 'side view', oblique_45: 'angled view', frontal: 'front view', rear: 'view from behind'},
-  shot_type: {catch_and_shoot: 'catch and shoot', off_dribble: 'off the dribble', free_throw: 'free throw'},
+  shot_type: {
+    catch_and_shoot: 'Catch and shoot',
+    free_throw: 'Free throw',
+    form_shooting: 'Form shooting',
+    pull_up: 'Pull-up jumper',
+    step_back: 'Step-back',
+    fadeaway: 'Fadeaway',
+    turnaround: 'Turnaround jumper',
+    off_screen: 'Off a screen',
+    mid_range: 'Mid-range',
+    three_pointer: 'Three-pointer',
+    bank_shot: 'Bank shot',
+    other: 'Other',
+    off_dribble: 'Pull-up jumper',
+    off_the_dribble: 'Pull-up jumper',
+  },
   shot_style: {jump_shot: 'jump shot', set_shot: 'set shot'},
   review_status: {quarantined: 'Needs review', approved: 'Approved', discarded: 'Discarded'},
   outcome: {unknown: 'Outcome unknown', make: 'Make', miss: 'Miss'},
@@ -65,6 +80,9 @@ const hudBtnClose = $('#hud-btn-close');
 const hudBtnSkeleton = $('#hud-btn-skeleton');
 const hudOutcomeBanner = $('#hud-outcome-banner');
 const hudOutcomeText = $('#hud-outcome-text');
+const hudBtnVoice = $('#hud-btn-voice');
+const hudCoachBanner = $('#hud-coach-banner');
+const hudCoachCaption = $('#hud-coach-caption');
 let liveShowSkeleton = true;
 const cancelButton = $('#cancel-job');
 const reportRoot = $('#report-root');
@@ -366,7 +384,7 @@ function skeleton(...kinds) {
     kinds.map(kind => el('span', {class: `skeleton skeleton-${kind}`})));
 }
 
-/* Hero: one orchestrated moment — tags appear, the ball travels the shot arc to the rim
+/* Hero: one orchestrated moment - tags appear, the ball travels the shot arc to the rim
    and leaves measured points behind; then gentle scroll parallax on the court layers. */
 function playHero() {
   const arc = document.getElementById('hero-arc');
@@ -518,30 +536,35 @@ function describeContext(context = {}) {
 const fmt = (value, digits = 1) => Number(value).toFixed(digits).replace(/\.0+$/, '');
 const frameOf = (shot, key) => shot[`annotated_${key}_frame`] ?? shot[`machine_${key}_frame`];
 const mmss = seconds => {
-  if (seconds == null || !Number.isFinite(Number(seconds))) return '—';
+  if (seconds == null || !Number.isFinite(Number(seconds))) return '-';
   const m = Math.floor(seconds / 60);
   return `${m}:${(seconds - m * 60).toFixed(2).padStart(5, '0')}`;
 };
 
 /* ------------------------------------------------------------------ routing */
-const VIEWS = ['new', 'review', 'report', 'workout', 'progress', 'drills'];
-const VIEW_TITLES = {new: 'New session', review: 'Review', report: 'Report', workout: 'Workout', progress: 'Progress', drills: 'Drills'};
+const VIEWS = ['practice', 'new', 'review', 'report', 'workout', 'progress', 'drills'];
+const VIEW_TITLES = {practice: 'Practice', new: 'Practice', review: 'Review', report: 'Report', workout: 'Workout', progress: 'Progress', drills: 'Drills'};
 let currentView = null;
 let workoutSessionId = null;  // the shooting session whose report a workout is built from
 function setView(name, {push = true} = {}) {
-  const view = VIEWS.includes(name) ? name : 'new';
+  let view = VIEWS.includes(name) ? name : 'practice';
+  if (view === 'new') view = 'practice';
   if (currentView === 'workout' && view !== 'workout') window.ShotLabWorkout?.hide();
   currentView = view;
-  for (const section of document.querySelectorAll('[data-view]')) section.hidden = section.dataset.view !== view;
+  for (const section of document.querySelectorAll('[data-view]')) {
+    const isTarget = section.dataset.view === view || (view === 'practice' && section.dataset.view === 'new');
+    section.hidden = !isTarget;
+  }
   for (const link of document.querySelectorAll('[data-nav]')) {
-    if (link.dataset.nav === view) link.setAttribute('aria-current', 'page');
+    const isNav = link.dataset.nav === view || (view === 'practice' && link.dataset.nav === 'new');
+    if (isNav) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
   if (currentAthlete && push && location.hash !== `#${view}`) history.replaceState(null, '', `#${view}`);
   if (currentAthlete) {
     const topbarTitle = document.getElementById('topbar-title');
-    if (topbarTitle) topbarTitle.textContent = VIEW_TITLES[view];
-    document.title = `${VIEW_TITLES[view]} · Baseline Shot Lab`;
+    if (topbarTitle) topbarTitle.textContent = VIEW_TITLES[view] || 'Practice';
+    document.title = `${VIEW_TITLES[view] || 'Practice'} · Baseline Shot Lab`;
   }
   if (view === 'progress') loadPlayerHistory(progressPlayer.value || playerIdInput.value);
   if (view === 'report') showReport(reportSessionId || activeSessionId);
@@ -647,7 +670,7 @@ function tidyCoachLine(text, detailed) {
   let out = String(text);
   if (!detailed) {   // default view: no frame references or raw reference lists
     out = out.replace(/\s*\((?=[^()]*\b(?:shot[_ ]?[0-9a-f]{6,}|frames? \d+)\b)[^()]*\)/gi, '');   // "(shot shot_1a2b3c4d, frame 24)"
-    out = out.replace(/,?\s*\b(?:at |in )?frames? \d+(?:\s*[-–]\s*\d+)?\b/gi, '');
+    out = out.replace(/,?\s*\b(?:at |in )?frames? \d+(?:\s*[--]\s*\d+)?\b/gi, '');
   }
   // Always: internal shot IDs and snake_case metric names are not for players.
   out = out.replace(/\b(?:shot\s+)?shot_[0-9a-f]{6,}\b/gi, detailed ? 'shot' : 'a shot');
@@ -693,7 +716,7 @@ function renderCoachAnswer(container, text, {detailed = false} = {}) {
           el('tbody', {}, ...rows.map(row => el('tr', {}, ...row.map(cell => el('td', {}, ...coachInline(cell, true)))))))));
       } else {
         blocks.push(el('ul', {}, ...rows.map(row => {
-          const rest = row.slice(1).filter(cell => cell && cell !== '—' && cell !== '-');
+          const rest = row.slice(1).filter(cell => cell && cell !== '-' && cell !== '-');
           return el('li', {}, el('strong', {}, ...coachInline(row[0] || '', false)), ...(rest.length ? coachInline(`: ${rest.join(', ')}`, false) : []));
         })));
       }
@@ -797,7 +820,7 @@ async function renderCameraDiagnostics() {
     ['Recording API (MediaRecorder)', caps.recorder ? 'available' : 'not available'],
     ['Pause while recording', caps.pause ? 'supported' : 'not supported'],
     ['Recordable formats', supported.length ? supported.join(', ') : 'none reported'],
-    ['Format that will be used', caps.recorder ? (pickRecordingType() || 'browser default') : '—'],
+    ['Format that will be used', caps.recorder ? (pickRecordingType() || 'browser default') : '-'],
     ['Cameras found', cameras],
     ['Last camera error', lastCameraError || 'none'],
     ['Browser', navigator.userAgent],
@@ -984,6 +1007,7 @@ async function startCamera(options = {}) {
       ? `Now using the ${currentFacing === 'user' ? 'front' : 'rear'} camera.`
       : 'Camera on. Frame your whole body and the ball, then start recording.';
     startLiveTracking();
+    checkOrientationHint();
     return true;
   } catch (error) {
     cameraState = cameraStream ? 'live' : 'off';
@@ -1041,6 +1065,7 @@ function startRecording() {
   clearInterval(recordTimer);
   recordTimer = setInterval(updateRecordClock, 250);
   cameraState = 'recording';
+  document.body.classList.add('is-camera-recording');
   renderCameraControls();
   updateRecordClock();
   cameraStatus.textContent = 'Recording… Shoot as usual. Stop when you are done.';
@@ -1068,6 +1093,7 @@ function stopRecording() {
   if (cameraState === 'recording') recordedMs += performance.now() - recordSegmentStart;
   clearInterval(recordTimer);
   recordTimer = null;
+  document.body.classList.remove('is-camera-recording');
   recordStopButton.disabled = true;
   recordPauseButton.disabled = true;
   try { mediaRecorder.stop(); } catch { finishRecording(mediaRecorder); }
@@ -1077,6 +1103,7 @@ function finishRecording(recorder) {
   if (recorder !== mediaRecorder) return;
   clearInterval(recordTimer);
   recordTimer = null;
+  document.body.classList.remove('is-camera-recording');
   const chunks = recordedChunks;
   if (!chunks.length) {
     cameraState = cameraStream ? 'live' : 'off';
@@ -1114,6 +1141,9 @@ function retakeRecording() {
 function stopCamera() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') stopRecording();
   releaseStream();
+  document.body.classList.remove('is-camera-recording');
+  toggleImmersiveCamera(false);
+  checkOrientationHint();
   if (cameraState !== 'review') {
     cameraState = 'off';
     cameraStatus.textContent = 'Camera is off.';
@@ -1146,7 +1176,10 @@ async function switchCamera() {
     : `Could not switch to the ${side(to)} camera (${reason}), and the ${side(from)} camera could not be reopened. ${cameraErrorMessage(restored)}`;
 }
 
-cameraStartButton.addEventListener('click', () => startCamera());
+cameraStartButton.addEventListener('click', () => {
+  if (typeof PracticeVoice !== 'undefined') PracticeVoice.unlock();
+  startCamera();
+});
 cameraStopButton.addEventListener('click', stopCamera);
 recordStartButton.addEventListener('click', startRecording);
 recordStopButton.addEventListener('click', stopRecording);
@@ -1165,13 +1198,29 @@ function selectedVideoFile() {
   return cameraTab ? recordedFile : fileInput.files?.[0] || null;
 }
 
-function startLiveTracking() {
+async function startLiveTracking() {
+  if (typeof PracticeVoice !== 'undefined') PracticeVoice.unlock();
   liveTrackingActive = true;
   liveProcessing = false;
+  try {
+    const profile = {
+      player_id: $('#session-player-id')?.value || 'player',
+      shot_style: $('#select-shot-style')?.value || 'jump_shot',
+      camera_view: $('#select-camera-view')?.value || 'side_90',
+      shot_type: document.querySelector('input[name="shot_type"]:checked')?.value || 'catch_and_shoot',
+    };
+    const resetRes = await api('/api/live/reset', jsonBody('POST', profile));
+    if (hudCoachCaption && resetRes?.caption) {
+      hudCoachCaption.textContent = resetRes.caption;
+    }
+  } catch {
+    /* maintain tracking even if reset fails */
+  }
   scheduleLiveFrame(100);
 }
 
 function stopLiveTracking() {
+  if (typeof PracticeVoice !== 'undefined') PracticeVoice.cancel();
   liveTrackingActive = false;
   liveProcessing = false;
   if (liveLoopTimer) {
@@ -1184,12 +1233,18 @@ function stopLiveTracking() {
   }
   if (hudHoopText) hudHoopText.textContent = 'Searching for rim…';
   if (hudHoopDot) hudHoopDot.className = 'hud-dot';
-  if (hudPanierLive) hudPanierLive.textContent = '—';
-  if (hudPicMax) hudPicMax.textContent = '—';
-  if (hudKneeVal) hudKneeVal.textContent = '—';
-  if (hudElbowVal) hudElbowVal.textContent = '—';
+  if (hudPanierLive) hudPanierLive.textContent = '-';
+  if (hudPicMax) hudPicMax.textContent = '-';
+  if (hudKneeVal) hudKneeVal.textContent = '-';
+  if (hudElbowVal) hudElbowVal.textContent = '-';
   if (hudPhaseText) hudPhaseText.textContent = 'IDLE';
+  if (hudMakesCount) hudMakesCount.textContent = '0';
+  if (hudMissesCount) hudMissesCount.textContent = '0';
+  if (hudAccVal) hudAccVal.textContent = '-';
   if (hudOutcomeBanner) hudOutcomeBanner.classList.remove('is-visible', 'outcome-make', 'outcome-miss');
+  if (typeof PracticeVoice !== 'undefined') {
+    PracticeVoice.cancel();
+  }
 }
 
 function scheduleLiveFrame(delayMs = 50) {
@@ -1412,7 +1467,7 @@ function renderLiveHUD(data, vw, vh) {
     hudHoopDot.className = rimDetected ? 'hud-dot active' : 'hud-dot';
   }
   if (hudPanierLive) {
-    hudPanierLive.textContent = rimDetected ? '100%' : '—';
+    hudPanierLive.textContent = rimDetected ? (data.rim.conf ? `${Math.round(data.rim.conf * 100)}%` : 'LOCKED') : '-';
   }
 
   if (hudPicMax) {
@@ -1421,16 +1476,16 @@ function renderLiveHUD(data, vw, vh) {
     } else if (data.ball?.flight_trail?.length > 2) {
       hudPicMax.textContent = 'IN FLIGHT';
     } else {
-      hudPicMax.textContent = '—';
+      hudPicMax.textContent = '-';
     }
   }
 
   if (hudKneeVal) {
-    hudKneeVal.textContent = data.pose?.knee_angle != null ? `${Math.round(data.pose.knee_angle)}°` : '—';
+    hudKneeVal.textContent = data.pose?.knee_angle != null ? `${Math.round(data.pose.knee_angle)}°` : '-';
   }
 
   if (hudElbowVal) {
-    hudElbowVal.textContent = data.pose?.elbow_angle != null ? `${Math.round(data.pose.elbow_angle)}°` : '—';
+    hudElbowVal.textContent = data.pose?.elbow_angle != null ? `${Math.round(data.pose.elbow_angle)}°` : '-';
   }
 
   if (hudPhaseText) {
@@ -1451,13 +1506,28 @@ function renderLiveHUD(data, vw, vh) {
     if (hudMakesCount) hudMakesCount.textContent = String(data.shot.makes || 0);
     if (hudMissesCount) hudMissesCount.textContent = String(data.shot.misses || 0);
     if (hudAccVal) {
-      const acc = data.shot.total > 0 ? Math.round(data.shot.accuracy) : 0;
-      hudAccVal.textContent = `${acc}%`;
+      if (data.shot.total > 0) {
+        hudAccVal.textContent = `${Math.round(data.shot.accuracy)}%`;
+      } else {
+        hudAccVal.textContent = '-';
+      }
     }
 
     if (data.shot.outcome && data.shot.total !== lastReportedShotTotal) {
       lastReportedShotTotal = data.shot.total;
       flashOutcomeBanner(data.shot.outcome, data.shot.outcome_conf);
+    }
+  }
+
+  // 6. Update Live Audio Coach HUD Banner & Speech
+  if (data.audio_coach) {
+    if (hudCoachCaption && data.audio_coach.caption) {
+      hudCoachCaption.textContent = data.audio_coach.caption;
+      if (hudCoachBanner) hudCoachBanner.classList.remove('hidden');
+    }
+    const evt = data.audio_coach.event;
+    if (evt && evt.speak && evt.text) {
+      PracticeVoice.say(evt.text);
     }
   }
 }
@@ -1481,11 +1551,21 @@ if (hudRecalibrateBtn) {
   hudRecalibrateBtn.addEventListener('click', async () => {
     hudRecalibrateBtn.disabled = true;
     try {
-      await api('/api/live/reset', {method: 'POST'});
+      PracticeVoice.cancel();
+      const profile = {
+        player_id: $('#session-player-id')?.value || 'player',
+        shot_style: $('#select-shot-style')?.value || 'jump_shot',
+        camera_view: $('#select-camera-view')?.value || 'side_90',
+        shot_type: document.querySelector('input[name="shot_type"]:checked')?.value || 'catch_and_shoot',
+      };
+      const resetRes = await api('/api/live/reset', jsonBody('POST', profile));
+      if (hudCoachCaption && resetRes?.caption) {
+        hudCoachCaption.textContent = resetRes.caption;
+      }
       lastReportedShotTotal = 0;
       if (hudMakesCount) hudMakesCount.textContent = '0';
       if (hudMissesCount) hudMissesCount.textContent = '0';
-      if (hudAccVal) hudAccVal.textContent = '0%';
+      if (hudAccVal) hudAccVal.textContent = '-';
       if (cameraOverlay) {
         const ctx = cameraOverlay.getContext('2d');
         if (ctx) ctx.clearRect(0, 0, cameraOverlay.width, cameraOverlay.height);
@@ -1505,8 +1585,268 @@ if (hudBtnClose) {
   });
 }
 
+/* --- Live Practice Audio Coach TTS Engine (Integrated) --- */
+const PracticeVoice = (function () {
+  const BrowserSpeechBackend = {
+    isSupported() {
+      return (
+        typeof window !== 'undefined' &&
+        'speechSynthesis' in window &&
+        typeof window.SpeechSynthesisUtterance === 'function'
+      );
+    },
+    unlock() {
+      if (this.isSupported()) {
+        try {
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    speak(text, onEnd, onError) {
+      if (!this.isSupported()) {
+        if (onError) onError(new Error('SpeechSynthesis not supported'));
+        return null;
+      }
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        const utterance = new window.SpeechSynthesisUtterance(String(text));
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        utterance.lang = 'en-US';
+
+        const voices = window.speechSynthesis.getVoices();
+        if (voices && voices.length) {
+          const enVoice =
+            voices.find(v => v.lang === 'en-US' || v.lang === 'en_US') ||
+            voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en')) ||
+            voices[0];
+          if (enVoice) utterance.voice = enVoice;
+        }
+
+        utterance.onend = () => {
+          if (onEnd) onEnd();
+        };
+        utterance.onerror = (err) => {
+          if (onError) onError(err);
+        };
+
+        window.speechSynthesis.speak(utterance);
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        return utterance;
+      } catch (err) {
+        if (onError) onError(err);
+        return null;
+      }
+    },
+    cancel() {
+      if (this.isSupported()) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+  };
+
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.onvoiceschanged = () => {
+        try { window.speechSynthesis.getVoices(); } catch { /* ignore */ }
+      };
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const STORAGE_KEY = 'baseline_practice_voice_enabled';
+
+  function readStoredVoicePref() {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const val = window.localStorage.getItem(STORAGE_KEY);
+        if (val !== null) return val === '1' || val === 'true';
+      }
+    } catch {
+      /* ignore */
+    }
+    return true; // Default unmuted
+  }
+
+  function writeStoredVoicePref(enabled) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(STORAGE_KEY, enabled ? '1' : '0');
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const voice = {
+    backend: BrowserSpeechBackend,
+    enabled: readStoredVoicePref(),
+    queue: [],
+    busy: false,
+    gen: 0,
+    guard: null,
+
+    isSupported() {
+      return Boolean(this.backend && this.backend.isSupported && this.backend.isSupported());
+    },
+
+    unlock() {
+      if (this.backend && typeof this.backend.unlock === 'function') {
+        this.backend.unlock();
+      }
+    },
+
+    setBackend(customBackend) {
+      if (customBackend && typeof customBackend.speak === 'function' && typeof customBackend.cancel === 'function') {
+        this.cancel();
+        this.backend = customBackend;
+      }
+    },
+
+    setMuted(muted) {
+      this.enabled = !muted;
+      writeStoredVoicePref(this.enabled);
+      if (!this.enabled) {
+        this.cancel();
+      }
+    },
+
+    isMuted() {
+      return !this.enabled;
+    },
+
+    toggleMute() {
+      this.setMuted(!this.isMuted());
+      return this.isMuted();
+    },
+
+    say(text, { priority = 'normal', kind = 'coach' } = {}) {
+      if (!text || typeof text !== 'string' || !text.trim()) return false;
+      if (!this.isSupported() || !this.enabled) return false;
+
+      if (kind === 'coach') {
+        this.queue = this.queue.filter(item => item.kind !== 'coach');
+      }
+
+      this.queue.push({ text: String(text).trim(), kind, priority });
+      this.pump();
+      return true;
+    },
+
+    pump() {
+      if (this.busy || !this.queue.length) return;
+      const next = this.queue.shift();
+      const currentGen = this.gen;
+      let finished = false;
+
+      const done = () => {
+        if (finished || currentGen !== this.gen) return;
+        finished = true;
+        clearTimeout(this.guard);
+        this.guard = null;
+        this.busy = false;
+        this.pump();
+      };
+
+      this.busy = true;
+      try {
+        const res = this.backend.speak(next.text, done, done);
+        if (!res && !this.backend.isSupported()) {
+          finished = true;
+          this.busy = false;
+          return;
+        }
+      } catch {
+        finished = true;
+        this.busy = false;
+        return;
+      }
+
+      this.guard = setTimeout(done, Math.max(1400, next.text.length * 115));
+    },
+
+    cancel() {
+      this.gen += 1;
+      this.queue = [];
+      this.busy = false;
+      if (this.guard) {
+        clearTimeout(this.guard);
+        this.guard = null;
+      }
+      try {
+        if (this.backend && typeof this.backend.cancel === 'function') {
+          this.backend.cancel();
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+  };
+
+  if (typeof window !== 'undefined') {
+    window.PracticeVoice = voice;
+  }
+  return voice;
+})();
+
+function updateVoiceButtonUI(isMuted) {
+  if (!hudBtnVoice) return;
+  hudBtnVoice.classList.toggle('active', !isMuted);
+  hudBtnVoice.classList.toggle('is-muted', isMuted);
+  hudBtnVoice.title = isMuted ? 'Unmute audio coach (voice off)' : 'Mute audio coach (voice on)';
+  const onIcon = hudBtnVoice.querySelector('.icon-voice-on');
+  const offIcon = hudBtnVoice.querySelector('.icon-voice-off');
+  if (onIcon) onIcon.classList.toggle('hidden', isMuted);
+  if (offIcon) offIcon.classList.toggle('hidden', !isMuted);
+}
+
+if (hudBtnVoice) {
+  updateVoiceButtonUI(PracticeVoice.isMuted());
+  hudBtnVoice.addEventListener('click', () => {
+    PracticeVoice.unlock();
+    const isMuted = PracticeVoice.toggleMute();
+    updateVoiceButtonUI(isMuted);
+    if (!isMuted) {
+      PracticeVoice.say('Audio coach unmuted', { priority: 'high', kind: 'system' });
+      toast('Audio coach unmuted');
+    } else {
+      PracticeVoice.cancel();
+      toast('Audio coach muted');
+    }
+  });
+}
+
+async function finishPracticeSessionWithRecap() {
+  try {
+    const recap = await api('/api/live/recap');
+    if (recap && recap.speak && recap.text) {
+      PracticeVoice.say(recap.text);
+      if (hudCoachCaption && recap.caption) {
+        hudCoachCaption.textContent = recap.caption;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 if (hudFinishBtn) {
-  hudFinishBtn.addEventListener('click', () => {
+  hudFinishBtn.addEventListener('click', async () => {
+    await finishPracticeSessionWithRecap();
     if (cameraStopButton && !cameraStopButton.disabled) cameraStopButton.click();
     toast('Practice session ended');
   });
@@ -1553,10 +1893,12 @@ form.addEventListener('submit', async event => {
 
   const data = new FormData(form);
   const query = new URLSearchParams();
-  for (const key of ['player_id', 'handedness', 'skill_level', 'goals', 'camera_view', 'shot_type', 'shot_style']) {
+  for (const key of ['player_id', 'handedness', 'skill_level', 'goals', 'camera_view', 'shot_type', 'shot_type_id', 'shot_style']) {
     query.set(key, data.get(key) || '');
   }
-  query.set('pain_reported', form.elements.pain_reported.checked ? '1' : '0');
+  const painInput = form.elements.pain_reported;
+  const painVal = painInput ? (painInput.type === 'checkbox' ? (painInput.checked ? '1' : '0') : (painInput.value || '0')) : '0';
+  query.set('pain_reported', painVal);
   cancelButton.classList.remove('hidden');
   cancelButton.textContent = 'Cancel upload';
   jobProgress.classList.add('is-running');
@@ -1739,6 +2081,20 @@ function renderResults(result, jobId) {
   if (result.incomplete_candidate_count) notes.push('A possible attempt started but the clip ended before a release was seen, so it was not proposed.');
   results.append(el('p', {class: 'result-note', text: notes.join(' ')}));
 
+  let rimAnchor = result.rim_anchor || null;
+  const isRimConfirmed = rimAnchor && (rimAnchor.rim_source === 'user_click' || (rimAnchor.stability != null && rimAnchor.stability <= 0.15));
+  let rimBanner = null;
+  if (!isRimConfirmed) {
+    rimBanner = el('div', {class: 'rim-unconfirmed-banner'},
+      el('div', {class: 'rim-banner-text'},
+        el('strong', {text: 'Rim not confirmed.'}),
+        el('span', {text: ' Click the rim to improve make/miss estimates.'})
+      ),
+      el('button', {type: 'button', class: 'btn btn-primary btn-small', onclick: () => startRimCalibration()}, 'Confirm rim')
+    );
+    results.append(rimBanner);
+  }
+
   // Replay + review
   const layout = el('div', {class: 'review-layout'});
   const playerCard = el('section', {class: 'card player-card monitor', 'aria-label': 'Replay'});
@@ -1755,7 +2111,8 @@ function renderResults(result, jobId) {
   const ballToggle = el('input', {type: 'checkbox'});
   ballToggle.checked = true;
   const ballLabel = el('label', {class: 'overlay-toggle'}, ballToggle, 'Ball & Rim');
-  frame.append(video, canvas, el('div', {class: 'overlay-toggles'}, overlayLabel, anglesLabel, ballLabel));
+  const confirmRimBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', style: 'margin-left: 6px;', onclick: () => startRimCalibration()}, 'Confirm rim');
+  frame.append(video, canvas, el('div', {class: 'overlay-toggles'}, overlayLabel, anglesLabel, ballLabel, confirmRimBtn));
   playerCard.append(frame);
 
   const timelineTrack = el('div', {class: 'timeline-track', role: 'slider', tabindex: '0', 'aria-label': 'Clip timeline. Use arrow keys to step frames.', 'aria-valuemin': '0', 'aria-valuemax': String(frameCount - 1), 'aria-valuenow': '0'});
@@ -1888,25 +2245,64 @@ function renderResults(result, jobId) {
     shots.forEach((shot, index) => {
       const status = shot.review_status || 'quarantined';
       const release = frameOf(shot, 'release');
-      let outcomeLabel = 'Needs confirmation';
-      if ((shot.review_status || 'quarantined') === 'approved' && shot.outcome && shot.outcome !== 'unknown') {
-        outcomeLabel = `${LABELS.outcome[shot.outcome]} (Confirmed)`;
-      } else if (shot.outcome_source === 'automated_trajectory' || (shot.automated_outcome && shot.automated_outcome !== 'unknown')) {
-        const auto = shot.automated_outcome || shot.outcome;
-        const conf = Math.round((shot.automated_outcome_conf || 0) * 100);
-        if (auto && auto !== 'unknown') {
-          outcomeLabel = `Automatic: ${LABELS.outcome[auto] || auto} (${conf}%)`;
+      let outcomeLabel = 'Unclear';
+      let reasonText = '';
+      let pMakeTip = '';
+
+      if (status === 'approved' && shot.outcome && shot.outcome !== 'unknown') {
+        outcomeLabel = `${LABELS.outcome[shot.outcome] || shot.outcome} (Confirmed)`;
+      } else {
+        const auto = shot.automated_outcome;
+        if (auto === 'make') {
+          outcomeLabel = 'Likely make';
+        } else if (auto === 'miss') {
+          outcomeLabel = 'Likely miss';
+        } else {
+          outcomeLabel = 'Unclear';
         }
-      } else if (shot.outcome && shot.outcome !== 'unknown') {
-        outcomeLabel = `${LABELS.outcome[shot.outcome]} (Confirmed)`;
+
+        const reason = shot.outcome_reason;
+        if (reason) {
+          const REASON_MAP = {
+            'RIM_NOT_ANCHORED': 'Rim not confirmed',
+            'TRACK_TOO_SPARSE': 'Sparse ball track',
+            'NO_BALLISTIC_FIT': 'Ball not seen near rim',
+            'NO_DESCENT_OBSERVED': 'No downward arc',
+            'SHORT_OF_RIM_HEIGHT': 'Short of rim',
+            'AMBIGUOUS_NEAR_RIM': 'Close to rim edge',
+            'BOUNCED_OFF_RIM': 'Bounced off rim',
+            'DEFLECTED_SIDEWAYS': 'Deflected sideways',
+            'CLEAN_PASS': 'Clean entry',
+            'INSUFFICIENT_FLIGHT_POINTS': 'Ball not seen near rim',
+            'POOR_TRAJECTORY_FIT': 'Poor trajectory fit',
+            'RIM_NOT_DETECTED': 'Rim not confirmed',
+          };
+          reasonText = REASON_MAP[reason] || reason.replaceAll('_', ' ').toLowerCase();
+        }
+
+        if (shot.p_make != null) {
+          pMakeTip = `Uncalibrated score: ${Math.round(shot.p_make * 100)}%`;
+        }
       }
+
+      const metaLine = el('span', {class: 'attempt-outcome-line'},
+        el('span', {
+          class: 'attempt-outcome-val',
+          'data-tip': pMakeTip || null,
+          title: pMakeTip || null,
+          text: outcomeLabel,
+        }),
+        reasonText ? el('span', {class: 'chip chip-reason', text: reasonText}) : null,
+        el('span', {class: 'attempt-body-tracking', text: `, ${shot.tracking_confidence === 'SUFFICIENT' ? 'body well tracked' : 'body partly tracked'}`})
+      );
+
       list.append(el('li', {}, el('button', {
         type: 'button', class: 'attempt', 'aria-pressed': String(index === selected), onclick: () => selectAttempt(index, true),
       },
       el('span', {class: 'attempt-num', text: index + 1}),
       el('span', {class: 'attempt-meta'},
         el('strong', {text: `${mmss((frameOf(shot, 'start') ?? 0) / fps)}${release == null ? ' · release not marked' : ` · release ${mmss(release / fps)}`}`}),
-        el('span', {text: `${outcomeLabel}, ${shot.tracking_confidence === 'SUFFICIENT' ? 'body well tracked' : 'body partly tracked'}`})),
+        metaLine),
       el('span', {class: `chip chip-${status}`, text: shot.outcome_source === 'manual_attempt' ? 'Added by you' : (LABELS.review_status[status] || status)}))));
     });
     const pending = shots.filter(shot => (shot.review_status || 'quarantined') === 'quarantined').length;
@@ -1977,51 +2373,52 @@ function renderResults(result, jobId) {
       }
       return el('fieldset', {class: 'choice-group'}, el('legend', {text: legend}), row);
     };
-    const autoOutcome = shot.automated_outcome || (shot.outcome_source === 'automated_trajectory' ? shot.outcome : null);
-    const defaultOutcome = (shot.outcome && shot.outcome !== 'unknown')
-      ? shot.outcome
-      : ((autoOutcome && autoOutcome !== 'unknown' && (shot.automated_outcome_conf || 0) >= 0.70)
-          ? autoOutcome
-          : 'unknown');
-
+    const defaultOutcome = (shot.outcome && shot.outcome !== 'unknown') ? shot.outcome : 'unknown';
     const outcomeGroup = radioGroup('outcome', 'Outcome you saw', [['unknown', 'Not sure'], ['make', 'Make'], ['miss', 'Miss']], defaultOutcome);
     const statusGroup = radioGroup('status', 'Decision', [['quarantined', 'Leave for later'], ['approved', 'Approve'], ['discarded', 'Not a shot']], shot.review_status || 'quarantined');
 
-    // Advisory automated outcome banner
-    let autoOutcomeBanner = null;
-    if (autoOutcome && autoOutcome !== 'unknown') {
-      const isHighConf = (shot.automated_outcome_conf || 0) >= 0.70 && (shot.trajectory_fit_r2 || 0) >= 0.70;
-      const confPct = Math.round((shot.automated_outcome_conf || 0) * 100);
-      const r2Text = shot.trajectory_fit_r2 != null ? Number(shot.trajectory_fit_r2).toFixed(2) : '—';
-      const label = LABELS.outcome[autoOutcome] || autoOutcome;
-      if (isHighConf) {
-        const confirmBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', onclick: () => {
-          const radio = outcomeGroup.querySelector(`input[value="${autoOutcome}"]`);
-          if (radio) radio.checked = true;
-          const approveRadio = statusGroup.querySelector('input[value="approved"]');
-          if (approveRadio) approveRadio.checked = true;
-        }}, `Confirm prediction (${label})`);
-        autoOutcomeBanner = el('div', {class: 'auto-outcome-banner span-all'},
-          el('div', {style: 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;'},
-            el('span', {class: 'auto-outcome-pill', text: `Trajectory: ${label}`}),
-            el('span', {class: 'auto-outcome-conf', text: `${confPct}% conf · R² ${r2Text}`})
-          ),
-          confirmBtn
-        );
-      } else {
-        autoOutcomeBanner = el('div', {class: 'auto-outcome-banner span-all'},
-          el('div', {style: 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap;'},
-            el('span', {class: 'auto-outcome-pill neutral', text: `Uncertain: ${label}`}),
-            el('span', {class: 'auto-outcome-conf', text: `${confPct}% conf · R² ${r2Text} (Needs review)`})
-          )
-        );
-      }
-    } else {
-      autoOutcomeBanner = el('div', {class: 'auto-outcome-banner span-all'},
-        el('span', {class: 'auto-outcome-pill neutral', text: 'No ball tracking prediction'}),
-        el('span', {class: 'auto-outcome-conf', text: 'Confirm outcome manually'})
-      );
+    // Outcome Evidence Panel (Prototype, advisory)
+    const evidenceQuality = Math.round((shot.evidence_quality || 0) * 100);
+    let parsedFeats = {};
+    try {
+      parsedFeats = typeof shot.outcome_features === 'string'
+        ? JSON.parse(shot.outcome_features)
+        : (shot.outcome_features || {});
+    } catch (e) {
+      parsedFeats = {};
     }
+
+    const marginVal = parsedFeats.margin_ball_d != null
+      ? `${parsedFeats.margin_ball_d} ball dia`
+      : (parsedFeats.margin_px != null ? `${parsedFeats.margin_px} px` : '-');
+    const belowVal = parsedFeats.below_rim_in_col != null ? (parsedFeats.below_rim_in_col ? 'Yes' : 'No') : '-';
+    const bounceVal = parsedFeats.bounced_back != null ? (parsedFeats.bounced_back ? 'Yes' : 'No') : '-';
+    const ptsVal = shot.flight_points_count ?? parsedFeats.n_inliers ?? '-';
+
+    const autoOutcomeBanner = el('div', {class: 'outcome-evidence-panel span-all'},
+      el('div', {class: 'evidence-head'},
+        el('span', {class: 'evidence-title'}, 'Outcome evidence'),
+        el('span', {class: 'badge-advisory'}, 'Prototype, advisory')
+      ),
+      el('div', {class: 'evidence-bar-row'},
+        el('div', {class: 'evidence-bar-label'},
+          el('span', {text: 'Evidence quality'}),
+          el('strong', {text: `${evidenceQuality}%`})
+        ),
+        el('div', {class: 'evidence-track'},
+          el('div', {class: 'evidence-bar', style: `width: ${evidenceQuality}%`})
+        )
+      ),
+      el('div', {class: 'evidence-grid'},
+        el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Margin'}), el('span', {class: 'evidence-v', text: marginVal})),
+        el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Below rim in column'}), el('span', {class: 'evidence-v', text: belowVal})),
+        el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Bounce back'}), el('span', {class: 'evidence-v', text: bounceVal})),
+        el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Ball points'}), el('span', {class: 'evidence-v', text: String(ptsVal)}))
+      ),
+      shot.p_make != null
+        ? el('p', {class: 'evidence-uncalibrated-note', text: `Uncalibrated score: ${Math.round(shot.p_make * 100)}% (provisional, not a probability)`})
+        : null
+    );
 
     const notes = el('textarea', {rows: '2', maxlength: '2000', placeholder: 'Optional, e.g. ball hidden at release'});
     notes.value = shot.review_notes || '';
@@ -2094,6 +2491,94 @@ function renderResults(result, jobId) {
     if (seek) seekToFrame(frameOf(shots[selected], 'start'));
   }
 
+  // Rim calibration & interactive drag state
+  let calibratingRim = false;
+  let dragStart = null;
+  let dragCurrent = null;
+
+  function startRimCalibration() {
+    calibratingRim = true;
+    canvas.style.cursor = 'crosshair';
+    canvas.setAttribute('title', 'Click rim center and drag to rim edge, then release');
+    redraw();
+  }
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (!calibratingRim) return;
+    const rect = canvas.getBoundingClientRect();
+    dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    dragCurrent = dragStart;
+    redraw();
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!calibratingRim || !dragStart) return;
+    const rect = canvas.getBoundingClientRect();
+    dragCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    redraw();
+  });
+
+  window.addEventListener('mouseup', async (e) => {
+    if (!calibratingRim || !dragStart) return;
+    const rect = canvas.getBoundingClientRect();
+    const endPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const distPx = Math.hypot(endPt.x - dragStart.x, endPt.y - dragStart.y);
+    const startCopy = dragStart;
+    dragStart = null;
+    dragCurrent = null;
+    calibratingRim = false;
+    canvas.style.cursor = 'default';
+
+    if (distPx < 4) {
+      redraw();
+      return;
+    }
+
+    const vw = video.videoWidth || Number(result.video?.width) || 1280;
+    const vh = video.videoHeight || Number(result.video?.height) || 720;
+    const width = video.clientWidth, height = video.clientHeight;
+    const displayedWidth = Math.min(width, (height * vw) / vh);
+    const displayedHeight = Math.min(height, (width * vh) / vw);
+    const offsetX = (width - displayedWidth) / 2, offsetY = (height - displayedHeight) / 2;
+    const sx = displayedWidth / vw;
+    const sy = displayedHeight / vh;
+
+    const centerVideoX = (startCopy.x - offsetX) / sx;
+    const centerVideoY = (startCopy.y - offsetY) / sy;
+    const widthVideo = (distPx * 2) / sx;
+
+    try {
+      const resp = await api(`/api/sessions/${result.session_id}/rim-anchor`, {
+        method: 'POST',
+        body: JSON.stringify({ cx: centerVideoX, cy: centerVideoY, w: widthVideo }),
+      });
+      if (resp && resp.rim_anchor) {
+        rimAnchor = resp.rim_anchor;
+        result.rim_anchor = resp.rim_anchor;
+        if (resp.shots) {
+          result.shots = resp.shots;
+          shots.splice(0, shots.length, ...resp.shots);
+        }
+        if (rimBanner) rimBanner.remove();
+        renderList();
+        renderEditor();
+        redraw();
+      }
+    } catch (err) {
+      console.error('Rim confirmation error:', err);
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (calibratingRim && e.key === 'Escape') {
+      calibratingRim = false;
+      dragStart = null;
+      dragCurrent = null;
+      canvas.style.cursor = 'default';
+      redraw();
+    }
+  });
+
   // Pose overlay
   let poseData = null;
   const redraw = () => {
@@ -2104,6 +2589,10 @@ function renderResults(result, jobId) {
       ball: ballToggle.checked,
       side,
       selectedShot: shots[selected],
+      rimAnchor,
+      calibratingRim,
+      dragStart,
+      dragCurrent,
     });
     updatePlayhead();
   };
@@ -2674,7 +3163,7 @@ function sessionItem(session, playerId) {
   actions.append(deleteButton);
   const parts = dateParts(session.created_at);
   return el('article', {class: `card session-item${session.session_id === activeSessionId ? ' is-current' : ''}`},
-    el('div', {class: 'session-date', 'aria-hidden': 'true'}, el('b', {text: parts ? parts.day : '—'}), el('small', {text: parts ? parts.month : ''})),
+    el('div', {class: 'session-date', 'aria-hidden': 'true'}, el('b', {text: parts ? parts.day : '-'}), el('small', {text: parts ? parts.month : ''})),
     el('div', {}, el('h3', {text: formatDate(session.created_at)}),
       el('p', {class: 'meta'}, `${describeContext(session).replace(/^./, c => c.toUpperCase())}. `,
         el('span', {class: `chip ${count ? 'chip-approved' : 'chip-quarantined'}`, text: count ? `${count} approved` : 'Not counted yet'}))),
@@ -2806,53 +3295,92 @@ function drawPoseOverlay(video, canvas, poseData, videoMetadata, options = {}) {
   if (options.ball !== false && poseData.ball_rim && poseData.ball_rim.length > 0) {
     const trk = poseData.ball_rim[frame];
 
-    // Rim box & Target Reticle
-    const rimBox = trk?.rim || poseData._lastRim;
-    const rimConf = trk?.rim ? trk.rim_conf : poseData._lastRimConf;
-    if (trk?.rim) {
-      poseData._lastRim = trk.rim;
-      poseData._lastRimConf = trk.rim_conf;
-    }
-    if (rimBox) {
-      const [rx1, ry1, rx2, ry2] = rimBox;
-      const rx = mapX(rx1);
-      const ry = mapY(ry1);
-      const rw = (rx2 - rx1) * sx;
-      const rh = (ry2 - ry1) * sy;
-      const rcx = rx + rw / 2;
-      const rcy = ry + rh / 2;
+    // Confirmed Rim Anchor (distinct cyan reticle)
+    const anchor = options.rimAnchor;
+    if (anchor) {
+      const acx = mapX(anchor.cx);
+      const acy = mapY(anchor.cy);
+      const aw = anchor.w * sx;
+      const ar = aw / 2;
 
       ctx.save();
-      ctx.strokeStyle = '#ff6b00';
+      ctx.strokeStyle = '#00f0ff';
       ctx.lineWidth = 2.5;
-      ctx.shadowColor = 'rgba(255, 107, 0, 0.8)';
+      ctx.shadowColor = 'rgba(0, 240, 255, 0.8)';
       ctx.shadowBlur = 10;
-      ctx.strokeRect(rx, ry, rw, rh);
-
-      const targetR = Math.min(rw, rh) * 0.35;
       ctx.beginPath();
-      ctx.arc(rcx, rcy, targetR, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255, 107, 0, 0.9)';
-      ctx.lineWidth = 2;
+      ctx.ellipse(acx, acy, ar, ar * 0.45, 0, 0, Math.PI * 2);
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.moveTo(rcx - targetR * 1.3, rcy);
-      ctx.lineTo(rcx + targetR * 1.3, rcy);
-      ctx.moveTo(rcx, rcy - targetR * 1.3);
-      ctx.lineTo(rcx, rcy + targetR * 1.3);
-      ctx.strokeStyle = 'rgba(255, 107, 0, 0.6)';
+      ctx.ellipse(acx, acy, ar * 0.75, ar * 0.35, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.6)';
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      const rimConfPct = Math.round((rimConf || 0.89) * 100);
-      const tagText = `RIM ${rimConfPct}%`;
+      ctx.beginPath();
+      ctx.moveTo(acx - ar * 1.2, acy);
+      ctx.lineTo(acx + ar * 1.2, acy);
+      ctx.moveTo(acx, acy - ar * 0.6);
+      ctx.lineTo(acx, acy + ar * 0.6);
+      ctx.strokeStyle = 'rgba(0, 240, 255, 0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      const tagText = anchor.rim_source === 'user_click' ? 'RIM: CONFIRMED' : 'RIM ANCHOR';
+      ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+      const tagW = ctx.measureText(tagText).width + 12;
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillRect(acx - tagW / 2, Math.max(0, acy - ar * 0.5 - 20), tagW, 18);
+      ctx.fillStyle = '#0a0a0f';
+      ctx.fillText(tagText, acx - tagW / 2 + 6, Math.max(12, acy - ar * 0.5 - 7));
+      ctx.restore();
+    }
+
+    // Raw YOLO Rim Box: filtered by aspect ratio, frame width, not touching top edge, and near anchor
+    const rimBox = trk?.rim;
+    if (rimBox) {
+      const [rx1, ry1, rx2, ry2] = rimBox;
+      const rwRaw = rx2 - rx1;
+      const rhRaw = ry2 - ry1;
+      const aspect = rwRaw / Math.max(1, rhRaw);
+      const passesGeometry = (aspect >= 1.1 && aspect <= 3.0 && rwRaw <= 0.25 * vw && ry1 >= 0.01 * vh);
+      const isNearAnchor = anchor ? (Math.hypot((rx1 + rx2) / 2 - anchor.cx, (ry1 + ry2) / 2 - anchor.cy) <= anchor.w * 1.5) : true;
+
+      if (passesGeometry && isNearAnchor) {
+        const rx = mapX(rx1);
+        const ry = mapY(ry1);
+        const rw = rwRaw * sx;
+        const rh = rhRaw * sy;
+        ctx.save();
+        ctx.strokeStyle = '#ff6b00';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(rx, ry, rw, rh);
+        ctx.restore();
+      }
+    }
+
+    // Interactive Drag while calibrating
+    if (options.calibratingRim && options.dragStart && options.dragCurrent) {
+      const ds = options.dragStart;
+      const dc = options.dragCurrent;
+      const rad = Math.hypot(dc.x - ds.x, dc.y - ds.y);
+      ctx.save();
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(ds.x, ds.y, rad, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(ds.x, ds.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#00f0ff';
+      ctx.fill();
+
       ctx.font = 'bold 12px Inter, system-ui, sans-serif';
-      const tagW = ctx.measureText(tagText).width + 14;
-      ctx.fillStyle = '#ff6b00';
-      ctx.fillRect(rx, Math.max(0, ry - 20), tagW, 20);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(tagText, rx + 7, Math.max(14, ry - 6));
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillText(`Rim Width: ${Math.round(rad * 2 / sx)}px (Release to confirm)`, ds.x + 10, ds.y - 10);
       ctx.restore();
     }
 
@@ -3077,6 +3605,208 @@ window.addEventListener('beforeprint', () => {
 window.addEventListener('afterprint', () => { printOpened.forEach(node => { node.open = false; }); printOpened = []; });
 reportRefresh.addEventListener('click', () => showReport(reportSessionId, {refresh: true}));
 
+/* -------------------------------------------------------------- QR Generator */
+const QR_EXP_TABLE = new Uint8Array(256);
+const QR_LOG_TABLE = new Uint8Array(256);
+for (let i = 0, x = 1; i < 255; i++) {
+  QR_EXP_TABLE[i] = x;
+  QR_LOG_TABLE[x] = i;
+  x <<= 1;
+  if (x & 256) x ^= 0x11d;
+}
+QR_EXP_TABLE[255] = QR_EXP_TABLE[0];
+
+function qrGexp(n) { return QR_EXP_TABLE[(n % 255 + 255) % 255]; }
+function qrGmult(x, y) { return (x === 0 || y === 0) ? 0 : qrGexp(QR_LOG_TABLE[x] + QR_LOG_TABLE[y]); }
+
+function qrRsGenPoly(n) {
+  let poly = [1];
+  for (let i = 0; i < n; i++) {
+    const next = [1];
+    const root = qrGexp(i);
+    for (let j = 0; j < poly.length; j++) {
+      next[j] = (next[j] || 0) ^ qrGmult(poly[j], root);
+      next[j + 1] = poly[j];
+    }
+    poly = next;
+  }
+  return poly.reverse();
+}
+
+function qrRsEncode(data, nsym) {
+  const gen = qrRsGenPoly(nsym);
+  const res = new Uint8Array(nsym);
+  for (let i = 0; i < data.length; i++) {
+    const coef = data[i] ^ res[0];
+    res.copyWithin(0, 1);
+    res[nsym - 1] = 0;
+    if (coef !== 0) {
+      for (let j = 0; j < nsym; j++) res[j] ^= qrGmult(gen[j], coef);
+    }
+  }
+  return res;
+}
+
+const QR_VER_SPECS = [
+  null,
+  { ver: 1, size: 21, dataCap: 17, ecBytes: 7, align: [] },
+  { ver: 2, size: 25, dataCap: 32, ecBytes: 10, align: [6, 18] },
+  { ver: 3, size: 29, dataCap: 53, ecBytes: 15, align: [6, 22] },
+  { ver: 4, size: 33, dataCap: 78, ecBytes: 20, align: [6, 26] },
+  { ver: 5, size: 37, dataCap: 106, ecBytes: 26, align: [6, 30] }
+];
+
+function makeQrMatrix(text) {
+  const enc = new TextEncoder();
+  const textBytes = enc.encode(text);
+  let spec = null;
+  for (let v = 1; v <= 5; v++) {
+    if (textBytes.length + 3 <= QR_VER_SPECS[v].dataCap) {
+      spec = QR_VER_SPECS[v];
+      break;
+    }
+  }
+  if (!spec) spec = QR_VER_SPECS[5];
+
+  const bits = [];
+  function putBits(val, len) {
+    for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
+  }
+  putBits(4, 4);
+  putBits(textBytes.length, 8);
+  for (const b of textBytes) putBits(b, 8);
+  putBits(0, Math.min(4, spec.dataCap * 8 - bits.length));
+  while (bits.length % 8 !== 0) bits.push(0);
+
+  const dataBytes = new Uint8Array(spec.dataCap);
+  for (let i = 0; i < bits.length / 8; i++) {
+    let byte = 0;
+    for (let b = 0; b < 8; b++) byte = (byte << 1) | bits[i * 8 + b];
+    dataBytes[i] = byte;
+  }
+  let padToggle = false;
+  for (let i = bits.length / 8; i < spec.dataCap; i++) {
+    dataBytes[i] = padToggle ? 0x11 : 0xec;
+    padToggle = !padToggle;
+  }
+
+  const ec = qrRsEncode(dataBytes, spec.ecBytes);
+  const total = new Uint8Array(spec.dataCap + spec.ecBytes);
+  total.set(dataBytes);
+  total.set(ec, spec.dataCap);
+
+  const size = spec.size;
+  const matrix = Array.from({ length: size }, () => Array(size).fill(null));
+  const isFunction = Array.from({ length: size }, () => Array(size).fill(false));
+
+  function setFunction(r, c, val) {
+    if (r >= 0 && r < size && c >= 0 && c < size) {
+      matrix[r][c] = val;
+      isFunction[r][c] = true;
+    }
+  }
+
+  function addFinder(top, left) {
+    for (let r = -1; r <= 7; r++) {
+      for (let c = -1; c <= 7; c++) {
+        const nr = top + r, nc = left + c;
+        if (r >= 0 && r <= 6 && c >= 0 && c <= 6) {
+          const isBlack = (r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4));
+          setFunction(nr, nc, isBlack ? 1 : 0);
+        } else {
+          setFunction(nr, nc, 0);
+        }
+      }
+    }
+  }
+
+  addFinder(0, 0);
+  addFinder(0, size - 7);
+  addFinder(size - 7, 0);
+
+  if (spec.align.length === 2) {
+    const ar = spec.align[1], ac = spec.align[1];
+    for (let r = -2; r <= 2; r++) {
+      for (let c = -2; c <= 2; c++) {
+        const isBlack = (Math.abs(r) === 2 || Math.abs(c) === 2 || (r === 0 && c === 0));
+        setFunction(ar + r, ac + c, isBlack ? 1 : 0);
+      }
+    }
+  }
+
+  for (let i = 8; i < size - 8; i++) {
+    setFunction(6, i, i % 2 === 0 ? 1 : 0);
+    setFunction(i, 6, i % 2 === 0 ? 1 : 0);
+  }
+
+  setFunction(size - 8, 8, 1);
+
+  for (let i = 0; i <= 8; i++) {
+    if (!isFunction[8][i]) isFunction[8][i] = true;
+    if (!isFunction[8][size - 1 - i]) isFunction[8][size - 1 - i] = true;
+    if (!isFunction[i][8]) isFunction[i][8] = true;
+    if (!isFunction[size - 1 - i][8]) isFunction[size - 1 - i] = true;
+  }
+
+  let bitIdx = 0;
+  const totalBits = total.length * 8;
+  let dir = -1;
+  let c = size - 1;
+  while (c > 0) {
+    if (c === 6) c--;
+    const rows = dir === -1 ? Array.from({ length: size }, (_, i) => size - 1 - i) : Array.from({ length: size }, (_, i) => i);
+    for (const r of rows) {
+      for (let colOffset = 0; colOffset < 2; colOffset++) {
+        const col = c - colOffset;
+        if (!isFunction[r][col]) {
+          let bit = 0;
+          if (bitIdx < totalBits) {
+            const byte = total[Math.floor(bitIdx / 8)];
+            bit = (byte >>> (7 - (bitIdx % 8))) & 1;
+            bitIdx++;
+          }
+          if ((r + col) % 2 === 0) bit ^= 1;
+          matrix[r][col] = bit;
+        }
+      }
+    }
+    c -= 2;
+    dir = -dir;
+  }
+
+  const fmtBits = [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0];
+  for (let i = 0; i <= 5; i++) matrix[8][i] = fmtBits[i];
+  matrix[8][7] = fmtBits[6];
+  matrix[8][8] = fmtBits[7];
+  matrix[7][8] = fmtBits[8];
+  for (let i = 9; i <= 14; i++) matrix[14 - i][8] = fmtBits[i];
+  for (let i = 0; i <= 7; i++) matrix[size - 1 - i][8] = fmtBits[i];
+  for (let i = 8; i <= 14; i++) matrix[8][size - 15 + i] = fmtBits[i];
+
+  return matrix;
+}
+
+function generateQrSvg(text, size = 160) {
+  try {
+    const qr = makeQrMatrix(text);
+    if (!qr) return null;
+    const count = qr.length;
+    const cellSize = (size / (count + 8)).toFixed(2);
+    const offset = 4 * cellSize;
+    let paths = '';
+    for (let r = 0; r < count; r++) {
+      for (let c = 0; c < count; c++) {
+        if (qr[r][c]) {
+          paths += `M${(c * cellSize + offset).toFixed(2)},${(r * cellSize + offset).toFixed(2)}h${cellSize}v${cellSize}h-${cellSize}z `;
+        }
+      }
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" class="phone-qr-svg" role="img" aria-label="QR Code to connect phone directly"><rect width="100%" height="100%" fill="#ffffff" rx="8"/><path d="${paths}" fill="#0f172a"/></svg>`;
+  } catch {
+    return null;
+  }
+}
+
 /* -------------------------------------------------------------- phone access */
 async function loadPhoneCard() {
   const card = $('#phone-card');
@@ -3091,27 +3821,480 @@ async function loadPhoneCard() {
         el('p', {class: 'hint', text: 'The terminal then shows an address and an access code to enter on the phone. Only devices on your private network can connect.'}));
       return;
     }
-    const url = info.urls[0];
-    body.replaceChildren(
-      el('p', {text: 'On your phone, join the same Wi-Fi, open this address in Safari or Chrome, and enter the access code.'}),
-      el('dl', {class: 'phone-facts'},
-        el('dt', {text: 'Address'}), el('dd', {}, el('code', {text: url || 'See the terminal'})),
-        el('dt', {text: 'Access code'}), el('dd', {}, el('code', {class: 'access-code', text: info.access_code}))),
-      url ? el('button', {type: 'button', class: 'btn btn-quiet btn-small', onclick: async () => {
-        try { await navigator.clipboard.writeText(`${url}?token=${info.access_code}`); toast('Link copied. Send it only to your own phone.'); }
+    const url = info.urls?.[0];
+    const fullConnectUrl = url ? `${url}?token=${encodeURIComponent(info.access_code || '')}` : '';
+
+    const nodes = [];
+    nodes.push(el('p', {text: 'On your phone, scan the QR code or join the same Wi-Fi, open this address in Safari or Chrome, and enter the access code.'}));
+
+    if (fullConnectUrl) {
+      const qrSvg = generateQrSvg(fullConnectUrl, 160);
+      if (qrSvg) {
+        const qrBox = el('div', {class: 'phone-qr-box', title: 'Scan to connect instantly'});
+        qrBox.innerHTML = qrSvg;
+        const qrWrap = el('div', {class: 'phone-qr-wrap'},
+          qrBox,
+          el('span', {class: 'phone-qr-caption', text: 'Scan with camera to connect directly'})
+        );
+        nodes.push(qrWrap);
+      }
+    }
+
+    nodes.push(el('dl', {class: 'phone-facts'},
+      el('dt', {text: 'Address'}), el('dd', {}, el('code', {text: url || 'See the terminal'})),
+      el('dt', {text: 'Access code'}), el('dd', {}, el('code', {class: 'access-code', text: info.access_code}))
+    ));
+
+    if (url) {
+      nodes.push(el('button', {type: 'button', class: 'btn btn-quiet btn-small', onclick: async () => {
+        try { await navigator.clipboard.writeText(fullConnectUrl || url); toast('Link copied. Send it only to your own phone.'); }
         catch { toast('Copy failed; type the address and code instead.'); }
-      }}, 'Copy one-tap link') : null,
-      info.https_builtin ? el('p', {class: 'hint'},
+      }}, 'Copy one-tap link'));
+    }
+
+    if (info.https_builtin) {
+      nodes.push(el('p', {class: 'hint'},
         'Camera recording on the phone needs it to trust this computer\'s Shot Lab certificate (once per phone). On the phone, open ',
         el('code', {text: info.setup_url || `${url || ''}shotlab-ca.crt`}),
-        ' and follow the steps. Fingerprint to compare: ', el('code', {class: 'fingerprint', text: info.ca_fingerprint || ''})) : null,
-      (info.tls_problems || []).length ? el('div', {class: 'quality-banner', role: 'status'},
-        el('strong', {text: 'A device could not connect securely. '}),
-        ...(info.tls_problems || []).map(problem => el('span', {text: `${problem.ip} (${Math.max(1, Math.round(problem.seconds_ago / 60))} min ago): ${problem.hint} `}))) : null,
-      el('p', {class: 'hint', text: info.tls ? 'HTTPS is on, so the camera can record in the phone\'s browser.' : 'Uploading from the photo library works now. Recording with the phone camera needs HTTPS: restart with --lan --https (see README).'}));
+        ' and follow the steps. Fingerprint to compare: ', el('code', {class: 'fingerprint', text: info.ca_fingerprint || ''}))
+      );
+    }
+
+    nodes.push(el('p', {class: 'hint', text: info.tls ? 'HTTPS is on, so the camera can record in the phone\'s browser.' : 'Uploading from the photo library works now. Recording with the phone camera needs HTTPS: restart with --lan --https (see README).'}));
+
+    body.replaceChildren(...nodes.filter(Boolean));
   } catch {
     card.classList.add('hidden');  // shown only on the computer running the app
   }
+}
+
+/* ----------------------------------------------------------- immersive mode */
+async function toggleImmersiveCamera(forceState) {
+  const vp = $('#camera-viewport');
+  if (!vp) return;
+  const isCurrentlyImmersive = document.body.classList.contains('is-camera-immersive');
+  const targetState = forceState !== undefined ? forceState : !isCurrentlyImmersive;
+
+  if (targetState) {
+    document.body.classList.add('is-camera-immersive');
+    vp.classList.add('is-immersive');
+    const exitBtn = $('#hud-btn-exit-fullscreen');
+    if (exitBtn) exitBtn.classList.remove('hidden');
+
+    try {
+      if (document.fullscreenEnabled && !document.fullscreenElement) {
+        if (vp.requestFullscreen) await vp.requestFullscreen();
+        else if (vp.webkitRequestFullscreen) await vp.webkitRequestFullscreen();
+      }
+    } catch {
+      // CSS immersive fallback handles it smoothly
+    }
+  } else {
+    document.body.classList.remove('is-camera-immersive');
+    vp.classList.remove('is-immersive');
+    const exitBtn = $('#hud-btn-exit-fullscreen');
+    if (exitBtn) exitBtn.classList.add('hidden');
+
+    try {
+      if (document.fullscreenElement) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+      }
+    } catch {}
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.body.classList.contains('is-camera-immersive')) {
+    toggleImmersiveCamera(false);
+  }
+});
+document.addEventListener('webkitfullscreenchange', () => {
+  if (!document.webkitFullscreenElement && document.body.classList.contains('is-camera-immersive')) {
+    toggleImmersiveCamera(false);
+  }
+});
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.body.classList.contains('is-camera-immersive')) {
+    toggleImmersiveCamera(false);
+  }
+});
+
+function checkOrientationHint() {
+  const hint = $('#orientation-hint');
+  if (!hint) return;
+  if (window.innerWidth < 768 && window.innerHeight > window.innerWidth && cameraState === 'live') {
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+window.addEventListener('resize', checkOrientationHint);
+window.addEventListener('orientationchange', checkOrientationHint);
+
+function updateAthleteSummary(athlete) {
+  const nameEl = $('#athlete-summary-name');
+  const levelEl = $('#athlete-summary-level');
+  const discEl = $('#athlete-avatar-disc');
+  const handEl = $('#athlete-tag-hand');
+  const statusEl = $('#athlete-tag-status');
+  const inputPlayerId = $('#session-player-id');
+  const inputHand = $('#session-handedness');
+  const inputSkill = $('#session-skill-level');
+  const inputPain = $('#session-pain-reported');
+
+  if (!athlete) {
+    const savedPlayer = storage('get', 'shotLabPlayerId') || 'player';
+    if (nameEl) nameEl.textContent = savedPlayer !== 'player' ? savedPlayer : 'Guest Athlete';
+    if (levelEl) levelEl.textContent = 'Intermediate';
+    if (discEl) discEl.textContent = (savedPlayer.charAt(0) || 'P').toUpperCase();
+    if (handEl) handEl.textContent = 'Right handed';
+    if (statusEl) {
+      statusEl.textContent = 'Healthy';
+      statusEl.className = 'tag-meta';
+    }
+    if (inputPlayerId) inputPlayerId.value = savedPlayer;
+    if (inputHand) inputHand.value = 'right';
+    if (inputSkill) inputSkill.value = 'intermediate';
+    if (inputPain) inputPain.value = '0';
+    return;
+  }
+
+  const name = athlete.name || athlete.player_id || 'Athlete';
+  const initials = getInitials(name);
+  const rawSkill = athlete.skill_level || 'intermediate';
+  const skillLabel = rawSkill.charAt(0).toUpperCase() + rawSkill.slice(1).replace('_', ' ');
+  const handLabel = (athlete.handedness || 'right') === 'left' ? 'Left handed' : 'Right handed';
+  const hasPain = Boolean(athlete.pain_reported);
+
+  if (nameEl) nameEl.textContent = name;
+  if (levelEl) levelEl.textContent = skillLabel;
+  if (discEl) discEl.textContent = initials;
+  if (handEl) handEl.textContent = handLabel;
+  if (statusEl) {
+    statusEl.textContent = hasPain ? 'Pain/Soreness noted' : 'Healthy';
+    statusEl.className = hasPain ? 'tag-meta tag-pain' : 'tag-meta';
+  }
+  if (inputPlayerId) inputPlayerId.value = athlete.player_id || 'player';
+  if (inputHand) inputHand.value = athlete.handedness || 'right';
+  if (inputSkill) inputSkill.value = athlete.skill_level || 'intermediate';
+  if (inputPain) inputPain.value = hasPain ? '1' : '0';
+}
+
+const SHOT_TYPES_DEFAULT = {
+  catch_and_shoot: {
+    id: 'catch_and_shoot',
+    label: 'Catch & shoot',
+    subtitle: 'Spot up, quick release',
+    group: 'stationary',
+    coaching_focus_tags: ['Release', 'Knees'],
+    recommended_camera_views: ['side_90', 'oblique_45'],
+    compatible_shot_styles: ['jump_shot', 'set_shot'],
+    status: 'prototype',
+    camera_tip: 'Position the camera 3 to 4 meters away, side-on or at 45 degrees, capturing full body from feet through follow-through.'
+  },
+  free_throw: {
+    id: 'free_throw',
+    label: 'Free throw',
+    subtitle: 'Stationary charity stripe',
+    group: 'stationary',
+    coaching_focus_tags: ['Routine', 'Elbow'],
+    recommended_camera_views: ['side_90', 'oblique_45'],
+    compatible_shot_styles: ['set_shot', 'jump_shot'],
+    status: 'prototype',
+    camera_tip: 'Place the tripod at the free throw line extended, perpendicular to shooter for clean elbow angle tracking.'
+  },
+  form_shooting: {
+    id: 'form_shooting',
+    label: 'Form shooting',
+    subtitle: 'Close range, one hand',
+    group: 'stationary',
+    coaching_focus_tags: ['Elbow', 'Wrist'],
+    recommended_camera_views: ['side_90', 'oblique_45'],
+    compatible_shot_styles: ['set_shot'],
+    status: 'prototype',
+    camera_tip: 'Close-in tripod framing. Keep feet and full arm extension visible throughout the stationary release.'
+  },
+  pull_up: {
+    id: 'pull_up',
+    label: 'Pull-up jumper',
+    subtitle: 'Dribble, stop, rise',
+    group: 'dynamic',
+    coaching_focus_tags: ['Deceleration', 'Rise'],
+    recommended_camera_views: ['side_90', 'oblique_45'],
+    compatible_shot_styles: ['jump_shot'],
+    status: 'prototype',
+    camera_tip: 'Leave extra lateral room in the frame so the approach dribble and stop are captured before the elevation.'
+  },
+  step_back: {
+    id: 'step_back',
+    label: 'Step-back',
+    subtitle: 'Create space, then shoot',
+    group: 'dynamic',
+    coaching_focus_tags: ['Space', 'Balance'],
+    recommended_camera_views: ['side_90', 'oblique_45'],
+    compatible_shot_styles: ['jump_shot'],
+    status: 'prototype',
+    camera_tip: 'Allow ample horizontal space behind the shooter so the step-back separation movement does not exit the frame.'
+  },
+  fadeaway: {
+    id: 'fadeaway',
+    label: 'Fadeaway',
+    subtitle: 'Lean back, high release',
+    group: 'dynamic',
+    coaching_focus_tags: ['Lean', 'Arc'],
+    recommended_camera_views: ['side_90', 'oblique_45'],
+    compatible_shot_styles: ['jump_shot'],
+    status: 'prototype',
+    camera_tip: 'Side view strongly recommended. Keep ample backward clearance in frame to capture torso angle at release.'
+  },
+  turnaround: {
+    id: 'turnaround',
+    label: 'Turnaround jumper',
+    subtitle: 'Pivot, then shoot',
+    group: 'dynamic',
+    coaching_focus_tags: ['Pivot', 'Square'],
+    recommended_camera_views: ['oblique_45', 'side_90'],
+    compatible_shot_styles: ['jump_shot'],
+    status: 'prototype',
+    camera_tip: 'An angled 45 degree view helps capture both the rotational shoulder turn and the vertical elevation.'
+  },
+  off_screen: {
+    id: 'off_screen',
+    label: 'Off a screen',
+    subtitle: 'Curl or fade, then shoot',
+    group: 'dynamic',
+    coaching_focus_tags: ['Footwork', 'Square'],
+    recommended_camera_views: ['oblique_45', 'side_90'],
+    compatible_shot_styles: ['jump_shot'],
+    status: 'prototype',
+    camera_tip: 'Wider camera angle recommended to capture the approach footwork and hip squaring prior to lift.'
+  },
+  mid_range: {
+    id: 'mid_range',
+    label: 'Mid-range',
+    subtitle: 'Elbow or baseline spot',
+    group: 'range',
+    coaching_focus_tags: ['Elevation', 'Release'],
+    recommended_camera_views: ['side_90', 'oblique_45'],
+    compatible_shot_styles: ['jump_shot', 'set_shot'],
+    status: 'prototype',
+    camera_tip: 'Ensure rim and shooter are in line with camera view to benchmark repeatable trajectory arc.'
+  },
+  three_pointer: {
+    id: 'three_pointer',
+    label: 'Three-pointer',
+    subtitle: 'Deep range',
+    group: 'range',
+    coaching_focus_tags: ['Arc', 'Legs'],
+    recommended_camera_views: ['side_90', 'oblique_45'],
+    compatible_shot_styles: ['jump_shot', 'set_shot'],
+    status: 'prototype',
+    camera_tip: 'Due to deeper distance, ensure full body elevation and ball apex stay within vertical frame limits.'
+  },
+  bank_shot: {
+    id: 'bank_shot',
+    label: 'Bank shot',
+    subtitle: 'Angle off the glass',
+    group: 'range',
+    coaching_focus_tags: ['Angle', 'Touch'],
+    recommended_camera_views: ['oblique_45', 'side_90'],
+    compatible_shot_styles: ['jump_shot', 'set_shot'],
+    status: 'prototype',
+    camera_tip: 'Angle 45 degree view recommended to see both the shooter release angle and backboard target alignment.'
+  },
+  other: {
+    id: 'other',
+    label: 'Other',
+    subtitle: 'Freeform practice',
+    group: 'other',
+    coaching_focus_tags: ['Form', 'Consistency'],
+    recommended_camera_views: ['side_90', 'oblique_45', 'frontal', 'rear'],
+    compatible_shot_styles: ['jump_shot', 'set_shot'],
+    status: 'prototype',
+    camera_tip: 'Side view at 90 degrees or angled at 45 degrees yields the most reliable biomechanical joint metrics.'
+  }
+};
+
+function initPracticeSetup() {
+  // 1. Hero compact collapse
+  const btnHeroCollapse = $('#btn-hero-collapse');
+  const practiceHero = $('#practice-hero');
+  const heroCollapseLabel = $('#hero-collapse-label');
+  if (btnHeroCollapse && practiceHero) {
+    const isCollapsed = storage('get', 'practiceHeroCollapsed') === '1';
+    if (isCollapsed) {
+      practiceHero.classList.add('is-collapsed');
+      if (heroCollapseLabel) heroCollapseLabel.textContent = 'Expand view';
+    }
+    btnHeroCollapse.addEventListener('click', () => {
+      const collapsed = practiceHero.classList.toggle('is-collapsed');
+      if (heroCollapseLabel) heroCollapseLabel.textContent = collapsed ? 'Expand view' : 'Compact view';
+      storage('set', 'practiceHeroCollapsed', collapsed ? '1' : '0');
+    });
+  }
+
+  // 2. Athlete Edit Profile button
+  const btnEditAthleteProfile = $('#btn-edit-athlete-profile');
+  if (btnEditAthleteProfile) {
+    btnEditAthleteProfile.addEventListener('click', () => {
+      if (currentAthlete) {
+        showAuthModal('profile');
+      } else {
+        showAuthModal('login');
+      }
+    });
+  }
+
+  // 3. Shot Types & Practice Selection
+  const shotTypeRadios = document.querySelectorAll('input[name="shot_type"]');
+  const shotTypeIdInput = $('#session-shot-type-id');
+  const activeBadge = $('#shot-type-active-badge');
+  const advisoryNote = $('#shot-type-advisory-note');
+  const cameraTipName = $('#camera-tip-shot-name');
+  const cameraTipText = $('#camera-tip-text');
+  const selectShotStyle = $('#select-shot-style');
+  const selectCameraView = $('#select-camera-view');
+  const cameraConfirmPill = $('#camera-confirmation-pill');
+  const cameraConfirmText = $('#camera-confirmation-text');
+
+  function applyShotTypeSelection(rawId) {
+    let typeId = rawId || 'catch_and_shoot';
+    if (typeId === 'off_dribble' || typeId === 'off_the_dribble') {
+      typeId = 'pull_up';
+    }
+    const meta = SHOT_TYPES_DEFAULT[typeId] || SHOT_TYPES_DEFAULT.catch_and_shoot;
+    if (shotTypeIdInput) shotTypeIdInput.value = meta.id;
+
+    // Check matching radio
+    const match = [...document.querySelectorAll('input[name="shot_type"]')].find(r => r.value === meta.id || r.value === typeId);
+    if (match) match.checked = true;
+
+    storage('set', 'shotLabShotType', meta.id);
+
+    // Advisory and prototype status
+    const isProto = meta.status === 'prototype';
+    if (activeBadge) {
+      activeBadge.style.display = isProto ? 'inline-flex' : 'none';
+    }
+    if (advisoryNote) {
+      advisoryNote.textContent = isProto
+        ? 'Analysis for this shot type is advisory and still being calibrated. Single-camera pose is an estimate.'
+        : 'Calibrated baseline available. Single-camera pose is an estimate.';
+    }
+
+    // Camera setup tip
+    if (cameraTipName) cameraTipName.textContent = `${meta.label || 'Shot'} setup`;
+    if (cameraTipText) cameraTipText.textContent = meta.camera_tip || meta.camera_setup_tips || 'Steady tripod side-on or at 45 degrees.';
+
+    // Filter compatible shot styles
+    if (selectShotStyle) {
+      const compatStyles = meta.compatible_shot_styles || ['jump_shot', 'set_shot'];
+      for (const opt of selectShotStyle.options) {
+        const isCompat = compatStyles.includes(opt.value);
+        opt.disabled = !isCompat;
+        opt.hidden = !isCompat;
+      }
+      if (!compatStyles.includes(selectShotStyle.value)) {
+        selectShotStyle.value = compatStyles[0];
+        storage('set', 'shotLabShotStyle', selectShotStyle.value);
+      }
+    }
+
+    // Camera view recommendation
+    if (selectCameraView && meta.recommended_camera_views?.length) {
+      const recViews = meta.recommended_camera_views;
+      const viewLabels = {
+        side_90: 'Side (90°)',
+        oblique_45: 'Angled (45°)',
+        frontal: 'Front (0°)',
+        rear: 'Behind (180°)'
+      };
+      const recText = recViews.map(v => viewLabels[v] || v).join(' or ');
+      if (cameraConfirmText) {
+        const rawText = selectCameraView.options[selectCameraView.selectedIndex]?.text || '';
+        const currentLabel = rawText.split('-')[0].split('(')[0].trim() || selectCameraView.value;
+        cameraConfirmText.textContent = `Angle: ${currentLabel} (Recommended: ${recText})`;
+      }
+    }
+  }
+
+  // Fetch shot types config from backend dynamically to enrich client
+  api('/api/shot-types').then(res => {
+    if (res && res.shot_types) {
+      Object.assign(SHOT_TYPES_DEFAULT, res.shot_types);
+      const current = storage('get', 'shotLabShotType') || 'catch_and_shoot';
+      applyShotTypeSelection(current);
+    }
+  }).catch(() => {});
+
+  document.querySelectorAll('input[name="shot_type"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (radio.checked) applyShotTypeSelection(radio.value);
+    });
+  });
+
+  // 4. Shot Style dropdown
+  if (selectShotStyle) {
+    const savedStyle = storage('get', 'shotLabShotStyle');
+    if (savedStyle && [...selectShotStyle.options].some(o => o.value === savedStyle)) {
+      selectShotStyle.value = savedStyle;
+    }
+    selectShotStyle.addEventListener('change', () => {
+      storage('set', 'shotLabShotStyle', selectShotStyle.value);
+    });
+  }
+
+  // 5. Camera View selector & confirmation pill
+  if (selectCameraView) {
+    const savedAngle = storage('get', 'shotLabCameraView');
+    if (savedAngle && [...selectCameraView.options].some(o => o.value === savedAngle)) {
+      selectCameraView.value = savedAngle;
+    }
+    const updateConfirmation = () => {
+      const rawText = selectCameraView.options[selectCameraView.selectedIndex]?.text || '';
+      const label = rawText.split('-')[0].split('(')[0].trim() || selectCameraView.value;
+      const currentType = storage('get', 'shotLabShotType') || 'catch_and_shoot';
+      const meta = SHOT_TYPES_DEFAULT[currentType];
+      if (meta && meta.recommended_camera_views?.length) {
+        const recText = meta.recommended_camera_views.map(v => v === 'side_90' ? 'Side (90°)' : v === 'oblique_45' ? 'Angled (45°)' : v).join(' or ');
+        if (cameraConfirmText) cameraConfirmText.textContent = `Angle: ${label} (Recommended: ${recText})`;
+      } else {
+        if (cameraConfirmText) cameraConfirmText.textContent = `Angle confirmed: ${label}`;
+      }
+      if (cameraConfirmPill) cameraConfirmPill.classList.remove('unconfirmed');
+      storage('set', 'shotLabCameraView', selectCameraView.value);
+    };
+    selectCameraView.addEventListener('change', updateConfirmation);
+    updateConfirmation();
+  }
+
+  const initialShotType = storage('get', 'shotLabShotType') || 'catch_and_shoot';
+  applyShotTypeSelection(initialShotType);
+
+  // 6. HUD Fullscreen buttons
+  const hudBtnFullscreen = $('#hud-btn-fullscreen');
+  const hudBtnExitFullscreen = $('#hud-btn-exit-fullscreen');
+  if (hudBtnFullscreen) {
+    hudBtnFullscreen.addEventListener('click', () => toggleImmersiveCamera(true));
+  }
+  if (hudBtnExitFullscreen) {
+    hudBtnExitFullscreen.addEventListener('click', () => toggleImmersiveCamera(false));
+  }
+
+  // 7. Toggle Secondary Metrics HUD button
+  const hudBtnToggleMetrics = $('#hud-btn-toggle-metrics');
+  const hudMetricsDual = $('#hud-metrics-dual');
+  if (hudBtnToggleMetrics && hudMetricsDual) {
+    hudBtnToggleMetrics.addEventListener('click', () => {
+      hudMetricsDual.classList.toggle('is-hidden');
+      const hidden = hudMetricsDual.classList.contains('is-hidden');
+      hudBtnToggleMetrics.classList.toggle('is-dimmed', hidden);
+      toast(hidden ? 'Secondary metrics hidden' : 'Secondary metrics visible');
+    });
+  }
+
+  updateAthleteSummary(currentAthlete);
 }
 
 /* --------------------------------------------------------------------- boot */
@@ -3125,12 +4308,13 @@ async function loadPhoneCard() {
     prepareJobPanel('Restoring your last session', 'queued', 'Loading saved analysis and reviews.');
     pollJob(lastJob);
   }
-  setView(VIEWS.includes(requested) ? requested : 'new', {push: false});
+  setView(VIEWS.includes(requested) ? requested : 'practice', {push: false});
   syncThemeUi();
   moveNavIndicator(false);
   moveSegmentThumb(false);
   setupHeroParallax();
   loadPhoneCard();
+  initPracticeSetup();
   document.fonts?.ready.then(() => { moveNavIndicator(false); moveSegmentThumb(false); });
 })();
 
@@ -3161,6 +4345,13 @@ const drillsState = {
   lastPeak: null,
   BOUNCE_THRESHOLD: 16,
   prevFrameData: null,
+  processingFrame: false,
+  lastFrameSendTime: 0,
+  latestPoseData: null,
+  activeSessionSummary: null,
+  rippleCircle: null,
+  captureCanvas: null,
+  captureCtx: null,
 };
 
 // ---------------------------------------------------------------- DOM refs
@@ -3187,6 +4378,17 @@ const drillFeedbackList  = document.getElementById('drill-feedback-list');
 const drillFeedbackSummary = document.getElementById('drill-feedback-summary');
 const filterCategory     = document.getElementById('drills-filter-category');
 const filterDifficulty   = document.getElementById('drills-filter-difficulty');
+const drillKneeVal       = document.getElementById('drill-knee-val');
+const drillComboCount    = document.getElementById('drill-combo-count');
+const drillMoveVal       = document.getElementById('drill-move-val');
+const drillComboPill     = document.getElementById('drill-combo-pill');
+const drillComboBadge    = document.getElementById('drill-combo-badge');
+const drillComboProgText = document.getElementById('drill-combo-progress-text');
+const drillLiveCombo     = document.getElementById('drill-live-combo');
+const drillBigCombo      = document.getElementById('drill-big-combo');
+const drillLiveCuePill   = document.getElementById('drill-live-cue-pill');
+const drillLiveCueText   = document.getElementById('drill-live-cue-text');
+const drillBioStats      = document.getElementById('drill-bio-stats');
 
 const DIFFICULTY_COLOURS = {
   beginner:     'approved',
@@ -3250,7 +4452,7 @@ function buildDrillCard(drill) {
       onclick: () => openDrillRunner(drill),
       onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrillRunner(drill); } },
     },
-    // thumbnail on top — 9:16 shorts aspect, capped by CSS max-height
+    // thumbnail on top - 9:16 shorts aspect, capped by CSS max-height
     el('div', {class: 'drill-card-thumb'},
       el('video', {
         src: `/drills/${drill.video}`,
@@ -3308,6 +4510,7 @@ function openDrillRunner(drill) {
   // Reset
   resetDrillCounters();
   if (drillFeedbackPanel) drillFeedbackPanel.hidden = true;
+  if (drillLiveCombo) drillLiveCombo.hidden = (drill.id === 'pound_dribble');
 
   // Hide catalog, show runner
   drillsCatalog.hidden = true;
@@ -3333,6 +4536,7 @@ function showDrillCatalogView() {
 // ---------------------------------------------------------------- counters
 function resetDrillCounters() {
   drillsState.repCount       = 0;
+  drillsState.comboCount     = 0;
   drillsState.elapsedSeconds = 0;
   drillsState.repTimestamps  = [];
   drillsState.prevY          = null;
@@ -3340,6 +4544,15 @@ function resetDrillCounters() {
   drillsState.lastPeak       = null;
   drillsState.lastValley     = null;
   drillsState.prevFrameData  = null;
+  drillsState.latestPoseData = null;
+  drillsState.activeSessionSummary = null;
+  drillsState.rippleCircle = null;
+  if (drillKneeVal) { drillKneeVal.textContent = '--°'; drillKneeVal.style.color = ''; }
+  if (drillComboCount) drillComboCount.textContent = '0';
+  if (drillBigCombo) drillBigCombo.textContent = '0';
+  if (drillMoveVal) drillMoveVal.textContent = 'Ready';
+  if (drillComboPill) drillComboPill.hidden = true;
+  if (drillLiveCuePill) drillLiveCuePill.hidden = true;
   updateRepDisplay(0);
   updateTimerDisplay(0);
 }
@@ -3347,6 +4560,24 @@ function resetDrillCounters() {
 function updateRepDisplay(n) {
   if (drillRepCount) drillRepCount.textContent = n;
   if (drillBigCount) drillBigCount.textContent = n;
+}
+
+function updateComboDisplay(combos, move, progress) {
+  if (drillComboCount) drillComboCount.textContent = combos;
+  if (drillBigCombo) drillBigCombo.textContent = combos;
+  if (drillMoveVal && move) drillMoveVal.textContent = move;
+  if (drillComboPill && progress) {
+    drillComboPill.hidden = false;
+    if (drillComboBadge) drillComboBadge.textContent = `Combo ${combos}`;
+    if (drillComboProgText) drillComboProgText.textContent = progress;
+  }
+}
+
+function flashComboIndicator() {
+  if (!drillBigCombo) return;
+  drillBigCombo.classList.remove('rep-flash');
+  void drillBigCombo.offsetWidth;
+  drillBigCombo.classList.add('rep-flash');
 }
 
 function updateTimerDisplay(secs) {
@@ -3357,7 +4588,7 @@ function updateTimerDisplay(secs) {
 
 // ---------------------------------------------------------------- camera session
 async function startDrillSession() {
-  if (drillCamStatus) drillCamStatus.textContent = 'Requesting camera…';
+  if (drillCamStatus) drillCamStatus.textContent = 'Requesting camera & initializing tracking…';
   drillStartCam.disabled = true;
 
   try {
@@ -3369,7 +4600,6 @@ async function startDrillSession() {
     if (drillCamStatus) drillCamStatus.textContent =
       `Camera unavailable: ${err.message}. You can still follow along with the video.`;
     drillStartCam.disabled = false;
-    // Still play the reference video
     drillRefVideo?.play();
     return;
   }
@@ -3381,23 +4611,45 @@ async function startDrillSession() {
   drillCamCanvas.width  = drillCamVideo.videoWidth  || 640;
   drillCamCanvas.height = drillCamVideo.videoHeight || 480;
 
+  // Offscreen canvas for downsampled transmission to ML backend
+  if (!drillsState.captureCanvas) {
+    drillsState.captureCanvas = document.createElement('canvas');
+    drillsState.captureCtx = drillsState.captureCanvas.getContext('2d');
+  }
+
+  // Initialize drill session on backend
+  try {
+    await api('/api/drills/session/start', jsonBody('POST', {
+      drill_id: drillsState.activeDrill?.id || 'pound_dribble',
+    }));
+  } catch (err) {
+    console.warn('Backend drill session start note:', err);
+  }
+
   // hide placeholder
   const placeholder = document.getElementById('drill-cam-placeholder');
   if (placeholder) placeholder.classList.add('hidden');
 
-  // Play the reference video alongside
   drillRefVideo?.play();
 
   if (drillCamStatus) drillCamStatus.textContent = '';
   drillStartCam.hidden = true;
   drillStopBtn.hidden  = false;
+  if (drillLiveCuePill) drillLiveCuePill.hidden = false;
+  if (drillLiveCueText) drillLiveCueText.textContent = 'Step into camera view';
 
   drillsState.counting = true;
+  drillsState.processingFrame = false;
+  drillsState.lastFrameSendTime = 0;
+  drillsState.latestPoseData = null;
+  drillsState.activeSessionSummary = null;
+  drillsState.rippleCircle = null;
+
   startDrillTimer();
   startFrameLoop();
 }
 
-function stopDrillSession() {
+async function stopDrillSession() {
   drillsState.counting = false;
 
   if (drillsState.stream) {
@@ -3416,7 +4668,6 @@ function stopDrillSession() {
 
   drillRefVideo?.pause();
 
-  // restore placeholder
   const placeholder = document.getElementById('drill-cam-placeholder');
   if (placeholder) placeholder.classList.remove('hidden');
 
@@ -3424,9 +4675,20 @@ function stopDrillSession() {
   drillDoneBtn.hidden  = false;
   drillStartCam.hidden = false;
   drillStartCam.disabled = false;
+  if (drillLiveCuePill) drillLiveCuePill.hidden = true;
 
-  // Show form feedback
-  showFormFeedback();
+  // Stop session on backend and retrieve genuine biomechanical measurements
+  if (drillCamStatus) drillCamStatus.textContent = 'Analyzing drill kinematics…';
+  try {
+    const summary = await api('/api/drills/session/stop', {method: 'POST'});
+    drillsState.activeSessionSummary = summary;
+    if (drillCamStatus) drillCamStatus.textContent = '';
+    showFormFeedback(summary);
+  } catch (err) {
+    console.warn('Backend stop session error:', err);
+    if (drillCamStatus) drillCamStatus.textContent = '';
+    showFormFeedback(null);
+  }
 }
 
 function startDrillTimer() {
@@ -3441,77 +4703,208 @@ function startDrillTimer() {
 function startFrameLoop() {
   const ctx = drillCamCanvas.getContext('2d');
 
+  async function sendFrameForML() {
+    if (!drillsState.counting || drillsState.processingFrame) return;
+    const now = Date.now();
+    // 15 FPS throttle (~65ms)
+    if (now - drillsState.lastFrameSendTime < 65) return;
+
+    drillsState.processingFrame = true;
+    drillsState.lastFrameSendTime = now;
+
+    try {
+      const vw = drillCamVideo.videoWidth || 640;
+      const vh = drillCamVideo.videoHeight || 480;
+      const targetW = 480;
+      const targetH = Math.round(vh * (targetW / vw));
+      const capCanvas = drillsState.captureCanvas;
+      const capCtx = drillsState.captureCtx;
+
+      if (capCanvas.width !== targetW || capCanvas.height !== targetH) {
+        capCanvas.width = targetW;
+        capCanvas.height = targetH;
+      }
+
+      capCtx.drawImage(drillCamVideo, 0, 0, targetW, targetH);
+      const dataUrl = capCanvas.toDataURL('image/jpeg', 0.60);
+
+      const resp = await api('/api/drills/process-frame', jsonBody('POST', {
+        image: dataUrl,
+        timestamp_ms: now,
+      }));
+
+      if (resp && resp.status === 'ok') {
+        drillsState.latestPoseData = resp;
+
+        // Ground bounce event
+        if (resp.bounce_event) {
+          drillsState.repCount = resp.rep_count;
+          drillsState.repTimestamps.push(now);
+          updateRepDisplay(resp.rep_count);
+          flashRepIndicator();
+          if (resp.ball_center) {
+            drillsState.rippleCircle = {
+              x: resp.ball_center[0] * (drillCamCanvas.width / targetW),
+              y: resp.ball_center[1] * (drillCamCanvas.height / targetH),
+              r: 12,
+              alpha: 1.0,
+            };
+          }
+        } else if (resp.rep_count !== undefined && resp.rep_count > drillsState.repCount) {
+          drillsState.repCount = resp.rep_count;
+          updateRepDisplay(resp.rep_count);
+        }
+
+        // Combo & move updates
+        if (resp.combos_completed !== undefined) {
+          updateComboDisplay(resp.combos_completed, resp.current_move, resp.combo_progress);
+          if (resp.combo_completed) {
+            flashComboIndicator();
+          }
+        }
+
+        // Live knee angle readout
+        if (drillKneeVal) {
+          if (resp.angles && resp.angles.knee_angle != null) {
+            drillKneeVal.textContent = `${Math.round(resp.angles.knee_angle)}°`;
+            drillKneeVal.style.color = resp.posture?.knees_bent ? 'var(--approved-ink, #10b981)' : 'var(--caution-ink, #f59e0b)';
+          } else {
+            drillKneeVal.textContent = '--°';
+            drillKneeVal.style.color = '';
+          }
+        }
+
+        // Live coaching cue banner
+        if (drillLiveCuePill && drillLiveCueText && resp.live_cue) {
+          drillLiveCuePill.hidden = false;
+          drillLiveCueText.textContent = resp.live_cue;
+          if (resp.posture?.in_athletic_stance) {
+            drillLiveCuePill.classList.remove('cue-warn');
+          } else {
+            drillLiveCuePill.classList.add('cue-warn');
+          }
+        }
+      }
+    } catch (err) {
+      // transient network/inference error
+    } finally {
+      drillsState.processingFrame = false;
+    }
+  }
+
   function loop() {
     if (!drillsState.counting) return;
     drillsState.animFrame = requestAnimationFrame(loop);
+
     const w = drillCamCanvas.width;
     const h = drillCamCanvas.height;
+    ctx.clearRect(0, 0, w, h);
 
-    // Draw mirrored camera feed
-    ctx.save();
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(drillCamVideo, 0, 0, w, h);
-    ctx.restore();
-
-    detectDribble(ctx, w, h);
-    drawCamHud(ctx, w, h);
+    renderDrillOverlay(ctx, w, h, drillsState.latestPoseData);
+    sendFrameForML();
   }
 
   drillsState.animFrame = requestAnimationFrame(loop);
 }
 
-// ---------------------------------------------------------------- dribble detection
-// Motion centroid in lower 45% of frame: track down→up bounce cycles.
-function detectDribble(ctx, w, h) {
-  const ROI_TOP  = Math.floor(h * 0.45);
-  const ROI_H    = h - ROI_TOP;
-  const STEP_W   = Math.max(1, Math.floor(w / 4));
-  const STEP_H   = Math.max(1, Math.floor(ROI_H / 4));
+function renderDrillOverlay(ctx, w, h, data) {
+  if (!data) return;
 
-  const imageData = ctx.getImageData(0, ROI_TOP, w, ROI_H);
-  const pixels    = imageData.data;
-  const prev      = drillsState.prevFrameData;
+  // 1. Draw Ball Bounding Box if detected
+  if (data.ball) {
+    const [bx1, by1, bx2, by2] = data.ball;
+    const targetW = drillsState.captureCanvas?.width || 480;
+    const targetH = drillsState.captureCanvas?.height || 360;
+    const sx = w / targetW;
+    const sy = h / targetH;
+    const x = bx1 * sx;
+    const y = by1 * sy;
+    const bw = (bx2 - bx1) * sx;
+    const bh = (by2 - by1) * sy;
 
-  if (!prev || prev.length !== pixels.length) {
-    drillsState.prevFrameData = new Uint8ClampedArray(pixels);
-    return;
+    ctx.save();
+    ctx.strokeStyle = '#ff8a3d';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(x, y, bw, bh);
+
+    // Ball label
+    ctx.fillStyle = '#ff8a3d';
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.fillText(`BALL ${Math.round((data.ball_conf || 0) * 100)}%`, x, Math.max(14, y - 4));
+    ctx.restore();
   }
 
-  let totalWeight = 0, weightedY = 0;
-  for (let py = 0; py < ROI_H; py += STEP_H) {
-    for (let px = 0; px < w; px += STEP_W) {
-      const i = (py * w + px) * 4;
-      const motion = (Math.abs(pixels[i]-prev[i]) + Math.abs(pixels[i+1]-prev[i+1]) + Math.abs(pixels[i+2]-prev[i+2])) / 3;
-      if (motion > 20) { totalWeight += motion; weightedY += py * motion; }
+  // Active Dribble Move HUD badge on canvas
+  if (data.current_move && data.current_move !== 'Ready') {
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(12, 12, 180, 26);
+    ctx.strokeStyle = data.current_move_type === 'CROSSOVER' ? '#38bdf8' : (data.current_move_type === 'V_DRIBBLE' ? '#a855f7' : '#10b981');
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(12, 12, 180, 26);
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    ctx.fillText(`MOVE: ${data.current_move}`, 20, 29);
+    ctx.restore();
+  }
+
+  // 2. Ripple effect on bounce contact
+  if (drillsState.rippleCircle) {
+    const r = drillsState.rippleCircle;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(r.x, r.y, r.r, 0, 2 * Math.PI);
+    ctx.strokeStyle = `rgba(16, 185, 129, ${r.alpha})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+
+    r.r += 3.5;
+    r.alpha -= 0.08;
+    if (r.alpha <= 0) {
+      drillsState.rippleCircle = null;
     }
   }
-  drillsState.prevFrameData = new Uint8ClampedArray(pixels);
-  if (totalWeight < 200) return;
 
-  const centroidY = weightedY / totalWeight;
-  const prevY = drillsState.prevY;
-  drillsState.prevY = centroidY;
-  if (prevY === null) return;
+  // 3. MediaPipe Pose Skeleton
+  if (data.landmarks && data.landmarks.length >= 29) {
+    const lm = data.landmarks;
+    const inStance = data.posture?.in_athletic_stance;
+    const boneColor = inStance ? 'rgba(16, 185, 129, 0.75)' : 'rgba(245, 158, 11, 0.75)';
+    const jointColor = inStance ? '#10b981' : '#f59e0b';
 
-  const dy = centroidY - prevY;
-  const THRESH = drillsState.BOUNCE_THRESHOLD;
+    const pairs = [
+      [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+      [11, 23], [12, 24], [23, 24],
+      [23, 25], [25, 27], [24, 26], [26, 28]
+    ];
 
-  if (dy > 2) {
-    if (drillsState.direction !== 'down') {
-      drillsState.direction = 'down';
-      drillsState.lastValley = centroidY;
+    ctx.save();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = boneColor;
+
+    for (const [i1, i2] of pairs) {
+      const p1 = lm[i1];
+      const p2 = lm[i2];
+      if (p1 && p2 && p1[2] > 0.25 && p2[2] > 0.25) {
+        ctx.beginPath();
+        ctx.moveTo(p1[0] * w, p1[1] * h);
+        ctx.lineTo(p2[0] * w, p2[1] * h);
+        ctx.stroke();
+      }
     }
-  } else if (dy < -2 && drillsState.direction === 'down') {
-    const excursion = (drillsState.lastValley || centroidY) - (drillsState.lastPeak || 0);
-    if (excursion > THRESH) {
-      drillsState.repCount++;
-      drillsState.repTimestamps.push(Date.now());
-      updateRepDisplay(drillsState.repCount);
-      flashRepIndicator();
+
+    // Joint markers
+    ctx.fillStyle = jointColor;
+    for (const j of [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]) {
+      const p = lm[j];
+      if (p && p[2] > 0.25) {
+        ctx.beginPath();
+        ctx.arc(p[0] * w, p[1] * h, 4.5, 0, 2 * Math.PI);
+        ctx.fill();
+      }
     }
-    drillsState.direction = 'up';
-    drillsState.lastPeak  = centroidY;
+    ctx.restore();
   }
 }
 
@@ -3522,90 +4915,94 @@ function flashRepIndicator() {
   drillBigCount.classList.add('rep-flash');
 }
 
-function drawCamHud(ctx, w, h) {
-  const reps = drillsState.repCount;
-  const m = Math.floor(drillsState.elapsedSeconds / 60);
-  const s = drillsState.elapsedSeconds % 60;
-  ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.beginPath();
-  ctx.roundRect(10, 10, 120, 62, 8);
-  ctx.fill();
-  ctx.fillStyle = '#ff8a3d';
-  ctx.font = 'bold 20px system-ui,sans-serif';
-  ctx.fillText(`${reps} reps`, 20, 36);
-  ctx.fillStyle = '#aab3bf';
-  ctx.font = '14px system-ui,sans-serif';
-  ctx.fillText(`${m}:${String(s).padStart(2,'0')}`, 20, 58);
-  ctx.restore();
-}
-
 // ---------------------------------------------------------------- form feedback
-/*
-  Heuristic form checks based on:
-  - repTimestamps → rhythm consistency (are the gaps even?)
-  - elapsedSeconds + repCount → dribble rate (too slow = not low enough / not powered)
-  - No pose model in browser; these are pattern-based estimates with honest caveats.
-*/
-function showFormFeedback() {
+function showFormFeedback(summary) {
   if (!drillFeedbackPanel || !drillFeedbackList) return;
   const drill    = drillsState.activeDrill;
-  const reps     = drillsState.repCount;
-  const secs     = drillsState.elapsedSeconds;
-  const checks   = drill?.form_checks || [];
-  const labels   = (drillsState.catalog?.form_check_labels) || {};
-  const stamps   = drillsState.repTimestamps;
+  const reps     = summary ? summary.rep_count : drillsState.repCount;
+  const secs     = summary ? summary.duration_seconds : drillsState.elapsedSeconds;
+  const bioStats = summary?.posture_summary;
 
-  // --- compute rhythm score (0–1): std dev of inter-rep intervals
-  let rhythmScore = null;
-  let avgRate = null;
-  if (stamps.length >= 4) {
-    const gaps = [];
-    for (let i = 1; i < stamps.length; i++) gaps.push(stamps[i] - stamps[i-1]);
-    const mean = gaps.reduce((a,b) => a+b, 0) / gaps.length;
-    const variance = gaps.reduce((a,b) => a + (b-mean)**2, 0) / gaps.length;
-    const cv = Math.sqrt(variance) / mean; // coefficient of variation; lower = more consistent
-    rhythmScore = Math.max(0, 1 - cv * 2);   // 0–1
-    avgRate = reps / Math.max(1, secs);       // reps per second
-  }
-
-  // --- build feedback items
-  const items = [];
-
-  if (reps === 0) {
-    items.push({status: 'neutral', text: 'No reps were counted. Make sure your dribbling hand is visible in the lower part of the camera frame.'});
-  } else {
-    // Rep count context
-    const expected = secs > 0 ? Math.round(secs * 2.5) : null; // ~2.5 reps/sec is a reasonable active pace
-    if (expected && reps >= expected * 0.75) {
-      items.push({status: 'good', text: `Solid pace — ${reps} reps in ${secs}s. Keep that energy up.`});
-    } else if (expected && reps < expected * 0.5) {
-      items.push({status: 'tip', text: `${reps} reps in ${secs}s is on the slower side. Try to push the ball down harder and faster to build rhythm.`});
+  // 1. Summary headline
+  if (drillFeedbackSummary) {
+    if (reps > 0) {
+      drillFeedbackSummary.textContent = `You completed ${reps} genuine dribble reps in ${secs}s (${summary?.reps_per_second || (reps / Math.max(1, secs)).toFixed(1)} reps/sec).`;
     } else {
-      items.push({status: 'good', text: `${reps} reps counted in ${secs}s.`});
+      drillFeedbackSummary.textContent = 'Drill ended. Step into camera view with your ball and try again.';
     }
+  }
 
-    // Rhythm feedback
-    if (rhythmScore !== null) {
-      if (rhythmScore >= 0.75) {
-        items.push({status: 'good', text: 'Good rhythm — your dribble timing was consistent.'});
-      } else if (rhythmScore >= 0.45) {
-        items.push({status: 'tip', text: 'Rhythm was a bit uneven. Try counting "1-2-1-2" out loud to lock in the beat.'});
-      } else {
-        items.push({status: 'tip', text: 'Inconsistent rhythm detected. Slow down first, get the timing smooth, then build speed.'});
+  // 2. Render Biomechanics Summary Grid
+  if (drillBioStats) {
+    drillBioStats.innerHTML = '';
+    if (summary && bioStats) {
+      drillBioStats.hidden = false;
+
+      const cards = [
+        {
+          label: 'Authentic Reps',
+          val: `${reps}`,
+          sub: `${summary.reps_per_second || (reps / Math.max(1, secs)).toFixed(1)} / sec (floor-verified)`,
+        },
+      ];
+
+      if (summary.combos_completed !== undefined && drill?.id !== 'pound_dribble') {
+        cards.push({
+          label: 'Completed Combos',
+          val: `${summary.combos_completed}`,
+          sub: summary.sequence_description || 'Demo Combos',
+        });
       }
+
+      if (summary.style_match_pct !== undefined) {
+        cards.push({
+          label: 'Style Match',
+          val: `${summary.style_match_pct}%`,
+          sub: 'Adherence to demo video',
+        });
+      }
+
+      cards.push(
+        {
+          label: 'Avg Knee Bend',
+          val: bioStats.avg_knee_angle != null ? `${bioStats.avg_knee_angle}°` : '--',
+          sub: `Ref Target: ${bioStats.reference_knee_target || 155}°`,
+        },
+        {
+          label: 'Stance Adherence',
+          val: `${bioStats.stance_adherence_pct || 0}%`,
+          sub: 'In athletic stance',
+        },
+        {
+          label: 'Eyes Up',
+          val: `${bioStats.eyes_up_pct || 0}%`,
+          sub: 'Head & eyes forward',
+        }
+      );
+
+      for (const c of cards) {
+        const card = el('div', {class: 'drill-bio-card'},
+          el('span', {class: 'drill-bio-card-label', text: c.label}),
+          el('span', {class: 'drill-bio-card-val', text: c.val}),
+          el('span', {class: 'drill-bio-card-sub', text: c.sub})
+        );
+        drillBioStats.append(card);
+      }
+    } else {
+      drillBioStats.hidden = true;
     }
   }
 
-  // Drill-specific cue reminders (these are always shown as reminders, not measurements)
-  for (const checkKey of checks) {
-    const label = labels[checkKey];
-    if (label) {
-      items.push({status: 'remind', text: label});
+  // 3. Render genuine feedback list
+  const items = (summary && summary.feedback_items) ? [...summary.feedback_items] : [];
+  if (!items.length) {
+    if (reps === 0) {
+      items.push({status: 'neutral', text: 'No floor bounces were counted. Ensure the basketball and floor contact area are visible in frame.'});
+    } else {
+      items.push({status: 'good', text: `${reps} reps completed in ${secs}s.`});
     }
   }
 
-  // Render
   drillFeedbackList.replaceChildren(
     ...items.map(item =>
       el('li', {class: `feedback-item feedback-${item.status}`},
@@ -3618,12 +5015,6 @@ function showFormFeedback() {
       )
     )
   );
-
-  if (drillFeedbackSummary) {
-    drillFeedbackSummary.textContent = reps > 0
-      ? `You completed ${reps} rep${reps !== 1 ? 's' : ''} in ${secs}s. Compare your technique with the reference video above.`
-      : 'Drill ended. Watch the reference video and try again.';
-  }
 
   drillFeedbackPanel.hidden = false;
   drillFeedbackPanel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
@@ -3674,7 +5065,7 @@ function showLanding() {
 function showWorkspace() {
   if (landingPage) landingPage.hidden = true;
   if (appWorkspace) appWorkspace.hidden = false;
-  const targetView = (!currentView || currentView === 'landing') ? 'new' : currentView;
+  const targetView = (!currentView || currentView === 'landing') ? 'practice' : currentView;
   setView(targetView, {push: true});
 }
 
@@ -3772,6 +5163,8 @@ function populateProfileManager(athlete) {
   if (styleSelect) styleSelect.value = athlete.shot_style || 'jump_shot';
   if (heightInput) heightInput.value = athlete.height_cm || '';
   if (goalsInput) goalsInput.value = athlete.goals || '';
+  const painCheckbox = $('#profile-pain-reported');
+  if (painCheckbox) painCheckbox.checked = Boolean(athlete.pain_reported);
   if (headerSub) {
     headerSub.textContent = `Player ID: ${athlete.player_id} · Email: ${athlete.email}`;
   }
@@ -3797,6 +5190,7 @@ function applyAthleteToSessionForm(athlete) {
   if (progressPlayer && athlete.player_id) {
     progressPlayer.value = athlete.player_id;
   }
+  updateAthleteSummary(athlete);
 }
 
 function renderAuthToolbar() {
@@ -3979,6 +5373,7 @@ formSignup?.addEventListener('submit', async e => {
   const height_cm = parseFloat($('#signup-height')?.value) || null;
   const wingspan_cm = parseFloat($('#signup-wingspan')?.value) || null;
   const goals = $('#signup-goals')?.value.trim() || null;
+  const pain_reported = $('#signup-pain-reported')?.checked || false;
   const btn = $('#btn-finish-signup');
 
   btn.disabled = true;
@@ -3988,7 +5383,7 @@ formSignup?.addEventListener('submit', async e => {
   const payload = {
     name, player_id, email, password,
     handedness, skill_level, shot_style,
-    height_cm, wingspan_cm, goals,
+    height_cm, wingspan_cm, goals, pain_reported,
     onboarding_completed: true
   };
 
@@ -4028,13 +5423,14 @@ formUpdateProfile?.addEventListener('submit', async e => {
   const shot_style = $('#profile-shot-style')?.value;
   const height_cm = parseFloat($('#profile-height')?.value) || null;
   const goals = $('#profile-goals')?.value.trim() || null;
+  const pain_reported = $('#profile-pain-reported')?.checked || false;
   const btn = $('#btn-save-profile');
 
   btn.disabled = true;
   btn.textContent = 'Saving changes...';
   if (profileAlert) profileAlert.classList.add('hidden');
 
-  const payload = {name, handedness, skill_level, shot_style, height_cm, goals};
+  const payload = {name, handedness, skill_level, shot_style, height_cm, goals, pain_reported};
 
   try {
     const resp = await fetch('/api/auth/profile', {
@@ -4071,6 +5467,7 @@ $('#btn-logout-action')?.addEventListener('click', async () => {
   } catch { /* proceed with client logout */ }
   currentAthlete = null;
   renderAuthToolbar();
+  updateAthleteSummary(null);
   hideAuthModal();
   showLanding();
   toast('Signed out from Shot Lab.');

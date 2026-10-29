@@ -133,6 +133,7 @@ class TestAuthRoutes(unittest.TestCase):
             "height_cm": 198.0,
             "wingspan_cm": 206.0,
             "goals": "Zero-dip quick release and balanced landing",
+            "pain_reported": True,
             "onboarding_completed": True
         }
         # 1. Signup
@@ -142,6 +143,7 @@ class TestAuthRoutes(unittest.TestCase):
         self.assertIn("user", res)
         self.assertEqual(res["user"]["name"], "Klay Thompson")
         self.assertEqual(res["user"]["player_id"], "klay_11")
+        self.assertTrue(res["user"]["pain_reported"])
         self.assertTrue(res["user"]["onboarding_completed"])
         token = res["token"]
 
@@ -154,6 +156,7 @@ class TestAuthRoutes(unittest.TestCase):
         me_res = json.loads(body.decode("utf-8"))
         self.assertIsNotNone(me_res.get("user"))
         self.assertEqual(me_res["user"]["email"], "klay@warriors.test")
+        self.assertTrue(me_res["user"]["pain_reported"])
 
         # 3. Duplicate signup is rejected
         code, hdrs, body = simulate_request(self.server, "POST", "/api/auth/signup", body=signup_data)
@@ -162,13 +165,15 @@ class TestAuthRoutes(unittest.TestCase):
         # 4. Profile update
         update_data = {
             "goals": "Refine release angle consistency",
-            "height_cm": 201.0
+            "height_cm": 201.0,
+            "pain_reported": False
         }
         code, hdrs, body = simulate_request(self.server, "POST", "/api/auth/profile", body=update_data, headers=auth_cookie)
         self.assertEqual(code, 200)
         up_res = json.loads(body.decode("utf-8"))
         self.assertEqual(up_res["user"]["goals"], "Refine release angle consistency")
         self.assertEqual(up_res["user"]["height_cm"], 201.0)
+        self.assertFalse(up_res["user"]["pain_reported"])
 
         # 5. Logout
         code, hdrs, body = simulate_request(self.server, "POST", "/api/auth/logout", headers=auth_cookie)

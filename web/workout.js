@@ -1,5 +1,5 @@
 'use strict';
-/* Baseline Shot Lab — Personalized Workout Coach (page + player).
+/* Baseline Shot Lab - Personalized Workout Coach (page + player).
    Plans come from the server (built from the persisted report of ONE shooting session). The player
    is a small state machine: work (guided repetitions or a timer) → rest → next set/exercise.
    Voice: the exercise name once when a new exercise starts; every repetition counted aloud in
@@ -241,7 +241,7 @@
     renderPlanner();
   }
 
-  /* ------------------------------------------------------------------ stage A–D: planner form */
+  /* ------------------------------------------------------------------ stage A-D: planner form */
   const EQUIPMENT_ICON = {
     barbell: 'M2 12h20M5 7v10M8 8.5v7M16 8.5v7M19 7v10', bodyweight: 'M12 5.5a2 2 0 1 0 0-.01M12 8v6M8 10l4-2 4 2M9.5 21l2.5-7 2.5 7',
     cable: 'M5 3v18M19 3v18M5 4h14M12 4v7M10 13h4l-1 7h-2z', dumbbell: 'M3 12h18M6 8v8M3.5 10v4M18 8v8M20.5 10v4',
@@ -291,7 +291,7 @@
         : h('p', {class: 'abstain', text: 'No improvement area in this report is supported with enough confidence to personalise training. You can still build a clearly labelled general workout or add your own goals.'}),
       strengths.length ? h('div', {}, h('h3', {class: 'wk-sub', text: 'Strengths to keep'}), h('ul', {class: 'wk-plain'}, strengths)) : null,
       (f.technique_only || []).length ? h('div', {}, h('h3', {class: 'wk-sub', text: 'Practise on court, not in the gym'}),
-        h('ul', {class: 'wk-plain'}, f.technique_only.map(t => h('li', {}, h('strong', {text: t.title}), ` — ${t.note}`)))) : null,
+        h('ul', {class: 'wk-plain'}, f.technique_only.map(t => h('li', {}, h('strong', {text: t.title}), ` - ${t.note}`)))) : null,
       h('details', {class: 'wk-details'}, h('summary', {text: 'What the report cannot tell us'}),
         h('ul', {class: 'wk-plain'}, [...f.not_assessed, ...(f.uncertainty || [])].map(text => h('li', {text})))));
   }
@@ -302,7 +302,7 @@
       goals: [], avoid: [], pain: defaults.pain, limitations_note: ''};
     const formError = h('p', {class: 'form-error hidden', role: 'alert', id: 'wk-form-error'});
 
-    // Stage B — equipment
+    // Stage B - equipment
     const equipGrid = h('div', {class: 'wk-equip-grid', role: 'group', 'aria-labelledby': 'wk-equip-title'});
     for (const eq of context.equipment) {
       const input = h('input', {type: 'checkbox', name: 'equipment', value: eq.key});
@@ -328,7 +328,7 @@
           equipGrid.querySelectorAll('input').forEach(i => { i.checked = false; });
         }}, 'Clear selection')));
 
-    // Stage C — preferences
+    // Stage C - preferences
     const levelRow = h('div', {class: 'choice-row wk-levels'});
     for (const [value, label] of [['beginner', 'Beginner'], ['intermediate', 'Intermediate'], ['advanced', 'Advanced']]) {
       const input = h('input', {type: 'radio', name: 'wk-level', value});
@@ -461,12 +461,12 @@
         const sources = f.sources.filter(s => s.type !== 'general').sort((a, b) => (b.weight || 0) - (a.weight || 0))
           .filter((s, i) => i === 0 || (s.weight || 0) >= 0.25).slice(0, 2);
         return h('li', {}, h('strong', {text: f.label}),
-          h('span', {class: 'muted'}, sources.length ? ` — ${sources.map(s => s.type === 'finding'
+          h('span', {class: 'muted'}, sources.length ? ` - ${sources.map(s => s.type === 'finding'
             ? `report: ${s.title.toLowerCase()} (${s.confidence}${s.possible ? ', possible' : ''})` : s.type === 'goal' ? `your goal: ${s.title.toLowerCase()}` : s.title.toLowerCase()).join('; ')}`
-            : ' — general support (not from a report finding)'));
+            : ' - general support (not from a report finding)'));
       })),
       plan.unaddressed.length ? h('div', {class: 'quality-banner'}, h('strong', {text: 'Not covered: '}),
-        plan.unaddressed.map(u => `${u.label} — ${u.reason}`).join(' ')) : null,
+        plan.unaddressed.map(u => `${u.label} - ${u.reason}`).join(' ')) : null,
       plan.adjustments.length ? h('details', {class: 'wk-details'}, h('summary', {text: 'How the planned duration was reached'}),
         h('ul', {class: 'wk-plain'}, plan.adjustments.map(a => h('li', {text: a})))) : null,
       plan.video_policy ? h('p', {class: 'muted wk-video-policy', text: `${plan.video_policy.rule}${plan.video_policy.excluded_count
@@ -491,7 +491,7 @@
           h('div', {class: 'wk-item-main'},
             h('div', {class: 'wk-item-title'}, h('strong', {text: item.name}),
               item.video ? h('span', {class: 'chip chip-approved', text: 'Demo video'})
-                : h('span', {class: 'chip chip-discarded', text: item.video_missing ? 'Video file missing — written guide' : 'Written guide'}),
+                : h('span', {class: 'chip chip-discarded', text: item.video_missing ? 'Video file missing - written guide' : 'Written guide'}),
               item.area_label ? h('span', {class: 'chip chip-measure', text: item.area_label}) : null),
             h('p', {class: 'wk-dose'}, h('b', {text: itemDose(item)}), ` · ${restText(item, item === plan.items[plan.items.length - 1])} · about ${fmtClock(item.planned_s)}`),
             item.needs ? h('p', {class: 'muted'}, `Needs: ${item.needs}`) : null),
@@ -1045,7 +1045,7 @@
           this.el.counter.textContent = fmtCountdown(s.phase === 'ready' ? total : s.remaining_ms / 1000);
           this.el.counterLabel.textContent = 'time left';
           const half = total / 2;
-          this.el.sideNote.textContent = item.per_side ? (s.remaining_ms / 1000 > half ? 'Side 1 — switch at halfway' : 'Side 2') : '';
+          this.el.sideNote.textContent = item.per_side ? (s.remaining_ms / 1000 > half ? 'Side 1 - switch at halfway' : 'Side 2') : '';
         } else {
           const shown = repDisplay(item, s.count);
           this.el.counter.textContent = String(shown.left);
@@ -1221,7 +1221,7 @@
       h('section', {class: 'card'}, h('h2', {text: 'Exercise by exercise'}), table),
       h('section', {class: 'card wk-next-card'}, h('h2', {text: 'For your next session'}),
         h('ul', {class: 'wk-plain'}, s.next_session.map(t => h('li', {text: t}))),
-        fb ? h('p', {class: 'muted'}, `Your feedback: ${fb.difficulty ? fb.difficulty.replace('_', ' ') : 'no rating'}${fb.felt_pain ? ', felt pain' : ''}${fb.note ? ` — “${fb.note}”` : ''}`) : null),
+        fb ? h('p', {class: 'muted'}, `Your feedback: ${fb.difficulty ? fb.difficulty.replace('_', ' ') : 'no rating'}${fb.felt_pain ? ', felt pain' : ''}${fb.note ? ` - “${fb.note}”` : ''}`) : null),
       h('div', {class: 'wk-plan-actions'},
         h('button', {type: 'button', class: 'btn btn-primary', onclick: () => { formState = workout.plan.preferences; loadContext(); }}, 'Plan another workout'),
         h('a', {class: 'btn btn-quiet', href: '#report'}, 'Back to the report')));

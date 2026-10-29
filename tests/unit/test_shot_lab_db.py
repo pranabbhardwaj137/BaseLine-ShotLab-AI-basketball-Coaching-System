@@ -173,6 +173,80 @@ class TestShotLabDB(unittest.TestCase):
         approved_shots = self.db.get_shots(player_id="steph", shot_style="set_shot", review_status="approved")
         self.assertEqual(len(approved_shots), 2)
 
+    def test_user_profile_pain_reported(self):
+        """Verify user creation and profile updates preserve pain_reported flag."""
+        user = self.db.create_user(
+            email="shooter@baseline.test",
+            password="test_password_123",
+            name="Test Shooter",
+            player_id="test_shooter",
+            handedness="left",
+            skill_level="advanced",
+            shot_style="jump_shot",
+            pain_reported=True
+        )
+        self.assertIsNotNone(user)
+        self.assertEqual(user["pain_reported"], 1)
+
+        fetched = self.db.get_user_by_id(user["id"])
+        self.assertEqual(fetched["pain_reported"], 1)
+
+        # Update profile to cleared pain
+        self.db.update_user_profile(user["id"], {"pain_reported": False})
+        updated = self.db.get_user_by_id(user["id"])
+        self.assertEqual(updated["pain_reported"], 0)
+
+    def test_rim_anchor_and_machine_outcome_update(self):
+        """Verify session rim anchor storage and safe update of machine outcome fields."""
+        sess_id = self.db.create_session(player_id="steph", camera_view="frontal")
+        self.assertIsNone(self.db.get_session_rim_anchor(sess_id))
+
+        anchor = {"cx": 320.0, "cy": 180.0, "w": 55.0, "stability": 0.04}
+        self.assertTrue(self.db.set_session_rim_anchor(sess_id, anchor, rim_source="auto"))
+        saved_anchor = self.db.get_session_rim_anchor(sess_id)
+        self.assertIsNotNone(saved_anchor)
+        self.assertEqual(saved_anchor["cx"], 320.0)
+        self.assertEqual(saved_anchor["source"], "auto")
+
+        # Save shot with initial machine outcome
+        shot_id = self.db.save_shot({
+            "session_id": sess_id,
+            "player_id": "steph",
+            "camera_view": "frontal",
+            "shot_type": "catch_and_shoot",
+            "outcome": "make",
+            "outcome_source": "manual_review",
+            "review_status": "approved",
+            "automated_outcome": "unknown",
+            "p_make": None,
+        })
+
+        # Update machine proposal only
+        self.assertTrue(self.db.update_shot_machine_outcome(shot_id, {
+            "label": "make",
+            "confidence": 0.82,
+            "p_make": 0.88,
+            "evidence_quality": 0.75,
+            "reason": "TRAJECTORY_RIM_PLANE_CHECK",
+            "features": {"margin": 0.45},
+            "estimator_version": "1.0.0",
+            "estimator_cfg_hash": "abc12345",
+        }))
+
+        updated_shot = self.db.get_shot(shot_id)
+        # Human fields strictly preserved
+        self.assertEqual(updated_shot["outcome"], "make")
+        self.assertEqual(updated_shot["outcome_source"], "manual_review")
+        self.assertEqual(updated_shot["review_status"], "approved")
+        # Machine fields updated
+        self.assertEqual(updated_shot["automated_outcome"], "make")
+        self.assertEqual(updated_shot["automated_outcome_conf"], 0.82)
+        self.assertEqual(updated_shot["p_make"], 0.88)
+        self.assertEqual(updated_shot["outcome_confidence"], 0.82)
+        self.assertEqual(updated_shot["evidence_quality"], 0.75)
+        self.assertEqual(updated_shot["outcome_reason"], "TRAJECTORY_RIM_PLANE_CHECK")
+        self.assertIn('"margin": 0.45', updated_shot["outcome_features"])
+
 if __name__ == "__main__":
     unittest.main()
 

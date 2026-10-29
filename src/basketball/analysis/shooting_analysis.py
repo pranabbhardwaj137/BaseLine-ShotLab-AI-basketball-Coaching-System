@@ -24,6 +24,8 @@ import statistics
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from basketball.configs.shot_types import CONFIG_VERSION, resolve_shot_type, get_shot_type
+
 ANALYSIS_VERSION = "shooting-analysis-1.4"
 
 # MediaPipe Pose landmark indices.
@@ -182,6 +184,96 @@ METRIC_DEFINITIONS: dict[str, dict[str, Any]] = {
         "views": ALL_VIEWS,
         "definition": "Time from the detected start of the attempt to the release.",
         "limitation": "The start is a detector estimate; correct it in Review if needed.",
+    },
+    "torso_lean_deg": {
+        "label": "Torso lean (sagittal)", "category": "torso", "unit": "deg", "basis": "image_2d",
+        "plausible": (0, 60), "views": ALL_VIEWS,
+        "definition": "Angle between hip-shoulder line and vertical at release.",
+        "limitation": "Provisional metric: subject to camera tilt and angle.",
+    },
+    "hip_shoulder_separation_deg": {
+        "label": "Hip-shoulder separation", "category": "alignment", "unit": "deg", "basis": "image_2d",
+        "plausible": (0, 90), "views": FRONT_VIEWS,
+        "definition": "Rotational angle discrepancy between hips and shoulders.",
+        "limitation": "Provisional metric: requires angled or frontal camera view.",
+    },
+    "stop_balance_sway": {
+        "label": "Stop balance sway", "category": "balance", "unit": "torso lengths", "basis": "image_ratio",
+        "views": ALL_VIEWS,
+        "definition": "Hip sway range during deceleration or plant window normalized by torso length.",
+        "limitation": "Provisional metric: camera shake can introduce apparent sway.",
+    },
+    "backward_displacement_px_normalized": {
+        "label": "Step-back space created", "category": "balance", "unit": "torso lengths", "basis": "image_ratio",
+        "views": SIDE_VIEWS,
+        "definition": "Horizontal backward displacement from gather to plant divided by torso length.",
+        "limitation": "Provisional metric: requires wide field of view without occlusion.",
+    },
+    "landing_displacement": {
+        "label": "Landing displacement", "category": "balance", "unit": "torso lengths", "basis": "image_ratio",
+        "views": ALL_VIEWS,
+        "definition": "Horizontal distance between takeoff spot and landing spot divided by torso length.",
+        "limitation": "Provisional metric: needs both feet visible during takeoff and landing.",
+    },
+    "knee_extension_velocity": {
+        "label": "Leg drive velocity", "category": "lower_body", "unit": "deg/s", "basis": "image_2d",
+        "plausible": (0, 1200), "views": SIDE_VIEWS,
+        "definition": "Peak knee extension uncoiling velocity between dip and release.",
+        "limitation": "Provisional metric: frame rate quantization limits peak precision.",
+    },
+    "load_to_release_ms": {
+        "label": "Dip to release duration", "category": "timing", "unit": "ms", "basis": "timing",
+        "plausible": (100, 1500), "views": ALL_VIEWS,
+        "definition": "Time elapsed from lowest dip point to release frame.",
+        "limitation": "Provisional metric: depends on dip and release frame detection.",
+    },
+    "wrist_snap_proxy": {
+        "label": "Wrist snap proxy", "category": "release", "unit": "deg/s", "basis": "image_2d",
+        "views": SIDE_VIEWS,
+        "definition": "Estimated shooting hand angular snap rate around release.",
+        "limitation": "Provisional metric: hand occlusion often degrades wrist precision.",
+    },
+    "arc_proxy": {
+        "label": "Trajectory arc proxy", "category": "release", "unit": "deg", "basis": "image_2d",
+        "views": ALL_VIEWS_FAIR,
+        "definition": "Ball trajectory entry angle or peak apex proxy (advisory only).",
+        "limitation": "Advisory only: depends on ball tracking detection and parabolic fit.",
+    },
+    "elbow_angle_at_set": {
+        "label": "Elbow angle when loaded", "category": "preparation", "unit": "deg", "basis": "image_2d",
+        "plausible": (25, 180), "views": SIDE_VIEWS,
+        "definition": "Smallest elbow angle between dip and release.",
+        "limitation": "Image projection.",
+    },
+    "elbow_angle_at_release": {
+        "label": "Elbow angle at release", "category": "release", "unit": "deg", "basis": "image_2d",
+        "plausible": (25, 180), "views": SIDE_VIEWS,
+        "definition": "Elbow angle at release moment.",
+        "limitation": "Image projection.",
+    },
+    "elbow_flare_deg": {
+        "label": "Shooting elbow flare", "category": "alignment", "unit": "ratio", "basis": "image_ratio",
+        "views": FRONT_VIEWS,
+        "definition": "Elbow deviation outside shoulder line.",
+        "limitation": "Frontal view only.",
+    },
+    "release_height_relative": {
+        "label": "Release height relative", "category": "release", "unit": "torso lengths", "basis": "image_ratio",
+        "plausible": (-1.5, 2.5), "views": ALL_VIEWS,
+        "definition": "Release height divided by torso length.",
+        "limitation": "Relative measure.",
+    },
+    "kinetic_sequence_order": {
+        "label": "Kinetic sequence order", "category": "timing", "unit": "order", "basis": "timing",
+        "views": SIDE_VIEWS,
+        "definition": "1 if legs lead and arm follows, else 0.",
+        "limitation": "Discrete proxy.",
+    },
+    "release_timing_ms": {
+        "label": "Release timing", "category": "timing", "unit": "ms", "basis": "timing",
+        "plausible": (-600, 800), "views": SIDE_VIEWS,
+        "definition": "Time lag between knee extension and elbow extension.",
+        "limitation": "Timing resolution.",
     },
 }
 
@@ -750,6 +842,79 @@ def analyze_attempt(series: PoseSeries, shot: dict[str, Any], camera_view: str, 
         [arm["wrist"], arm["shoulder"]])
     put("prep_duration_ms", round((release - start) * 1000.0 / fps), start, [start, release], [arm["wrist"]])
 
+    # Extended per-shot-type metrics and aliases
+    # 1. Torso lean (sagittal)
+    put("torso_lean_deg", metrics["torso_lean_release_deg"]["value"], release, [release], [L_HIP, R_HIP, L_SHOULDER, R_SHOULDER])
+
+    # 2. Landing displacement
+    put("landing_displacement", metrics["landing_offset_ratio"]["value"], landing_window[-1] if len(landing_window) else None,
+        list(setup_window) + list(landing_window), [L_ANKLE, R_ANKLE])
+
+    # 3. Load to release ms
+    dip_pt = dip if dip is not None else start
+    load_ms = round((release - dip_pt) * 1000.0 / fps) if release is not None and dip_pt is not None else None
+    put("load_to_release_ms", load_ms, dip_pt, [dip_pt, release], [leg["knee"], arm["wrist"]])
+
+    # 4. Knee extension velocity
+    knee_ext_vel = round(knee_peak[1] * fps, 1) if knee_peak and knee_peak[1] > 0 else None
+    put("knee_extension_velocity", knee_ext_vel, knee_peak[0] if knee_peak else None, timing_frames, leg_joints)
+
+    # 5. Backward displacement px normalized (for step-backs)
+    start_hip = hip_at(start)
+    dip_hip_val = hip_at(dip) if dip is not None else None
+    back_disp = round(abs(dip_hip_val[0] - start_hip[0]) / torso, 2) if (start_hip and dip_hip_val and torso) else None
+    put("backward_displacement_px_normalized", back_disp, dip if dip is not None else start,
+        [start, dip] if dip is not None else [start], [L_HIP, R_HIP])
+
+    # 6. Stop balance sway
+    stop_window = list(series.window(start, (dip if dip is not None else (set_frame or release))))
+    hips_x = [hip_at(f)[0] for f in stop_window if hip_at(f)]
+    sway_val = round((max(hips_x) - min(hips_x)) / torso, 2) if len(hips_x) >= 2 and torso else None
+    put("stop_balance_sway", sway_val, start, stop_window, [L_HIP, R_HIP])
+
+    # 7. Hip-shoulder rotational separation
+    sh_l, sh_r = series.point(release, L_SHOULDER), series.point(release, R_SHOULDER)
+    hp_l, hp_r = series.point(release, L_HIP), series.point(release, R_HIP)
+    sep_val = None
+    if sh_l and sh_r and hp_l and hp_r:
+        ang_sh = math.degrees(math.atan2(sh_r[1] - sh_l[1], sh_r[0] - sh_l[0]))
+        ang_hp = math.degrees(math.atan2(hp_r[1] - hp_l[1], hp_r[0] - hp_l[0]))
+        diff_ang = abs(ang_sh - ang_hp)
+        if diff_ang > 180.0:
+            diff_ang = 360.0 - diff_ang
+        sep_val = round(diff_ang, 1)
+    put("hip_shoulder_separation_deg", sep_val, release, [release], [L_SHOULDER, R_SHOULDER, L_HIP, R_HIP])
+
+    # 8. Wrist snap proxy
+    wrist_snap = round(elbow_peak[1] * fps * 0.5, 1) if elbow_peak and elbow_peak[1] > 0 else None
+    put("wrist_snap_proxy", wrist_snap, release, [release], [arm["wrist"], arm["elbow"]])
+
+    # 9. Arc proxy (advisory only, ball-dependent)
+    entry_ang = shot.get("entry_angle_deg")
+    traj_r2 = shot.get("trajectory_fit_r2")
+    if entry_ang is not None and traj_r2 is not None:
+        put("arc_proxy", round(entry_ang, 1), release, [release], [], detail=f"Trajectory fit R2={traj_r2:.2f}")
+    else:
+        put("arc_proxy", None, None, [], [], reason="Ball tracking trajectory was unavailable for this attempt (advisory only).")
+
+    # 10. Metric aliases
+    put("elbow_angle_at_set", metrics["elbow_angle_set_deg"]["value"], metrics["elbow_angle_set_deg"]["frame"],
+        [metrics["elbow_angle_set_deg"]["frame"]] if metrics["elbow_angle_set_deg"]["frame"] is not None else [],
+        [arm["shoulder"], arm["elbow"], arm["wrist"]])
+    put("elbow_angle_at_release", metrics["elbow_angle_release_deg"]["value"], metrics["elbow_angle_release_deg"]["frame"],
+        [metrics["elbow_angle_release_deg"]["frame"]] if metrics["elbow_angle_release_deg"]["frame"] is not None else [],
+        [arm["shoulder"], arm["elbow"], arm["wrist"]])
+    put("elbow_flare_deg", metrics["elbow_flare_ratio"]["value"], metrics["elbow_flare_ratio"]["frame"],
+        [metrics["elbow_flare_ratio"]["frame"]] if metrics["elbow_flare_ratio"]["frame"] is not None else [],
+        [L_SHOULDER, R_SHOULDER, arm["elbow"]])
+    put("release_height_relative", metrics["release_height_ratio"]["value"], metrics["release_height_ratio"]["frame"],
+        [metrics["release_height_ratio"]["frame"]] if metrics["release_height_ratio"]["frame"] is not None else [],
+        [arm["wrist"], arm["shoulder"]])
+    put("kinetic_sequence_order", 1 if (lag is not None and lag >= 0) else 0, elbow_peak[0] if elbow_peak else None,
+        timing_frames, leg_joints + arm_joints)
+    put("release_timing_ms", metrics["sequencing_lag_ms"]["value"], metrics["sequencing_lag_ms"]["frame"],
+        timing_frames, leg_joints + arm_joints)
+
     return _attempt_record(series, shot, attempt_index, start, release, end, side, side_basis, dip, metrics,
                            leg_side=leg_side, torso_px=torso, facing=facing, release_source=release_source,
                            detector_release_frame=detector_release,
@@ -761,6 +926,9 @@ def _attempt_record(series, shot, attempt_index, start, release, end, side, side
     with_pose = sum(1 for f in frames if series.frames[f] and any(series.frames[f])) if len(frames) else 0
     return {
         "analysis_version": ANALYSIS_VERSION,
+        "config_version": shot.get("config_version") or CONFIG_VERSION,
+        "detector_profile_id": shot.get("detector_profile_id"),
+        "shot_type_id": resolve_shot_type(shot.get("shot_type_id") or shot.get("shot_type")),
         "shot_id": shot.get("shot_id"),
         "attempt_index": attempt_index,
         "start_frame": start, "release_frame": release, "end_frame": end, "dip_frame": dip,
@@ -864,12 +1032,27 @@ def assess_video_quality(series: PoseSeries, camera_view: str, metadata: Optiona
     }
 
 
+METRIC_ALIASES: dict[str, str] = {
+    "elbow_angle_at_set": "elbow_angle_set_deg",
+    "elbow_angle_at_release": "elbow_angle_release_deg",
+    "release_height_relative": "release_height_ratio",
+    "kinetic_sequence_order": "sequencing_lag_ms",
+    "landing_displacement": "landing_offset_ratio",
+    "elbow_flare_deg": "elbow_flare_ratio",
+    "release_timing_ms": "sequencing_lag_ms",
+}
+
 CONSISTENCY_SPREAD = {
     # (tight, loose) sample-standard-deviation bands used only to describe variability.
     "°": (5.0, 10.0),
+    "deg": (5.0, 10.0),
+    "deg/s": (50.0, 150.0),
     "torso lengths": (0.08, 0.2),
     "× shoulder width": (0.08, 0.2),
     "× hip width": (0.08, 0.2),
+    "ratio": (0.08, 0.2),
+    "order": (0.2, 0.5),
+    "advisory": (5.0, 15.0),
     "ms": (60.0, 150.0),
 }
 MIN_CONSISTENCY_ATTEMPTS = 3
@@ -917,9 +1100,13 @@ def summarize_by_outcome(attempts: list[dict[str, Any]]) -> Optional[dict[str, A
 
 
 def analyze_session(cache: dict[str, Any], shots: list[dict[str, Any]], camera_view: str, *,
+                    shot_type: Optional[str] = "catch_and_shoot",
                     handedness: str = "unspecified", metadata: Optional[dict] = None) -> dict[str, Any]:
     """Measure every attempt in a session and summarise quality and consistency."""
     series = PoseSeries(cache)
+
+    canonical_shot_type = resolve_shot_type(shot_type or (shots[0].get("shot_type_id") if shots else None) or (shots[0].get("shot_type") if shots else None))
+    profile_id = get_shot_type(canonical_shot_type).get("detector_profile", {}).get("profile_id", "detector_default")
 
     def start_of(shot):
         value = shot.get("annotated_start_frame")
@@ -936,6 +1123,9 @@ def analyze_session(cache: dict[str, Any], shots: list[dict[str, Any]], camera_v
                                         next_start=next_start, attempt_index=index + 1, estimated_view=estimated))
     return {
         "analysis_version": ANALYSIS_VERSION,
+        "config_version": CONFIG_VERSION,
+        "detector_profile_id": profile_id,
+        "shot_type_id": canonical_shot_type,
         "camera_view": camera_view,
         "effective_view_limit": estimated,
         "quality": quality,

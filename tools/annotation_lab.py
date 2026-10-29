@@ -32,6 +32,7 @@ import argparse
 import numpy as np
 from typing import Dict, Any, List, Optional, Tuple
 from basketball.persistence.shot_lab_db import ShotLabDB, TAXONOMY_HARD_NEGATIVES, TAXONOMY_ALL_ACTIONS
+from basketball.configs.shot_types import resolve_shot_type
 
 
 COLOR_BGR_CYAN = (255, 210, 0)       # #00d2ff - Machine Proposals
@@ -75,13 +76,15 @@ class AnnotationLab:
         db_path: str = "shot_lab.db",
         headless: bool = False,
         synthetic: bool = False,
-        auto_detect: bool = False
+        auto_detect: bool = False,
+        shot_type_id: str = "catch_and_shoot",
     ):
         self.video_path = video_path
         self.synthetic = synthetic
         self.headless = headless
         self.player_id = player_id
         self.split = split
+        self.shot_type_id = resolve_shot_type(shot_type_id)
         self.db = ShotLabDB(db_path)
 
         # Derive or validate clip_id
@@ -151,6 +154,7 @@ class AnnotationLab:
                 file_path=self.video_path,
                 player_id=self.player_id,
                 camera_view="side_90",
+                shot_type_id=self.shot_type_id,
                 shot_style="jump_shot",
                 fps=self.fps,
                 frame_count=self.frame_count,
@@ -1137,6 +1141,7 @@ def main():
     parser.add_argument("--db", default="shot_lab.db", help="Path to SQLite database.")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode without GUI.")
     parser.add_argument("--synthetic", action="store_true", help="Allow synthetic test video fixture.")
+    parser.add_argument("--shot-type", default="catch_and_shoot", help="Shot type ID (default: catch_and_shoot).")
     parser.add_argument("--auto-detect", action="store_true", help="Automatically run detector proposals on load.")
     parser.add_argument("--commands", help="Comma-separated commands to execute in headless mode.")
     args = parser.parse_args()
@@ -1174,7 +1179,8 @@ def main():
         db_path=args.db,
         headless=args.headless,
         synthetic=args.synthetic,
-        auto_detect=args.auto_detect
+        auto_detect=args.auto_detect,
+        shot_type_id=args.shot_type,
     )
 
     if args.headless:

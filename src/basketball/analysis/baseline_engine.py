@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 from typing import Dict, Any, List, Optional, Tuple
 from basketball.persistence.shot_lab_db import ShotLabDB
+from basketball.configs.shot_types import resolve_shot_type
 
 MIN_BASELINE_SAMPLE_SIZE = 5
 
@@ -40,11 +41,12 @@ class BaselineEngine:
         shot_type: str = "catch_and_shoot",
         shot_style: str = "jump_shot",
         require_human_confirmed: bool = True,
-        save_to_db: bool = True
+        save_to_db: bool = True,
+        shot_type_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Compute personal baseline from valid shots in the database for the given
-        matched context (player_id, camera_view, shot_type, shot_style).
+        matched context (player_id, camera_view, shot_type_id, shot_style).
         
         Adheres to User Decisions:
         - Strict isolation by shot_style (jump_shot vs set_shot never cross-pollinated).
@@ -52,10 +54,12 @@ class BaselineEngine:
         - Minimum N >= 5 total valid shots for baseline computation.
         - Make-vs-miss contrast requires N >= 5 in BOTH makes and misses to prevent small-sample noise.
         """
+        canonical_shot_type = resolve_shot_type(shot_type_id or shot_type)
         shots = self.db.get_shots(
             player_id=player_id,
             camera_view=camera_view,
-            shot_type=shot_type,
+            shot_type=canonical_shot_type,
+            shot_type_id=canonical_shot_type,
             shot_style=shot_style,
             min_confidence="SUFFICIENT"
         )
@@ -73,6 +77,7 @@ class BaselineEngine:
                 "player_id": player_id,
                 "camera_view": camera_view,
                 "shot_type": shot_type,
+                "shot_type_id": canonical_shot_type,
                 "shot_style": shot_style,
                 "sample_size": n_total,
                 "min_required": MIN_BASELINE_SAMPLE_SIZE,
@@ -121,6 +126,7 @@ class BaselineEngine:
             "player_id": player_id,
             "camera_view": camera_view,
             "shot_type": shot_type,
+            "shot_type_id": canonical_shot_type,
             "shot_style": shot_style,
             "sample_size_makes": len(makes),
             "sample_size_misses": len(misses),

@@ -1,13 +1,14 @@
 """Drills catalog — 4 video-backed dribbling drills.
 
 Each drill maps to a video file served from /drills/<video_file>.
-Form feedback keys map to what the camera-based posture checker looks for.
+Contains real reference biomechanical measurements extracted from reference videos
+for live posture verification and ball bounce tracking.
 """
 
 from __future__ import annotations
 from typing import Any
 
-CATALOG_VERSION = "drills-catalog-2.0"
+CATALOG_VERSION = "drills-catalog-2.2"
 
 DRILLS_CATALOG: list[dict[str, Any]] = [
     {
@@ -29,8 +30,22 @@ DRILLS_CATALOG: list[dict[str, Any]] = [
             "Body stays still",
         ],
         "form_checks": ["knees_bent", "eyes_up", "back_straight"],
-        "counter": "dribble_wrist",
+        "counter": "yolo_ball_bounce",
         "skills": ["ball control", "hand strength", "low dribble"],
+        "target_sequence": ["POUND"],
+        "sequence_description": "Continuous rhythmic pound dribbles",
+        "reference_biomechanics": {
+            "knee_angle_mean": 153.5,
+            "knee_angle_range": [145.0, 163.0],
+            "hip_angle_mean": 121.6,
+            "hip_angle_range": [110.0, 130.0],
+            "head_pitch_threshold": 0.04,
+            "dribble_height_max": "knee",
+            "ball_apex_y": 0.494,
+            "ball_ground_y": 0.753,
+            "vertical_excursion": 0.259,
+            "lateral_span": 0.08,
+        },
     },
     {
         "id": "pound_plus_cross",
@@ -51,8 +66,22 @@ DRILLS_CATALOG: list[dict[str, Any]] = [
             "Stay in an athletic stance",
         ],
         "form_checks": ["knees_bent", "back_straight", "low_dribble"],
-        "counter": "dribble_wrist",
+        "counter": "yolo_ball_bounce",
         "skills": ["ball handling", "crossover", "change of direction"],
+        "target_sequence": ["POUND", "POUND", "CROSSOVER"],
+        "sequence_description": "2 Pounds + 1 Crossover",
+        "reference_biomechanics": {
+            "knee_angle_mean": 160.5,
+            "knee_angle_range": [148.0, 166.0],
+            "hip_angle_mean": 119.0,
+            "hip_angle_range": [105.0, 135.0],
+            "head_pitch_threshold": 0.04,
+            "dribble_height_max": "knee",
+            "ball_apex_y": 0.470,
+            "ball_ground_y": 0.745,
+            "vertical_excursion": 0.275,
+            "lateral_span": 0.689,
+        },
     },
     {
         "id": "pound_plus_v_dribble",
@@ -74,8 +103,22 @@ DRILLS_CATALOG: list[dict[str, Any]] = [
             "Soft knees, stay balanced",
         ],
         "form_checks": ["knees_bent", "back_straight", "low_dribble"],
-        "counter": "dribble_wrist",
+        "counter": "yolo_ball_bounce",
         "skills": ["ball control", "change of pace", "dribble footwork"],
+        "target_sequence": ["POUND", "POUND", "V_DRIBBLE"],
+        "sequence_description": "2 Pounds + 1 V-Dribble",
+        "reference_biomechanics": {
+            "knee_angle_mean": 155.8,
+            "knee_angle_range": [147.0, 162.0],
+            "hip_angle_mean": 117.5,
+            "hip_angle_range": [100.0, 135.0],
+            "head_pitch_threshold": 0.04,
+            "dribble_height_max": "knee",
+            "ball_apex_y": 0.483,
+            "ball_ground_y": 0.751,
+            "vertical_excursion": 0.268,
+            "lateral_span": 0.733,
+        },
     },
     {
         "id": "v_dribble_plus_cross",
@@ -96,8 +139,22 @@ DRILLS_CATALOG: list[dict[str, Any]] = [
             "Stay low — don't rise on the crossover",
         ],
         "form_checks": ["knees_bent", "eyes_up", "back_straight", "low_dribble"],
-        "counter": "dribble_wrist",
+        "counter": "yolo_ball_bounce",
         "skills": ["ball handling", "combo moves", "explosiveness"],
+        "target_sequence": ["V_DRIBBLE", "V_DRIBBLE", "CROSSOVER"],
+        "sequence_description": "2 V-Dribbles + 1 Crossover",
+        "reference_biomechanics": {
+            "knee_angle_mean": 163.2,
+            "knee_angle_range": [153.0, 172.0],
+            "hip_angle_mean": 118.6,
+            "hip_angle_range": [105.0, 136.0],
+            "head_pitch_threshold": 0.04,
+            "dribble_height_max": "knee",
+            "ball_apex_y": 0.492,
+            "ball_ground_y": 0.749,
+            "vertical_excursion": 0.258,
+            "lateral_span": 0.719,
+        },
     },
 ]
 

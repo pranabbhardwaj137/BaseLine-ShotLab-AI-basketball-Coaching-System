@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 import cv2
 import numpy as np
+import logging
 
 from basketball.tracking.ball_geometry import (
     arc_peak,
@@ -29,6 +30,108 @@ from basketball.tracking.ball_geometry import (
     release_angle_deg,
     sample_parabola,
 )
+from basketball.tracking.outcome_estimator import (
+    BallPt,
+    RimAnchor,
+    Outcome,
+    estimate_outcome,
+    get_cfg_hash,
+    ESTIMATOR_VERSION,
+    USE_LEGACY_OUTCOME,
+    CFG,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def gate_ball_detections(
+    ball_records: List[Dict[str, Any]],
+    max_speed_px_per_s: float = 3500.0,
+    max_size_ratio: float = 2.5
+) -> List[BallPt]:
+    """
+    Track gating before building BallPt:
+    Rejects detections whose per-frame displacement is implausible or whose bbox width
+    changes sharply versus neighbors. Uses a simple physical consistency gate.
+    Does not extrapolate through occlusion (the RANSAC parabola fit handles gaps).
+    """
+    if not ball_records:
+        return []
+
+    valid_pts: List[BallPt] = []
+    for rec in ball_records:
+        box = rec.get("box")
+        t = float(rec.get("t", 0.0))
+        conf = float(rec.get("conf", 0.0))
+        if box is None or len(box) < 4:
+            continue
+        cx = (float(box[0]) + float(box[2])) / 2.0
+        cy = (float(box[1]) + float(box[3])) / 2.0
+        w = max(1.0, float(box[2]) - float(box[0]))
+
+        if valid_pts:
+            prev = valid_pts[-1]
+            dt = t - prev.t
+            if dt > 1e-4:
+                dist = float(np.hypot(cx - prev.x, cy - prev.y))
+                speed = dist / dt
+                if speed > max_speed_px_per_s:
+                    continue
+                size_ratio = max(w, prev.w) / min(w, prev.w)
+                if size_ratio > max_size_ratio and dt < 0.2:
+                    continue
+        valid_pts.append(BallPt(t=t, x=cx, y=cy, w=w, conf=conf))
+    return valid_pts
+
+def merge_ball_detections(
+    full_det: Optional[Dict[str, Any]],
+    roi_det: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Merge full-frame and rim-ROI ball detections.
+    Keep the higher confidence when they overlap, or take whichever is detected.
+    """
+    f_ball = full_det.get("ball") if full_det else None
+    f_conf = float(full_det.get("ball_conf", 0.0) or 0.0) if full_det else 0.0
+
+    r_ball = roi_det.get("ball") if roi_det else None
+    r_conf = float(roi_det.get("ball_conf", 0.0) or 0.0) if roi_det else 0.0
+
+    if f_ball is None and r_ball is None:
+        return {"ball": None, "ball_conf": 0.0}
+    if f_ball is None:
+        return {"ball": r_ball, "ball_conf": r_conf}
+    if r_ball is None:
+        return {"ball": f_ball, "ball_conf": f_conf}
+
+    fx1, fy1, fx2, fy2 = f_ball
+    rx1, ry1, rx2, ry2 = r_ball
+    inter_x1 = max(fx1, rx1)
+    inter_y1 = max(fy1, ry1)
+    inter_x2 = min(fx2, rx2)
+    inter_y2 = min(fy2, ry2)
+    inter_w = max(0.0, inter_x2 - inter_x1)
+    inter_h = max(0.0, inter_y2 - inter_y1)
+    inter_area = inter_w * inter_h
+    f_area = max(1.0, (fx2 - fx1) * (fy2 - fy1))
+    r_area = max(1.0, (rx2 - rx1) * (ry2 - ry1))
+    iou = inter_area / (f_area + r_area - inter_area)
+
+    fcx, fcy = (fx1 + fx2) / 2.0, (fy1 + fy2) / 2.0
+    rcx, rcy = (rx1 + rx2) / 2.0, (ry1 + ry2) / 2.0
+    dist = float(np.hypot(fcx - rcx, fcy - rcy))
+    max_d = max(fx2 - fx1, rx2 - rx1) * 1.5
+
+    if iou > 0.05 or dist < max_d:
+        if r_conf > f_conf:
+            return {"ball": r_ball, "ball_conf": r_conf}
+        return {"ball": f_ball, "ball_conf": f_conf}
+
+    if r_conf > f_conf:
+        return {"ball": r_ball, "ball_conf": r_conf}
+    return {"ball": f_ball, "ball_conf": f_conf}
+
+
 
 
 def load_yolo(weights_path: Optional[str] = None) -> Tuple[Any, str, List[int], List[int]]:
@@ -116,12 +219,18 @@ class BallTracker:
         near_hand_px: float = 130.0,
         leave_hand_px: float = 150.0,
         detect_every: int = 1,
+        inference_size: int = 640,
+        rim_anchor: Optional[RimAnchor] = None,
+        fps: float = 30.0,
     ):
         self.model, self.mode, self.ball_classes, self.rim_classes = load_yolo(weights_path)
         self.conf = conf
         self.near_hand_px = near_hand_px
         self.leave_hand_px = leave_hand_px
         self.detect_every = max(1, detect_every)
+        self.inference_size = inference_size
+        self.rim_anchor: Optional[RimAnchor] = rim_anchor
+        self.fps = fps
         self._frame_i = 0
         self._last = {"ball": None, "rim": None, "ball_conf": 0.0, "rim_conf": 0.0}
 
@@ -142,6 +251,7 @@ class BallTracker:
         self.active_shot_ball_frames: int = 0
         self.active_shot_flight_centers: List[Tuple[float, float]] = []
         self.active_shot_flight_timestamps: List[int] = []
+        self.active_shot_ball_records: List[Dict[str, Any]] = []
 
         self.release_started: bool = False
         self.release_ended: bool = False
@@ -163,6 +273,7 @@ class BallTracker:
         self.active_shot_ball_frames = 0
         self.active_shot_flight_centers = []
         self.active_shot_flight_timestamps = []
+        self.active_shot_ball_records = []
         self.active_shot_last_rim = None
         self.release_started = True
         self.tracking_flight = False
@@ -214,27 +325,30 @@ class BallTracker:
                     pts[0]
                 )
 
-        # Advisory Make / Miss Qualification
+        # Run Track Gating before building BallPt
+        ball_pts = gate_ball_detections(self.active_shot_ball_records)
+        release_t = (
+            float(self.active_shot_release_time_ms) / 1000.0
+            if self.active_shot_release_time_ms is not None
+            else (float(self.active_shot_release_frame) / self.fps if self.active_shot_release_frame is not None else 0.0)
+        )
+
+        # Reference Outcome Estimator
+        outcome_obj = estimate_outcome(ball_pts, release_t, self.rim_anchor)
+
+        # Legacy calculation: used when self.rim_anchor is not configured or USE_LEGACY_OUTCOME is True
+        legacy_outcome = "unknown"
+        legacy_conf = 0.0
+        legacy_reason = "NO_LEGACY_MATCH"
         if not self.rim_supported:
-            outcome = "unknown"
-            outcome_reason = "UNAVAILABLE_NO_WEIGHTS"
-            outcome_conf = 0.0
+            legacy_reason = "UNAVAILABLE_NO_WEIGHTS"
         elif len(pts) < 4:
-            outcome = "unknown"
-            outcome_reason = "INSUFFICIENT_FLIGHT_POINTS"
-            outcome_conf = 0.0
+            legacy_reason = "INSUFFICIENT_FLIGHT_POINTS"
         elif last_rim is None:
-            outcome = "unknown"
-            outcome_reason = "RIM_NOT_DETECTED"
-            outcome_conf = 0.0
+            legacy_reason = "RIM_NOT_DETECTED"
         elif fit_r2 is None or fit_r2 < 0.70:
-            outcome = "unknown"
-            outcome_reason = "POOR_TRAJECTORY_FIT"
-            outcome_conf = round(float(fit_r2), 2) if fit_r2 is not None else 0.0
+            legacy_reason = "POOR_TRAJECTORY_FIT"
         else:
-            # Check rim proximity and entry alignment
-            rim_center = box_center(last_rim)
-            # Find points after apex
             apex_idx = 0
             if peak is not None:
                 for i, p in enumerate(pts):
@@ -242,23 +356,25 @@ class BallTracker:
                         apex_idx = i
                         break
             post_apex_pts = pts[apex_idx:] if apex_idx < len(pts) else pts
+            passed_near = any(ball_under_rim(p, last_rim, x_threshold=80.0) for p in post_apex_pts)
+            legacy_outcome = "make" if passed_near else "miss"
+            legacy_conf = round(min(0.95, float(fit_r2 or 0.5)), 2)
+            legacy_reason = "TRAJECTORY_ENTRY_CONFIRMED" if passed_near else "MISSED_TRAJECTORY_ALIGNMENT"
 
-            # Check if any post-apex ball center is near or below rim center
-            passed_near_rim = False
-            for p in post_apex_pts:
-                if ball_under_rim(p, last_rim, x_threshold=80.0):
-                    passed_near_rim = True
-                    break
+        if USE_LEGACY_OUTCOME or self.rim_anchor is None:
+            final_outcome = legacy_outcome
+            final_reason = legacy_reason
+            final_conf = legacy_conf
+        else:
+            final_outcome = outcome_obj.label
+            final_reason = outcome_obj.reason
+            final_conf = outcome_obj.confidence if outcome_obj.confidence is not None else 0.0
 
-            fit_conf = float(fit_r2) if fit_r2 is not None else 0.50
-            if passed_near_rim:
-                outcome = "make"
-                outcome_reason = "TRAJECTORY_ENTRY_CONFIRMED"
-                outcome_conf = round(min(0.95, fit_conf), 2)
-            else:
-                outcome = "miss"
-                outcome_reason = "MISSED_TRAJECTORY_ALIGNMENT"
-                outcome_conf = round(min(0.95, fit_conf), 2)
+        logger.info(
+            "OUTCOME COMPARISON [Shot %s]: Legacy=%s (conf=%.2f, reason=%s) vs Estimator=%s (p_make=%s, conf=%s, reason=%s)",
+            shot_id, legacy_outcome, legacy_conf, legacy_reason,
+            outcome_obj.label, outcome_obj.p_make, outcome_obj.confidence, outcome_obj.reason
+        )
 
         summary = {
             "shot_id": shot_id,
@@ -269,11 +385,17 @@ class BallTracker:
             "entry_angle": entry_angle,
             "trajectory_fit_r2": fit_r2,
             "arc_peak": peak,
-            "outcome": outcome,
-            "outcome_reason": outcome_reason,
-            "outcome_conf": outcome_conf,
-            "flight_points_count": len(pts),
-            "flight_centers": [[round(float(p[0]), 1), round(float(p[1]), 1)] for p in pts],
+            "outcome": final_outcome,
+            "outcome_reason": final_reason,
+            "outcome_conf": final_conf,
+            "p_make": outcome_obj.p_make,
+            "confidence": outcome_obj.confidence,
+            "evidence_quality": outcome_obj.evidence_quality,
+            "outcome_features": outcome_obj.features,
+            "estimator_version": ESTIMATOR_VERSION,
+            "estimator_cfg_hash": get_cfg_hash(),
+            "flight_points_count": len(ball_pts) if ball_pts else len(pts),
+            "flight_centers": [[round(float(p.x), 1), round(float(p.y), 1)] for p in ball_pts] if ball_pts else [[round(float(p[0]), 1), round(float(p[1]), 1)] for p in pts],
         }
 
         self.last_shot = summary
@@ -302,7 +424,8 @@ class BallTracker:
                 frame,
                 verbose=False,
                 conf=self.conf,
-                classes=detect_classes if detect_classes else None
+                classes=detect_classes if detect_classes else None,
+                imgsz=self.inference_size
             )
         except Exception as e:
             return dict(self._last)
@@ -336,6 +459,64 @@ class BallTracker:
         }
         return dict(self._last)
 
+
+    def detect_rim_roi(
+        self,
+        frame: np.ndarray,
+        rim: Optional[RimAnchor] = None,
+        roi_scale: float = 6.0,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Rim-ROI second pass:
+        Run ball detector on a full-resolution crop centered on the rim,
+        about 6 rim widths wide and tall, and map detections back to full-frame coordinates.
+        """
+        anchor = rim or self.rim_anchor
+        if self.model is None or self.mode == "unavailable" or anchor is None:
+            return None
+
+        h_frame, w_frame = frame.shape[:2]
+        half = (roi_scale * anchor.w) / 2.0
+        crop_x1 = max(0, int(anchor.cx - half))
+        crop_y1 = max(0, int(anchor.cy - half))
+        crop_x2 = min(w_frame, int(anchor.cx + half))
+        crop_y2 = min(h_frame, int(anchor.cy + half))
+
+        if crop_x2 <= crop_x1 + 10 or crop_y2 <= crop_y1 + 10:
+            return None
+
+        roi_crop = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+        try:
+            results = self.model.predict(
+                roi_crop,
+                verbose=False,
+                conf=self.conf,
+                classes=self.ball_classes if self.ball_classes else None,
+                imgsz=self.inference_size,
+            )
+        except Exception:
+            return None
+
+        best_ball, best_conf = None, 0.0
+        if results and len(results) > 0:
+            for box in results[0].boxes:
+                cls = int(box.cls[0])
+                conf = float(box.conf[0])
+                if cls in self.ball_classes and conf >= best_conf:
+                    xyxy = [float(v) for v in box.xyxy[0].tolist()]
+                    mapped = [
+                        xyxy[0] + crop_x1,
+                        xyxy[1] + crop_y1,
+                        xyxy[2] + crop_x1,
+                        xyxy[3] + crop_y1,
+                    ]
+                    best_ball = mapped
+                    best_conf = conf
+
+        if best_ball is not None:
+            return {"ball": best_ball, "ball_conf": round(best_conf, 2)}
+        return None
+
     def update(self, detections: Dict[str, Any], landmarks: Optional[Dict[int, Any]], valid=None, timestamp_ms: int = 0) -> Dict[str, Any]:
         """Advance trajectory state machine with confidence gating."""
         wrists = _wrist_pixels(landmarks, valid)
@@ -354,6 +535,8 @@ class BallTracker:
             if ball is not None and ball_conf >= 0.30:
                 self.active_shot_ball_frames += 1
                 center = box_center(ball)
+                t_sec = float(timestamp_ms) / 1000.0 if timestamp_ms else (float(self.active_shot_total_frames) / self.fps)
+                self.active_shot_ball_records.append({"t": t_sec, "box": ball, "conf": ball_conf})
                 if center is not None and self.tracking_flight:
                     self.active_shot_flight_centers.append(center)
                     self.active_shot_flight_timestamps.append(timestamp_ms)

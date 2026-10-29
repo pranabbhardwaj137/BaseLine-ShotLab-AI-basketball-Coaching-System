@@ -23,6 +23,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from basketball.persistence.shot_lab_db import ShotLabDB, TAXONOMY_ALL_ACTIONS
+from basketball.configs.shot_types import resolve_shot_type
 from evaluation.validate_dataset import DatasetValidator
 
 
@@ -141,6 +142,7 @@ class DatasetExporter:
                 "file_sha256": sha256_hash,
                 "player_id": player_id,
                 "camera_view": clip.get("camera_view"),
+                "shot_type_id": clip.get("shot_type_id") or resolve_shot_type(clip.get("shot_type")),
                 "shot_style": clip.get("shot_style", "jump_shot"),
                 "fps": clip.get("fps", 30.0),
                 "frame_count": clip.get("frame_count"),

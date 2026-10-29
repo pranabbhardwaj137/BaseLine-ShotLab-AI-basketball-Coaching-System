@@ -1,7 +1,8 @@
 """Live camera tracking engine for real-time web HUD overlay.
 
 Processes camera frames from the browser, running MediaPipe pose estimation,
-YOLO ball and rim tracking, shot-phase detection, and real-time shot statistics.
+YOLO ball and rim tracking, shot-phase detection, real-time shot statistics,
+and evidence-gated live Practice audio coaching.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from basketball.coaching.live_audio_coach import LiveAudioCoach
 from basketball.core.analyzer import ShotPhaseDetector, compute_all_angles
 from basketball.core.pose_engine import PoseEngine
 from basketball.tracking.ball_tracker import BallTracker
@@ -31,6 +33,7 @@ class LiveCameraEngine:
         self.pose_engine: Optional[PoseEngine] = None
         self.ball_tracker: Optional[BallTracker] = None
         self.phase_detector: Optional[ShotPhaseDetector] = None
+        self.audio_coach: Optional[LiveAudioCoach] = None
 
         self.frame_index = 0
         self.last_timestamp_ms = 0
@@ -71,8 +74,20 @@ class LiveCameraEngine:
             logger.warning("LiveCameraEngine: ShotPhaseDetector init note: %s", exc)
             self.phase_detector = None
 
-    def reset_session(self) -> Dict[str, Any]:
-        """Reset live statistics, active shot state, and ball trajectory trails."""
+        try:
+            self.audio_coach = LiveAudioCoach()
+        except Exception as exc:
+            logger.warning("LiveCameraEngine: LiveAudioCoach init note: %s", exc)
+            self.audio_coach = None
+
+    def reset_session(
+        self,
+        player_id: Optional[str] = None,
+        shot_style: Optional[str] = None,
+        camera_view: Optional[str] = None,
+        shot_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Reset live statistics, active shot state, ball trajectory trails, and coach focus."""
         with self.lock:
             self.session_makes = 0
             self.session_misses = 0
@@ -84,11 +99,34 @@ class LiveCameraEngine:
             self.last_shot_conf = 0.0
             if self.ball_tracker is not None:
                 self.ball_tracker.reset()
+            if self.audio_coach is not None:
+                self.audio_coach.reset(
+                    player_id=player_id,
+                    shot_style=shot_style,
+                    camera_view=camera_view,
+                    shot_type=shot_type,
+                )
             return {
                 "makes": 0,
                 "misses": 0,
                 "total": 0,
                 "accuracy": 0.0,
+                "caption": self.audio_coach.current_caption if self.audio_coach else "",
+                "focus": self.audio_coach.current_focus if self.audio_coach else "setup",
+            }
+
+    def get_session_recap(self) -> Dict[str, Any]:
+        """Generate a short recap when the user completes a set or session."""
+        with self.lock:
+            if self.audio_coach is not None:
+                return self.audio_coach.get_session_recap(self.session_total)
+            return {
+                "event_type": "recap",
+                "text": "Practice session ended.",
+                "caption": "Practice session ended",
+                "focus": "setup",
+                "speak": True,
+                "total_shots": self.session_total,
             }
 
     def process_frame(
@@ -99,7 +137,7 @@ class LiveCameraEngine:
         """
         Process a single BGR frame from the live web camera.
         Returns live HUD data including pose landmarks, joint angles, ball/rim boxes,
-        trajectory trail, shot phase, and advisory make/miss stats.
+        trajectory trail, shot phase, advisory make/miss stats, and audio coach cues.
         """
         with self.lock:
             self.frame_index += 1
@@ -131,23 +169,27 @@ class LiveCameraEngine:
                             else:
                                 landmarks_list.append([0.0, 0.0, 0.0])
                         angles = compute_all_angles(
-                            pose_output.get("smoothed_landmarks", {}),
-                            pose_output.get("world_landmarks", {}),
-                        )
+                            landmarks=pose_output.get("smoothed_landmarks") or pose_output.get("landmarks") or {},
+                            valid=pose_output.get("valid"),
+                            world_landmarks=pose_output.get("world_landmarks"),
+                            min_visibility=0.45,
+                        ) or {}
                 except Exception as exc:
                     logger.debug("Live pose error: %s", exc)
 
             # 2. Shot Phase Detection
-            if self.phase_detector is not None and pose_output:
+            if self.phase_detector is not None and pose_output and pose_output.get("landmarks"):
                 try:
-                    self.current_phase = self.phase_detector.update(
-                        pose_output["smoothed_landmarks"],
-                        pose_output["valid"],
-                        timestamp_ms,
-                        angles,
+                    phase_str, _, _ = self.phase_detector.update(
+                        landmarks=pose_output.get("smoothed_landmarks") or pose_output.get("landmarks") or {},
+                        angles=angles,
+                        timestamp_ms=timestamp_ms,
                     )
-                except Exception:
-                    pass
+                    self.current_phase = phase_str
+                except Exception as exc:
+                    logger.debug("Live phase detection error: %s", exc)
+            else:
+                self.current_phase = "idle"
 
             # 3. Ball & Rim Tracking
             ball_box = None
@@ -171,7 +213,7 @@ class LiveCameraEngine:
                     rim_status = detections.get("rim_status", "UNAVAILABLE_NO_WEIGHTS")
 
                     # Handle shot lifecycle transitions
-                    if self.current_phase in ("gathering", "dip", "set_point") and self.active_shot_uid is None:
+                    if self.current_phase in ("gathering", "dip", "set_point", "preparing") and self.active_shot_uid is None:
                         self.active_shot_uid = f"live_{timestamp_ms}"
                         self.ball_tracker.on_shot_started(self.active_shot_uid, self.frame_index, timestamp_ms)
 
@@ -207,6 +249,21 @@ class LiveCameraEngine:
                 except Exception as exc:
                     logger.debug("Live ball tracking error: %s", exc)
 
+            # 4. Audio Coaching Evaluation (runs synchronously, 0ms overhead, no external LLM)
+            coach_event = None
+            if self.audio_coach is not None:
+                try:
+                    coach_event = self.audio_coach.on_frame(
+                        current_phase=self.current_phase,
+                        previous_phase=self.previous_phase,
+                        angles=angles,
+                        landmarks=pose_output.get("smoothed_landmarks") or pose_output.get("landmarks") or {} if pose_output else {},
+                        valid=pose_output.get("valid") if pose_output else None,
+                        timestamp_ms=timestamp_ms,
+                    )
+                except Exception as exc:
+                    logger.debug("Live audio coach error: %s", exc)
+
             self.previous_phase = self.current_phase
 
             accuracy = (
@@ -224,7 +281,7 @@ class LiveCameraEngine:
                 "pose": {
                     "detected": len(landmarks_list) > 0,
                     "landmarks": landmarks_list,
-                    "phase": self.current_phase,
+                    "phase": str(self.current_phase),
                     "knee_angle": round(float(knee_ang), 1) if knee_ang is not None else None,
                     "elbow_angle": round(float(elbow_ang), 1) if elbow_ang is not None else None,
                 },
@@ -252,5 +309,10 @@ class LiveCameraEngine:
                     "misses": self.session_misses,
                     "total": self.session_total,
                     "accuracy": accuracy,
+                },
+                "audio_coach": {
+                    "event": coach_event,
+                    "caption": self.audio_coach.current_caption if self.audio_coach else "",
+                    "focus": self.audio_coach.current_focus if self.audio_coach else "setup",
                 },
             }
