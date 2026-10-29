@@ -869,45 +869,62 @@ What the automated tests use:
 - the voice tests use a **recording stand-in** for speech;
 - none of them verify real audio, Safari/iOS recording or Android devices; those remain manual checks.
 
-## 18. 11: Grok AI coach chat, HTTPS trust diagnostics and the phone setup page
+## 18. 11: AI coach chat (Groq primary, Gemini backup), HTTPS trust diagnostics and the phone setup page
 
-**Configure Grok** (`.env` is git-ignored; `.env.example` holds placeholders only):
+**Configure the chat** (`.env` is git-ignored; `.env.example` holds placeholders only):
 
 ```bash
-cp .env.example .env             # then set XAI_API_KEY=xai-…  (optional XAI_MODEL, default grok-4.7)
-PYTHONPATH=src python3 -m basketball.coaching.llm_coach            # key check via GET /v1/models (no tokens)
-PYTHONPATH=src python3 -m basketball.coaching.llm_coach --answer   # one tiny billed answer: confirms credits
-python web_app.py --lan --https                                    # chat turns on automatically with XAI_API_KEY
+python -m pip install groq   # official Groq SDK (primary provider, streaming); also in requirements.txt
+cp .env.example .env    # then set GROQ_API_KEY=… and GEMINI_API_KEY=… in .env (never in .env.example)
+PYTHONPATH=src python3 -m basketball.coaching.llm_coach            # key check per provider: lists models, no tokens
+PYTHONPATH=src python3 -m basketball.coaching.llm_coach --answer   # also a one-word reply from each (uses a little quota)
+python web_app.py --lan --https                                    # chat turns on automatically when a key is set
 ```
 
-Expected output of the key check, one of:
-- `Key check: key_ok - API key accepted by xAI…`;
-- `invalid_key`;
-- `forbidden` / `no_credits`;
-- `model_not_listed` (the message lists your models);
-- `unreachable`.
-
-`--answer` prints `Answer check: ok - model grok-4.7 replied: 'OK'`, or `no_credits` when the account has
-no credits.
+Expected output of the key check:
+- one line per configured provider, for example `Groq (primary, model openai/gpt-oss-120b): key_ok - …` and `Google Gemini (backup, model gemini-3.8-flash): key_ok - …`;
+- other possible states: `invalid_key`, `model_not_listed` (lists usable models), `forbidden`, `unreachable`;
+- exit code 0 only if every configured provider is `key_ok`.
 
 Start-up lines:
-- `Settings loaded from .env: XAI_API_KEY` (key names only, never values);
-- `AI coach chat: enabled - xAI Grok, model grok-4.7…`;
-- `AI coach chat key check: …`.
+- `Settings loaded from .env: GEMINI_API_KEY, GROQ_API_KEY` (key names only, never values);
+- `AI coach chat: enabled - Groq (openai/gpt-oss-120b); backup Google Gemini (gemini-3.8-flash)…`;
+- one `AI coach chat key check (…)` line per provider.
 
 Options:
 - `--disable-llm-chat` keeps chat off.
-- `--llm-provider {auto,xai,gemini}` chooses the provider.
-- `--llm-model ID` overrides `XAI_MODEL`.
+- `--llm-provider {auto,groq,gemini,xai}` chooses the primary; `auto` means Groq, then Gemini.
+- `--llm-model ID` sets the primary provider's model.
 - `--env-file PATH` reads a different settings file.
 
+Groq request (official SDK, `stream=True`):
+- parameters: `temperature=1`, `max_completion_tokens=2048`, `top_p=1`, `reasoning_effort="medium"` (reasoning models only), `stream=True`;
+- success means the stream ended with a finish reason and produced answer text.
+
+Streaming endpoint: `POST /api/sessions/<id>/coach-chat` with `Accept: application/x-ndjson` returns one JSON event per line:
+- `start {provider, model}`;
+- `delta {text}`;
+- `fallback {from, to, code, http_status, provider_code, reset}`;
+- then `done {provider, model, fallback_from, notice, evidence}` or `error {error, code, http_status, provider_code}`.
+
+Closing the connection cancels Groq. Without that `Accept` header the route returns one JSON reply, as before.
+
+Answer style:
+- **Instructions:** `llm_coach.system_prompt_for(question)` is the same for every provider. It asks for plain coaching language with no tables, IDs, frame numbers or internal metric names, and adds guidance for strengths, practice, weakness and uncertain questions. The grounding rules are unchanged.
+- **Detail on request:** questions asking for detail/measurements/evidence add a `### Technical details` section. The `done` event then has `detailed: true`, and the chat card shows a "Measurements behind this answer" section.
+- **Browser check:** ask "What are my strengths?" and expect a short answer with bullets and no tables or IDs. Then ask "Show me the detailed measurements" and expect the numbers in a separate section.
+
+Fallback rule:
+- Gemini is tried only when Groq fails temporarily: `rate_limited` (429), `service_error` (5xx/498), `timeout`, `unreachable`, `incomplete` (the stream broke off), or `empty` (no answer text).
+- No fallback for `invalid_key`, `forbidden`, `model_not_found`, `bad_request`, or an invalid question.
+- Each provider is called at most once per question.
+
 API checks:
-- `GET /api/health` returns `llm_provider`, `llm_model` and `llm_status` (state of the last key/credit
-  check), or `llm_setup` (setup text) when chat is off.
+- `GET /api/health` returns `llm_provider`, `llm_model`, `llm_status`, and `llm_backup` `{provider, model, label, status}`, or `llm_setup` when chat is off.
 - `POST /api/sessions/<id>/coach-chat` (needs `X-Shotlab: 1`) returns:
-  - `200 {answer, provider, model, notice, evidence}`;
-  - or `{error, code}` with codes `not_configured` 503, `invalid_key`/`no_credits`/`forbidden`/`model_not_found` 502, `rate_limited` 429, `timeout` 504, `unreachable` 503.
-- Side effects: none stored. The request uses `store: false`, so xAI does not keep the conversation.
+  - `200 {answer, provider, model, fallback_from, notice, evidence}`;
+  - or `{error, code}` with codes `not_configured` 503, `invalid_key`/`forbidden`/`model_not_found` 502, `rate_limited` 429, `timeout` 504, `unreachable`/`service_error` 503.
+- Side effects: nothing is stored locally.
 
 **HTTPS trust diagnostics:**
 - **Phone setup page** (with `--lan --https`): it is printed as `Phone setup (certificate + steps, plain http, certificate only): http://<IP>:8766/`.
@@ -915,15 +932,17 @@ API checks:
   - `GET /shotlab-ca.crt` returns the public CA certificate.
   - Every other path returns 404. Private-network clients only.
   - `--setup-port N` changes the port; `--setup-port 0` turns the page off.
-- **Handshake failures** are logged as one line per device instead of a traceback:
-  - `[https] <ip>: SSLV3_ALERT_CERTIFICATE_UNKNOWN. This device does not trust…`: the phone has not installed and trusted the CA;
-  - `[https] <ip>: HTTP_REQUEST`: `http://` was used on the https port.
+- **Handshake failures** are logged as one line per device: `[https] <ip>: SSLV3_ALERT_CERTIFICATE_UNKNOWN. This device does not trust…`, or `HTTP_REQUEST` when `http://` was used on the https port. They are also listed in `GET /api/connection` → `tls_problems` (computer only).
+- **Camera diagnostics** (camera pane): shows secure context, `getUserMedia`, `MediaRecorder`, supported recording types, the number of cameras and the last camera error.
 
-  They are also listed in `GET /api/connection` → `tls_problems` (computer only) and in the **Use it from your phone** panel.
-- **Camera diagnostics** (camera pane): shows secure context, `getUserMedia`, `MediaRecorder`, supported recording types, the chosen type, the number of cameras and the last camera error.
+**Front/rear camera switch** (camera pane, before recording or after Stop/Retake):
+- The button reads **Use front camera** or **Use rear camera**.
+- It releases the current camera, then opens the other side with `facingMode: {exact: "user"|"environment"}`. If that is rejected, it uses a listed camera whose label matches, then `facingMode: {ideal: …}`.
+- If the other side cannot be opened, the previous camera is reopened and the reason is shown.
+- The button is hidden while recording and on devices with a single camera.
 
 ```bash
-PYTHONPATH=src:. python3 -m pytest -q tests/unit/test_llm_coach.py tests/e2e/test_ai_chat_and_https.py   # mocked xAI; no key needed
+PYTHONPATH=src:. python3 -m pytest -q tests/unit/test_llm_coach.py tests/e2e/test_ai_chat_and_https.py tests/e2e/test_chat_ui.py tests/e2e/test_camera_switching.py   # mocked APIs (Groq SDK over a mock HTTP transport), scripted camera
 ```
 
 ## 19. Athletic Monochrome Landing Page & User Authentication / Onboarding

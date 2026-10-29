@@ -26,8 +26,6 @@ Requires-Dist: ruff>=0.1.0; extra == "dev"
 
 A local-first AI shooting coach. Upload a video of yourself shooting, from your computer or from your phone over Wi-Fi. The app estimates your pose locally, finds each shot attempt, measures your mechanics, and writes a personalised coaching report: strengths, priorities, drills, a practice plan, and cautious technique and injury-risk-reduction guidance. Every finding is tied to timestamps and measurements from your own video, and the report can be printed or saved as a PDF. Video never leaves your computer.
 
-The app also includes a **Drills section** — a dedicated practice mode with video-backed dribbling drills. Each drill shows a reference video (recorded shorts-format clips) side-by-side with your live camera feed. A motion-based rep counter tracks your dribbles in real time and a post-drill feedback card reports your pace, rhythm consistency, and coaching cue reminders.
-
 > **For AI Assistants:** Agent rules: [`AGENTS.md`](AGENTS.md). Canonical verification commands: [`docs/reference/MANUAL_VERIFICATION_COMMANDS.md`](docs/reference/MANUAL_VERIFICATION_COMMANDS.md). Project status: [`.planning/STATE.md`](.planning/STATE.md), [`.planning/ROADMAP.md`](.planning/ROADMAP.md). Latest audit: [`.planning/phases/08-user-facing-app/08-07-AUDIT.md`](.planning/phases/08-user-facing-app/08-07-AUDIT.md).
 
 ---
@@ -114,7 +112,9 @@ camera.
 
 Recording works like this:
 - **Controls:**
-  - **Switch camera** (shown when the device has more than one camera);
+  - **Use front camera** / **Use rear camera**: shown when the device has more than one camera. It releases
+    the current camera before opening the other. It is available before recording and after Stop or Retake,
+    not during a clip. If the other camera cannot be opened, the previous one is reopened and the reason is shown;
   - **Start recording**, **Pause** / **Resume** (where the browser supports it) and **Stop**;
   - watch the clip back, then **Retake** or **Analyze this session**.
 - **Recording format:** Safari records MP4 (H.264); Chrome, Edge and Android record WebM. Both go
@@ -164,63 +164,72 @@ You can use your own certificate instead, for example one made with mkcert:
   that device and compare the fingerprint. Do not continue past the warning.
 - **Setup page port is in use:** pass `--setup-port <port>`; `--setup-port 0` turns the setup page off.
 
-#### AI coach chat (Grok)
+#### AI coach chat (Groq, with Gemini as backup)
 
-The **Ask about this session** card on the Review screen can explain your results and suggest training.
-It uses xAI's Grok through the official API:
-- endpoint: `POST https://api.x.ai/v1/responses`;
-- authentication: `Authorization: Bearer $XAI_API_KEY`;
-- documentation: [docs.x.ai](https://docs.x.ai/docs/guides/chat).
-
-Each question is answered from this session's measured results:
+The **Ask about this session** card on the Review screen explains your results and suggests training.
+Each answer is built from this session's measured results:
 - the rule-based findings and their confidence;
 - the metrics;
 - the report's technical summary, correction plan and practice checklist;
 - the latest workout plan, if there is one;
 - the recording limits.
 
-Only text summaries are sent. Video, frames and body landmarks never leave the computer.
+Only text summaries are sent. Video, frames and body landmarks never leave the computer. API keys stay
+on the computer: they are never sent to the browser, shown in API responses, or logged.
 
-1. Create an API key at [console.x.ai](https://console.x.ai). API use is **billed to your xAI account**:
-   the key only works for answers once the account has credits.
-2. In the project folder, create `.env` from the template:
-   ```bash
-   cp .env.example .env        # Windows: copy .env.example .env
-   # edit .env: XAI_API_KEY=xai-...   (optional: XAI_MODEL=grok-4.7)
+**Providers:**
+- **Primary: Groq**, through its official OpenAI-compatible API
+  (`POST https://api.groq.com/openai/v1/chat/completions`). The default model is `openai/gpt-oss-120b`,
+  a production model on Groq ([models](https://console.groq.com/docs/models)).
+- **Backup: Google Gemini** `generateContent`. The default model is `gemini-3.8-flash`, a stable model
+  Google recommends for new projects ([models](https://ai.google.dev/gemini-api/docs/models)).
+
+**When the backup is used:**
+- Gemini answers only when Groq fails for a *temporary* reason: rate or usage limit (HTTP 429),
+  capacity or outage (5xx, 498), timeout, or no network.
+- A wrong key, an unknown model or an invalid question is reported, not retried.
+- Each provider is tried once per question; nothing loops.
+- If both fail, the card says so; it never makes up an answer.
+
+**Setup:**
+1. Create the keys:
+   - Groq: [console.groq.com/keys](https://console.groq.com/keys);
+   - Gemini: [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+
+   Both have usage limits on free plans; heavier use may need a paid plan.
+2. Add the keys to `.env` in the project folder. Start from `.env.example`, which holds placeholders only:
    ```
-   - `.env` is git-ignored.
-   - Variables already set in the shell take precedence.
-   - Never put the key in code, HTML or a commit.
-3. Check the key without starting the app:
-   ```bash
-   python -m basketball.coaching.llm_coach            # lists models (free): "Key check: key_ok …"
-   python -m basketball.coaching.llm_coach --answer   # asks for a one-word reply (uses a few billed tokens)
+   GROQ_API_KEY=gsk_...
+   GEMINI_API_KEY=AIza...
+   # optional: GROQ_MODEL=openai/gpt-oss-120b   GEMINI_MODEL=gemini-3.8-flash
    ```
-   Run these from the project folder with `PYTHONPATH=src`, or after `pip install -e .`.
-4. Start the app as usual (`python web_app.py --lan --https`). Chat turns on automatically when
-   `XAI_API_KEY` is set. The start-up log shows:
-   - `AI coach chat: enabled - xAI Grok, model grok-4.7`;
-   - a moment later, `AI coach chat key check: …`.
+   - `.env` is git-ignored. Never put keys in code, HTML or a commit.
+   - Placeholder values such as `your_groq_api_key` are ignored.
+3. Check the keys without starting the app:
+   ```bash
+   PYTHONPATH=src python -m basketball.coaching.llm_coach            # lists models (no tokens used)
+   PYTHONPATH=src python -m basketball.coaching.llm_coach --answer   # also asks each for a one-word reply
+   ```
+   Expected output: `Groq (primary, model openai/gpt-oss-120b): key_ok - …` and a similar Gemini line.
+   Other possible states: `invalid_key`, `model_not_listed` (the models your key can use are listed),
+   `forbidden`, and `unreachable`.
+4. Start the app as usual: `python web_app.py --lan --https`.
+   - Chat turns on automatically when a key is set.
+   - The start-up log shows `AI coach chat: enabled - Groq (openai/gpt-oss-120b); backup Google Gemini (gemini-3.8-flash)`, followed by one key-check line per provider.
    - To keep chat off, use `--disable-llm-chat`.
+   - To make Gemini the primary, use `--llm-provider gemini`.
 
-**Model:**
-- The default is `grok-4.7`, the flagship model in xAI's model list at the time of writing.
-- Set `XAI_MODEL` to any model your account lists in the xAI Console.
-- If the key check reports `model_not_listed`, it also prints the models your account has.
+**Messages shown in the chat card:**
+- "Groq rejected the API key" or "Gemini rejected the API key";
+- "does not offer the configured model": set `GROQ_MODEL` or `GEMINI_MODEL`;
+- "rate or usage limit was reached";
+- "temporarily unavailable";
+- "took too long";
+- "Could not reach …";
+- "No AI answer is available right now…", when both providers fail.
 
-**Errors are shown in the chat card and on the computer's log:**
-
-| Message | Cause |
-|---|---|
-| "xAI rejected the API key" | Invalid key (HTTP 401) |
-| "Your xAI account has no usable credits" | No credits, billing or spending limit |
-| "not permitted / blocked" | HTTP 403 |
-| "could not find the model" | HTTP 404; set `XAI_MODEL` |
-| "rate limit reached" | HTTP 429 |
-| "took too long" | Timeout after 60 s |
-| "Could not reach api.x.ai" | No internet connection |
-
-Gemini is still available with `--enable-llm-chat --llm-provider gemini` and `GEMINI_API_KEY`.
+When the backup answers, the reply says that Groq was unavailable and why. xAI Grok is still supported,
+but only when chosen explicitly with `--llm-provider xai` and `XAI_API_KEY`.
 
 #### Desktop HUD & Live Pose Analysis
 ```powershell
@@ -261,7 +270,6 @@ basketball_proj/
 │   │   ├── shot_coach.py              # Rule-based findings, drill plans, and injury guidance
 │   │   ├── coach_engine.py            # Multi-attempt coaching aggregation engine
 │   │   ├── coaching_service.py        # Remediation follow-up and drill plan generation
-│   │   ├── drills_catalog.py          # Video-backed dribbling drill catalog (Drills section)
 │   │   └── llm_coach.py               # Optional grounded Gemini AI explanation
 │   ├── persistence/                   # Data storage layer
 │   │   └── shot_lab_db.py             # SQLite schema v7: sessions, shots, baselines, audits
@@ -314,14 +322,9 @@ basketball_proj/
 │   └── setup/                         # Setup and installation guides
 ├── web/                               # Frontend single-page application
 │   ├── index.html                     # Main application HTML shell
-│   ├── app.js                         # Core client logic, review UI, player flow, and drills
+│   ├── app.js                         # Core client logic, review UI, and player flow
 │   ├── report.js                      # 10-section report rendering and PDF print formatting
-│   ├── app.css                        # Modern responsive design and design tokens
-│   └── drills/                        # Reference drill videos served by the Drills section
-│       ├── pound_dribble.mp4          # Pound dribble reference (shorts format, 9:16)
-│       ├── pound_plus_cross.mp4       # Pound + crossover reference
-│       ├── pound_plus_v-dribble.mp4   # Pound + V-dribble reference
-│       └── v-dribble_plus_cross.mp4   # V-dribble + crossover reference
+│   └── app.css                        # Modern responsive design and design tokens
 ├── models/                            # Machine learning model weights
 │   ├── best.pt                        # Primary YOLO ball & rim detection model (6 MB)
 │   ├── ballRim.pt                     # Alternative ball & rim detection model (22 MB)
@@ -347,7 +350,7 @@ Baseline Shot Lab is designed around **evidence before advice**:
 
 ```
  Browser / Phone Client (web/index.html, app.js, report.js)
-   │  Video Upload (with progress) · Review UI · Replay Player · Report View · Drills Section
+   │  Video Upload (with progress) · Review UI · Replay Player · Report View
    ▼
  web_app.py (Standard Library HTTP Server)
    ├── Security Guard: CSRF check, Host validation, LAN access code, rate limiting
@@ -361,9 +364,6 @@ Baseline Shot Lab is designed around **evidence before advice**:
    │          analysis/shooting_analysis.py (20 biomechanical metrics, consistency, make/miss)
    │          coaching/shot_coach.py (strengths, priority improvements, scaled drills)
    │          OpenCV Keyframe Extraction → user_data/keyframes/<session>/
-   ├── Drills API (GET /api/drills, GET /drills/*.mp4):
-   │     coaching/drills_catalog.py (4 video-backed dribbling drills, form check labels)
-   │     web/drills/*.mp4 (reference video files, streamed with byte-range support)
    └── SQLite Database (shot_lab.db, Schema v7):
          sessions, labeled_clips, shots, attempt_analysis, session_reports, baselines, remediations
 ```
@@ -408,43 +408,7 @@ All tests are designed to run out-of-the-box on standard CPU environments withou
 
 ---
 
-## 6. Drills Section
-
-The **Drills** tab in the web app is a standalone practice mode separate from the shot-analysis workflow.
-
-### What it does
-
-- Shows a catalog of 4 video-backed dribbling drills (beginner → intermediate).
-- Each drill card displays a thumbnail preview of the reference video, difficulty badge, duration, and skill tags.
-- Clicking a card opens the **drill runner**: the reference video (recorded in 9:16 shorts format) plays on the left; your live camera feed appears on the right at the same aspect ratio.
-- A **motion-based rep counter** tracks dribble bounces in real time using frame-differencing — no model weights, no upload. The count and elapsed time are shown as a HUD overlay on the camera feed and as a large number beside the controls.
-- After stopping, a **form feedback card** appears with pace rating, rhythm consistency score (based on inter-rep timing), and drill-specific coaching cue reminders.
-
-### Drills included
-
-| ID | Name | Difficulty | Video file |
-|---|---|---|---|
-| `pound_dribble` | Pound Dribble | Beginner | `web/drills/pound_dribble.mp4` |
-| `pound_plus_cross` | Pound + Crossover | Beginner | `web/drills/pound_plus_cross.mp4` |
-| `pound_plus_v_dribble` | Pound + V-Dribble | Intermediate | `web/drills/pound_plus_v-dribble.mp4` |
-| `v_dribble_plus_cross` | V-Dribble + Crossover | Intermediate | `web/drills/v-dribble_plus_cross.mp4` |
-
-### Adding or replacing drill videos
-
-1. Drop the new `.mp4` file into `web/drills/`.
-2. Add or update the drill entry in `src/basketball/coaching/drills_catalog.py` — set `"video"` to the filename, fill in `"how"`, `"cues"`, `"form_checks"`, and `"difficulty"`.
-3. No server restart is needed if the app is already running; the catalog is fetched fresh on each visit to the Drills tab.
-
-### New API endpoints added
-
-| Method | Route | Description |
-|---|---|---|
-| `GET` | `/api/drills` | Returns the full drill catalog. Accepts `?category=` and `?difficulty=` query params. |
-| `GET` | `/drills/<filename>.mp4` | Streams a drill reference video with byte-range support for seeking. |
-
----
-
-## 7. Academic Profile & Team
+## 6. Academic Profile & Team
 
 - **Course:** BCS506 Major Project, B.E. Information Science & Engineering, VTU — BMS Institute of Technology & Management, Bengaluru (2025–26)
 - **Guide:** Asst. Prof. Amulya P, Department of ISE

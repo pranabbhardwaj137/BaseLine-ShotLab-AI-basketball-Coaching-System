@@ -494,6 +494,72 @@ class AppHandler(BaseHTTPRequestHandler):
     def _llm_provider(self):
         return getattr(self.server, "llm_provider", None) or ("gemini" if self.server.llm_chat_enabled else None)
 
+    def _note_llm_result(self, provider, code=None, message=None, label=None):
+        """Remember the primary provider's latest state for /api/health (never includes keys)."""
+        if code in ("invalid_key", "no_credits", "forbidden", "model_not_found"):
+            if provider == self._llm_provider():
+                self.server.llm_status = {"state": code, "message": message}
+            else:
+                self.server.llm_backup_status = {"state": code, "message": message}
+        elif code is None and provider == self._llm_provider():
+            self.server.llm_status = {"state": "answered", "message": f"{label} answered a question successfully."}
+
+    def _stream_chat(self, question, insights, context):
+        """Stream the answer as NDJSON events (start, delta, fallback, done | error) to the chat card.
+
+        Validation happens before the 200 header. Each event is one JSON line, flushed immediately.
+        If the browser goes away (Stop button, page closed) the write fails and closing the generator
+        closes the provider's stream, so generation stops.
+        """
+        try:
+            events = llm_coach.stream_answer(question, insights, providers=self._llm_chain(), **context)
+            first = next(events)          # raises ValueError / CoachUnavailable before any byte is sent
+        except ValueError as exc:
+            return self._text_error(400, str(exc))
+        except CoachUnavailable as exc:
+            return self._json(exc.status, {"error": str(exc), "code": exc.code})
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+        try:
+            event = first
+            while True:
+                if event["type"] == "fallback":
+                    safe = f"HTTP {event['http_status']}" if event.get("http_status") else event["code"]
+                    print(f"[ai-chat] {llm_coach.PROVIDER_LABELS.get(event['from'], event['from'])} failed ({safe}"
+                          f"{', ' + event['provider_code'] if event.get('provider_code') else ''}); "
+                          f"using {llm_coach.PROVIDER_LABELS.get(event['to'], event['to'])}", flush=True)
+                    self._note_llm_result(event["from"], event["code"], event["reason"])
+                elif event["type"] == "error":
+                    print(f"[ai-chat] no answer: {event['code']}"
+                          f"{' (HTTP ' + str(event['http_status']) + ')' if event.get('http_status') else ''}", flush=True)
+                    self._note_llm_result(self._llm_provider(), event["code"], event["error"])
+                elif event["type"] == "done":
+                    self._note_llm_result(event["provider"], None, label=event["provider_label"])
+                line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
+                self.wfile.write(line.encode("utf-8"))
+                self.wfile.flush()
+                event = next(events)
+        except StopIteration:
+            pass
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, ssl.SSLError, OSError):
+            print("[ai-chat] the browser stopped the answer; provider stream closed", flush=True)
+        finally:
+            events.close()   # closes the Groq SDK stream if it is still open
+
+    def _llm_chain(self):
+        """Ordered (provider, model) pairs: primary first, then the backup (e.g. Groq, then Gemini)."""
+        chain = getattr(self.server, "llm_chain", None)
+        if chain:
+            return list(chain)
+        provider = self._llm_provider()
+        return [(provider, self.server.llm_model)] if provider else []
+
     def _is_local_request(self):
         ip = self._client_ip()
         return bool(ip and ip.is_loopback and self._host_name() in LOOPBACK_NAMES)
@@ -638,6 +704,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 "llm_provider_label": llm_coach.PROVIDER_LABELS.get(self._llm_provider()) if self.server.llm_chat_enabled else None,
                 "llm_model": self.server.llm_model if self.server.llm_chat_enabled else None,
                 "llm_status": self.server.llm_status,
+                "llm_backup": ({"provider": self._llm_chain()[1][0], "model": self._llm_chain()[1][1],
+                                "label": llm_coach.PROVIDER_LABELS.get(self._llm_chain()[1][0]),
+                                "status": getattr(self.server, "llm_backup_status", None)}
+                               if self.server.llm_chat_enabled and len(self._llm_chain()) > 1 else None),
                 "llm_setup": None if self.server.llm_chat_enabled else llm_coach.setup_message(),
             })
 
@@ -1032,21 +1102,21 @@ class AppHandler(BaseHTTPRequestHandler):
                 workouts = db.list_workout_plans(session_id)
             except Exception:
                 workouts = []
+            context = {
+                "coach_findings": summarize_findings_for_llm(report),
+                "recording_limits": (report or {}).get("overview", {}).get("limitations", []),
+                "report_summary": llm_coach.summarize_report_for_llm(report, workouts),
+            }
+            if "application/x-ndjson" in (self.headers.get("Accept") or ""):
+                return self._stream_chat(payload["question"], insights, context)
             try:
-                response = answer_grounded_question(
-                    payload["question"], insights, model=self.server.llm_model, provider=self._llm_provider(),
-                    coach_findings=summarize_findings_for_llm(report),
-                    recording_limits=(report or {}).get("overview", {}).get("limitations", []),
-                    report_summary=llm_coach.summarize_report_for_llm(report, workouts),
-                )
+                response = answer_grounded_question(payload["question"], insights, providers=self._llm_chain(), **context)
             except ValueError as exc:
                 return self._text_error(400, str(exc))
             except CoachUnavailable as exc:
-                if exc.code in ("invalid_key", "no_credits", "forbidden", "model_not_found"):
-                    self.server.llm_status = {"state": exc.code, "message": str(exc)}
+                self._note_llm_result(self._llm_provider(), exc.code, str(exc))
                 return self._json(exc.status, {"error": str(exc), "code": exc.code})
-            if self._llm_provider() == "xai":
-                self.server.llm_status = {"state": "answered", "message": "Grok answered a question successfully."}
+            self._note_llm_result(response.get("provider"), None, label=response.get("provider_label"))
             return self._json(200, response)
 
         if path != "/api/sessions":
@@ -1700,7 +1770,9 @@ class LocalAppServer(ThreadingHTTPServer):
     lan_mode = False
     access_token = None
     tls_enabled = False
-    llm_provider = None         # "xai" or "gemini" when AI chat is on
+    llm_provider = None         # primary AI provider ("groq", "gemini" or "xai") when chat is on
+    llm_chain = None            # [(provider, model), …]: primary then backup
+    llm_backup_status = None
     llm_status = None           # last known key/credit state, e.g. {"state": "key_ok", "message": ...}
     ca_der_path = None          # set with --https: the local CA certificate phones can install
     ca_fingerprint = None
@@ -1907,14 +1979,15 @@ def build_parser():
     parser.add_argument("--cert-dir", default="user_data/certs",
                         help="Where --https keeps its local CA and server certificate (default user_data/certs)")
     parser.add_argument("--enable-llm-chat", action="store_true",
-                        help="Turn on AI coach chat (xAI Grok turns on automatically when XAI_API_KEY is set; "
-                             "Gemini needs this flag)")
+                        help="Require AI coach chat (it turns on automatically when GROQ_API_KEY or GEMINI_API_KEY is "
+                             "set; with this flag, start-up fails if no key is configured)")
     parser.add_argument("--disable-llm-chat", action="store_true",
                         help="Keep AI coach chat off even if an API key is configured")
-    parser.add_argument("--llm-provider", choices=["auto", "xai", "gemini"], default=os.environ.get("LLM_PROVIDER", "auto"),
-                        help="AI chat provider (default auto: xAI if XAI_API_KEY is set, else Gemini if GEMINI_API_KEY is set)")
+    parser.add_argument("--llm-provider", choices=["auto", "groq", "gemini", "xai"], default=os.environ.get("LLM_PROVIDER", "auto"),
+                        help="Primary AI chat provider (default auto: Groq first, Gemini as backup, using whichever keys are set)")
     parser.add_argument("--llm-model", default=None,
-                        help="Model id (default: XAI_MODEL or grok-4.7 for xAI; GEMINI_MODEL or gemini-3.6-flash for Gemini)")
+                        help="Model id for the primary provider (default: GROQ_MODEL or openai/gpt-oss-120b; "
+                             "GEMINI_MODEL or gemini-3.8-flash; XAI_MODEL or grok-4.7)")
     parser.add_argument("--env-file", default=None,
                         help="Settings file with API keys (default: .env in the current folder, then in the project folder)")
     return parser
@@ -1958,14 +2031,17 @@ def main():
     if args.https and args.tls_cert:
         raise SystemExit("Use either --https (certificate made by the app) or --tls-cert/--tls-key (your own), not both.")
     preferred = None if args.llm_provider == "auto" else args.llm_provider
-    llm_provider = None if args.disable_llm_chat else llm_coach.configured_provider(preferred)
-    if llm_provider == "gemini" and not args.enable_llm_chat:
-        llm_provider = None   # Gemini keeps its explicit opt-in, as before
-    if args.enable_llm_chat and not args.disable_llm_chat and not llm_provider:
-        wanted = preferred or "xai"
+    llm_chain_names = [] if args.disable_llm_chat else llm_coach.configured_providers(preferred)
+    if args.enable_llm_chat and not args.disable_llm_chat and not llm_chain_names:
+        wanted = preferred or "groq"
         raise SystemExit(f"AI coach chat needs {llm_coach.KEY_ENV[wanted]}. Add it to .env (see .env.example) "
                          "or the environment, or omit --enable-llm-chat.")
-    llm_model = (args.llm_model or llm_coach.default_model(llm_provider)) if llm_provider else None
+    groq_sdk_missing = "groq" in llm_chain_names and not llm_coach.groq_sdk_available()
+    if groq_sdk_missing:
+        llm_chain_names = [name for name in llm_chain_names if name != "groq"]
+    llm_chain = [(name, (args.llm_model if index == 0 and args.llm_model else llm_coach.default_model(name)))
+                 for index, name in enumerate(llm_chain_names)]
+    llm_provider, llm_model = llm_chain[0] if llm_chain else (None, None)
     access_code = None
     if args.lan:
         access_code = (args.access_code or generate_access_code()).strip().upper().replace(" ", "")
@@ -2011,13 +2087,21 @@ def main():
     server.llm_chat_enabled = bool(llm_provider)
     server.llm_provider = llm_provider
     server.llm_model = llm_model
-    if llm_provider == "xai":
-        server.llm_status = {"state": "checking", "message": "Checking the xAI API key…"}
+    server.llm_chain = llm_chain
+    if llm_chain:
+        server.llm_status = {"state": "checking", "message": "Checking the API key…"}
 
-        def _check_key():
-            server.llm_status = llm_coach.check_xai_access()
-            print(f"AI coach chat key check: {server.llm_status['message']}")
-        threading.Thread(target=_check_key, daemon=True, name="xai-key-check").start()
+        def _check_keys():
+            # Lists models only (no tokens). Results go to /api/health and the log, never the key itself.
+            for index, (name, _model) in enumerate(llm_chain):
+                status = llm_coach.check_access(name)
+                if index == 0:
+                    server.llm_status = status
+                else:
+                    server.llm_backup_status = status
+                role = "primary" if index == 0 else "backup"
+                print(f"AI coach chat key check ({llm_coach.PROVIDER_LABELS[name]}, {role}): {status['message']}")
+        threading.Thread(target=_check_keys, daemon=True, name="llm-key-check").start()
     server.live_engine = LiveCameraEngine()
     server.lan_mode = bool(args.lan)
     server.access_token = access_code
@@ -2073,14 +2157,19 @@ def main():
     print("Processing: local MediaPipe pose + shot-phase detector + measurement engine; YOLO/outcomes are not run in this flow.")
     if loaded_settings:
         print(f"Settings loaded from .env: {', '.join(sorted(loaded_settings))}")   # names only, never values
+    if groq_sdk_missing:
+        print("AI coach chat: GROQ_API_KEY is set but the Groq Python SDK is not installed, so Groq is skipped. "
+              "Install it with:  python -m pip install groq   (then restart)")
     if llm_provider:
-        print(f"AI coach chat: enabled - {llm_coach.PROVIDER_LABELS[llm_provider]}, model {llm_model}. "
+        backup = (f"; backup {llm_coach.PROVIDER_LABELS[llm_chain[1][0]]} ({llm_chain[1][1]})" if len(llm_chain) > 1
+                  else "; no backup (add GEMINI_API_KEY to .env for one)" if llm_provider == "groq" else "")
+        print(f"AI coach chat: enabled - {llm_coach.PROVIDER_LABELS[llm_provider]} ({llm_model}){backup}. "
               "Only text summaries of this session's results are sent; no video or body landmarks.")
     elif args.disable_llm_chat:
         print("AI coach chat: disabled (--disable-llm-chat).")
     else:
-        print("AI coach chat: off - no XAI_API_KEY found in the environment or .env. "
-              "Add it to .env (see .env.example and README 'AI coach chat (Grok)') and restart.")
+        print("AI coach chat: off - no GROQ_API_KEY or GEMINI_API_KEY in the environment or .env. "
+              "Add them to .env (see .env.example and README 'AI coach chat') and restart.")
     print("Press Ctrl+C to stop the server.")
     try:
         server.serve_forever()

@@ -638,6 +638,87 @@ dropzone.addEventListener('drop', event => {
   fileInput.dispatchEvent(new Event('change'));
 });
 
+/* ------------------------------------------------------- coach chat answers
+   Renders the AI coach's answer as readable text: short headings, bullet lists, paragraphs and bold.
+   Built with DOM nodes (never innerHTML), so model output cannot inject markup. In the default view,
+   Markdown tables become bullet lists and internal references (shot IDs, frame numbers, snake_case
+   metric names) are tidied away; with `detailed` (the player asked for technical detail) tables are kept. */
+function tidyCoachLine(text, detailed) {
+  let out = String(text);
+  if (!detailed) {   // default view: no frame references or raw reference lists
+    out = out.replace(/\s*\((?=[^()]*\b(?:shot[_ ]?[0-9a-f]{6,}|frames? \d+)\b)[^()]*\)/gi, '');   // "(shot shot_1a2b3c4d, frame 24)"
+    out = out.replace(/,?\s*\b(?:at |in )?frames? \d+(?:\s*[-–]\s*\d+)?\b/gi, '');
+  }
+  // Always: internal shot IDs and snake_case metric names are not for players.
+  out = out.replace(/\b(?:shot\s+)?shot_[0-9a-f]{6,}\b/gi, detailed ? 'shot' : 'a shot');
+  out = out.replace(/\b[a-z]+(?:_[a-z0-9]+){2,}\b/g, word => word.replace(/_(deg|ms|ratio|px|pct)$/, '').replace(/_/g, ' '));
+  return out;
+}
+function coachInline(text, detailed) {
+  const nodes = [];
+  const parts = tidyCoachLine(text, detailed).replace(/`([^`]+)`/g, '$1').split(/(\*\*[^*]+\*\*)/g);
+  for (const part of parts) {
+    if (!part) continue;
+    if (/^\*\*[^*]+\*\*$/.test(part)) nodes.push(el('strong', {text: part.slice(2, -2)}));
+    else nodes.push(document.createTextNode(part.replace(/(^|\s)\*([^*\s][^*]*)\*(?=\s|[.,!?;:]|$)/g, '$1$2')));
+  }
+  return nodes;
+}
+function renderCoachAnswer(container, text, {detailed = false} = {}) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const blocks = [];
+  let paragraph = [];
+  let list = null;
+  const cells = line => line.trim().replace(/^\||\|$/g, '').split('|').map(cell => cell.trim());
+  const flush = () => {
+    if (paragraph.length) blocks.push(el('p', {}, ...coachInline(paragraph.join(' '), detailed)));
+    paragraph = [];
+    list = null;
+  };
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i].trim();
+    if (!line) { flush(); continue; }
+    // Raw evidence dumps written by the model ("Evidence: …", "Metrics supplied: …") only appear on request.
+    if (!detailed && /^(?:[-*•]\s*)?\**(?:evidence|metrics supplied|supporting (?:shot )?frames?|sources?|shot ids?)\**\s*:/i.test(line)) continue;
+    if (/^\|.*\|$/.test(line) && i + 1 < lines.length && /^\|?\s*:?-{2,}/.test(lines[i + 1].trim())) {
+      flush();
+      const header = cells(line);
+      const rows = [];
+      i += 2;
+      while (i < lines.length && /^\|.*\|$/.test(lines[i].trim())) { rows.push(cells(lines[i])); i += 1; }
+      i -= 1;
+      if (detailed) {
+        blocks.push(el('div', {class: 'chat-table-wrap'}, el('table', {class: 'chat-table'},
+          el('thead', {}, el('tr', {}, ...header.map(cell => el('th', {}, ...coachInline(cell, true))))),
+          el('tbody', {}, ...rows.map(row => el('tr', {}, ...row.map(cell => el('td', {}, ...coachInline(cell, true)))))))));
+      } else {
+        blocks.push(el('ul', {}, ...rows.map(row => {
+          const rest = row.slice(1).filter(cell => cell && cell !== '—' && cell !== '-');
+          return el('li', {}, el('strong', {}, ...coachInline(row[0] || '', false)), ...(rest.length ? coachInline(`: ${rest.join(', ')}`, false) : []));
+        })));
+      }
+      continue;
+    }
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    if (heading) { flush(); blocks.push(el('h4', {class: 'chat-heading'}, ...coachInline(heading[1].replace(/\*\*/g, ''), detailed))); continue; }
+    const bullet = line.match(/^(?:[-*•]|(\d+)[.)])\s+(.*)$/);
+    if (bullet) {
+      if (paragraph.length) { blocks.push(el('p', {}, ...coachInline(paragraph.join(' '), detailed))); paragraph = []; }
+      const tag = bullet[1] ? 'ol' : 'ul';
+      if (!list || list.tagName.toLowerCase() !== tag) { list = el(tag); blocks.push(list); }
+      list.append(el('li', {}, ...coachInline(bullet[2], detailed)));
+      continue;
+    }
+    if (/^(-{3,}|\*{3,})$/.test(line)) { flush(); continue; }
+    list = null;
+    paragraph.push(line);
+  }
+  flush();
+  container.classList.add('is-formatted');
+  container.replaceChildren(...blocks);
+}
+window.ShotLabChat = {render: renderCoachAnswer};
+
 /* ---------------------------------------------------------- camera recorder
    Browsers expose the camera only in a secure context (https:// or http://localhost). On a phone
    that opens http://<computer IP>, navigator.mediaDevices is undefined, so we explain that instead
@@ -772,6 +853,7 @@ function renderCameraControls() {
   show(recordRetakeButton, state === 'review');
   show(cameraSwitchButton, state === 'live' && videoInputs.length > 1);
   cameraSwitchButton.disabled = state !== 'live';
+  cameraSwitchButton.textContent = currentFacing === 'user' ? 'Use rear camera' : 'Use front camera';
   show(cameraStopButton, state !== 'off' && state !== 'starting');
   cameraStopButton.disabled = state === 'off' || state === 'starting';
   cameraViewport.classList.toggle('is-live', !!cameraStream && state !== 'review');
@@ -816,17 +898,42 @@ function releaseStream() {
   cameraPreview.srcObject = null;
 }
 
-async function openCamera({deviceId = null, facing = currentFacing} = {}) {
-  const quality = {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 30}};
-  const attempts = deviceId
-    ? [{video: {deviceId: {exact: deviceId}, ...quality}, audio: false}]
-    : [{video: {facingMode: {ideal: facing}, ...quality}, audio: false}, {video: true, audio: false}];
+const CAMERA_QUALITY = {width: {ideal: 1280}, height: {ideal: 720}, frameRate: {ideal: 30}};
+const isConstraintError = error => error && (error.name === 'OverconstrainedError' || error.name === 'ConstraintNotSatisfiedError');
+
+/* Which way a camera faces, from the browser's report or (after permission) its label.
+   Labels are empty before permission, so this is only used once a camera has been allowed. */
+function facingOfTrack(track) {
+  const settings = track?.getSettings ? track.getSettings() : {};
+  if (settings.facingMode === 'user' || settings.facingMode === 'environment') return settings.facingMode;
+  return facingFromLabel(track?.label || '');
+}
+function facingFromLabel(label) {
+  const text = String(label).toLowerCase();
+  if (/front|user|face|selfie|true ?depth/.test(text)) return 'user';
+  if (/back|rear|environment|world|wide|tele/.test(text)) return 'environment';
+  return null;
+}
+
+/* Open one camera. Order: exact facingMode → a listed device whose label matches → ideal facingMode.
+   `strict` (used when switching) never falls back to "any camera", so we can tell when the requested
+   side is not available instead of silently reopening the same camera. */
+async function openCamera({facing = currentFacing, strict = false} = {}) {
+  const attempts = [{video: {facingMode: {exact: facing}, ...CAMERA_QUALITY}, audio: false}];
+  const labelled = videoInputs.filter(device => device.deviceId && facingFromLabel(device.label) === facing);
+  // iPhones list several rear lenses; the plain "Back Camera" (shortest label) is the main one.
+  labelled.sort((a, b) => a.label.length - b.label.length);
+  for (const device of labelled.slice(0, 2)) {
+    attempts.push({video: {deviceId: {exact: device.deviceId}, ...CAMERA_QUALITY}, audio: false});
+  }
+  attempts.push({video: {facingMode: {ideal: facing}, ...CAMERA_QUALITY}, audio: false});
+  if (!strict) attempts.push({video: true, audio: false});
   let lastError = null;
   for (const constraints of attempts) {
     try { return await navigator.mediaDevices.getUserMedia(constraints); }
     catch (error) {
       lastError = error;
-      if (error.name !== 'OverconstrainedError' && error.name !== 'ConstraintNotSatisfiedError') break;
+      if (!isConstraintError(error)) break;   // permission or hardware errors will not change with other constraints
     }
   }
   throw lastError;
@@ -849,15 +956,17 @@ async function startCamera(options = {}) {
   }
   cameraState = 'starting';
   renderCameraControls();
-  cameraStatus.textContent = 'Waiting for camera permission…';
+  cameraStatus.textContent = options.switching ? 'Switching camera…' : 'Waiting for camera permission…';
+  // Release the current camera first: many phones cannot open a second camera while one is in use,
+  // and iOS ends the old track anyway. Opening first caused "camera busy" errors when switching.
+  releaseStream();
   try {
     const stream = await openCamera(options);
-    releaseStream();
     cameraStream = stream;
     const track = stream.getVideoTracks()[0];
     const settings = track?.getSettings ? track.getSettings() : {};
-    currentDeviceId = settings.deviceId || options.deviceId || null;
-    if (settings.facingMode) currentFacing = settings.facingMode;
+    currentDeviceId = settings.deviceId || null;
+    currentFacing = facingOfTrack(track) || options.facing || currentFacing;
     track?.addEventListener('ended', () => {
       if (cameraStream !== stream) return;
       if (mediaRecorder && mediaRecorder.state !== 'inactive') stopRecording();
@@ -871,14 +980,18 @@ async function startCamera(options = {}) {
     await listVideoInputs();
     cameraState = 'live';
     renderCameraControls();
-    cameraStatus.textContent = 'Camera on. Frame your whole body and the ball, then start recording.';
+    cameraStatus.textContent = options.switching
+      ? `Now using the ${currentFacing === 'user' ? 'front' : 'rear'} camera.`
+      : 'Camera on. Frame your whole body and the ball, then start recording.';
     startLiveTracking();
+    return true;
   } catch (error) {
     cameraState = cameraStream ? 'live' : 'off';
     renderCameraControls();
     lastCameraError = `${error?.name || 'Error'}: ${error?.message || ''}`.trim();
     cameraStatus.textContent = `${cameraErrorMessage(error)} You can still upload a file.`;
     renderCameraDiagnostics();
+    return error || new Error('Camera failed');
   }
 }
 
@@ -1008,16 +1121,29 @@ function stopCamera() {
   renderCameraControls();
 }
 
+/* Switch between the front ("user") and rear ("environment") camera. The previous camera is
+   released before the other is opened; if the other side cannot be opened, the previous side is
+   reopened and the reason is shown. Not available while recording (a clip keeps one camera). */
 async function switchCamera() {
   if (cameraState !== 'live') return;
+  const from = currentFacing === 'user' ? 'user' : 'environment';
+  const to = from === 'user' ? 'environment' : 'user';
+  const side = facing => (facing === 'user' ? 'front' : 'rear');
   await listVideoInputs();
-  if (videoInputs.length > 1 && videoInputs.some(device => device.deviceId)) {
-    const index = videoInputs.findIndex(device => device.deviceId === currentDeviceId);
-    const next = videoInputs[(index + 1) % videoInputs.length];
-    await startCamera({deviceId: next.deviceId});
-  } else {
-    await startCamera({facing: currentFacing === 'environment' ? 'user' : 'environment'});
+  const result = await startCamera({facing: to, strict: true, switching: true});
+  if (result === true) {
+    if (currentFacing !== to) {   // the browser opened a camera, but not the requested side
+      cameraStatus.textContent = `Could not switch to the ${side(to)} camera (no ${side(to)} camera was found). Still using the ${side(currentFacing)} camera.`;
+    }
+    return;
   }
+  const reason = result?.name === 'NotAllowedError'
+    ? 'camera permission was denied'
+    : isConstraintError(result) ? `no ${side(to)} camera was found` : (result?.message || result?.name || 'unknown error');
+  const restored = await startCamera({facing: from, switching: true});
+  cameraStatus.textContent = restored === true
+    ? `Could not switch to the ${side(to)} camera (${reason}). Still using the ${side(from)} camera.`
+    : `Could not switch to the ${side(to)} camera (${reason}), and the ${side(from)} camera could not be reopened. ${cameraErrorMessage(restored)}`;
 }
 
 cameraStartButton.addEventListener('click', () => startCamera());
@@ -2040,7 +2166,7 @@ function renderResults(result, jobId) {
   results.append(lowerGrid);
 
   const showChatStatus = status => {
-    const problem = status && ['invalid_key', 'no_credits', 'forbidden', 'model_not_found', 'model_not_listed', 'unreachable'].includes(status.state);
+    const problem = status && ['invalid_key', 'no_credits', 'forbidden', 'model_not_found', 'model_not_listed', 'unreachable', 'service_error'].includes(status.state);
     chatStatus.textContent = problem ? status.message : '';
     chatStatus.classList.toggle('hidden', !problem);
   };
@@ -2049,30 +2175,131 @@ function renderResults(result, jobId) {
       chatNotice.textContent = health?.llm_setup || 'Optional AI explanations are off. The rule-based cue above works without them.';
       return;
     }
-    chatNotice.textContent = `AI explanations are on (${health.llm_provider_label || 'AI'}, ${health.llm_model || ''}). Only your question and text summaries of this session's results and report are sent; video and body landmarks stay on the computer.`;
-    showChatStatus(health.llm_status);
+    const backup = health.llm_backup ? `; backup: ${health.llm_backup.label}` : '';
+    chatNotice.textContent = `Yo! Welcome to the court! 🏀 Ready to talk hoops, stats, or fantasy? What's the play today?"`;
+    const backupProblem = health.llm_backup?.status && !['key_ok', 'checking', 'answered'].includes(health.llm_backup.status.state);
+    showChatStatus(health.llm_status && !['key_ok', 'checking', 'answered'].includes(health.llm_status.state)
+      ? health.llm_status
+      : backupProblem ? {state: health.llm_backup.status.state, message: `Backup (${health.llm_backup.label}): ${health.llm_backup.status.message}`} : null);
     chatInput.disabled = false;
     chatButton.disabled = false;
     chatSuggestions.classList.remove('hidden');
   };
   // Always re-read health: the key check (and its result) happens in the background after start-up.
   api('/api/health').then(health => { healthInfo = health; enableChat(health); }).catch(() => { if (healthInfo) enableChat(healthInfo); });
+  const chatStop = el('button', {type: 'button', class: 'btn btn-quiet hidden', 'aria-label': 'Stop the answer'}, 'Stop');
+  chatForm.append(chatStop);
+  let chatAbort = null;
+  chatStop.addEventListener('click', () => chatAbort?.abort());
+
+  /* Measurement details are shown only when the player asked for technical detail, in their own section. */
+  const evidenceSection = evidence => {
+    const samples = (evidence?.metrics || []).map(metric => `${metric.label}: ${metric.sample_count} of ${metric.minimum_required} attempts needed`);
+    const references = (evidence?.supporting_shot_frames || []).map(source => `${source.metric_value} ${source.unit}${source.frame == null ? '' : ` (frame ${source.frame})`}`);
+    if (!samples.length && !references.length) return null;
+    return el('details', {class: 'chat-evidence', open: true}, el('summary', {text: 'Measurements behind this answer'}),
+      samples.length ? el('p', {}, el('strong', {text: 'Samples: '}), samples.join('; ')) : null,
+      references.length ? el('p', {}, el('strong', {text: 'Shot measurements: '}), references.join('; ')) : null);
+  };
+  const showFinalAnswer = (payload, question) => {
+    renderCoachAnswer(chatAnswer, payload.answer, {detailed: Boolean(payload.detailed)});
+    chatAnswer.append(el('p', {class: 'chat-source', text: payload.notice || ''}));
+    const section = payload.detailed ? evidenceSection(payload.evidence) : null;
+    if (section) chatAnswer.append(section);
+    chatAnswer.setAttribute('aria-label', `Answer to: ${question}`);
+  };
+  const showChatError = error => {
+    chatAnswer.classList.remove('is-formatted');
+    chatAnswer.textContent = error.message;
+    if (error.code && !['rate_limited', 'timeout', 'incomplete', 'empty', 'cancelled'].includes(error.code)) showChatStatus({state: error.code, message: error.message});
+  };
+
+  /* Streams NDJSON events from the server: start → delta… → done, or fallback (backup provider takes
+     over in this same card) / error. Falls back to one JSON reply if the browser cannot read streams. */
+  async function askStreaming(question) {
+    chatAbort = new AbortController();
+    let response;
+    try {
+      response = await fetch(`/api/sessions/${encodeURIComponent(result.session_id)}/coach-chat`, {
+        method: 'POST', cache: 'no-store', signal: chatAbort.signal,
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/x-ndjson', 'X-Shotlab': '1'},
+        body: JSON.stringify({question}),
+      });
+    } catch (error) {
+      if (error.name === 'AbortError') throw Object.assign(new Error('Stopped.'), {code: 'cancelled'});
+      throw new Error('Could not reach Shot Lab. Check that the app is still running on the computer.');
+    }
+    const type = response.headers.get('Content-Type') || '';
+    if (!response.ok || !type.includes('ndjson')) {
+      let payload = {};
+      try { payload = await response.json(); } catch { payload = {}; }
+      if (!response.ok) throw Object.assign(new Error(payload.error || `Request failed (${response.status})`), {code: payload.code});
+      return payload;   // a plain JSON answer
+    }
+    if (!response.body || !response.body.getReader) throw new Error('This browser cannot read streamed answers.');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '', text = '', note = '', finished = null;
+    let detailed = false;
+    const render = () => {
+      renderCoachAnswer(chatAnswer, text || 'Thinking…', {detailed});
+      if (note) chatAnswer.prepend(el('p', {class: 'chat-source', text: note}));
+    };
+    const handle = event => {
+      if (event.type === 'start') { chatAnswer.dataset.provider = event.provider; render(); }
+      else if (event.type === 'delta') { text += event.text || ''; render(); }
+      else if (event.type === 'fallback') {
+        text = '';   // the backup's answer replaces any partial text
+        const why = event.http_status ? ` (HTTP ${event.http_status})` : '';
+        note = `${event.from === 'groq' ? 'Groq' : event.from} couldn't answer right now${why}, so the backup is answering…`;
+        render();
+      } else if (event.type === 'done') { finished = event; }
+      else if (event.type === 'error') { throw Object.assign(new Error(event.error), {code: event.code}); }
+    };
+    try {
+      for (;;) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, {stream: true});
+        let newline;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (line) handle(JSON.parse(line));
+        }
+      }
+      if (buffer.trim()) handle(JSON.parse(buffer.trim()));
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        if (text) { render(); chatAnswer.append(el('p', {class: 'chat-source', text: 'Stopped.'})); }
+        throw Object.assign(new Error('Stopped.'), {code: 'cancelled', partial: Boolean(text)});
+      }
+      throw error;
+    }
+    if (!finished) throw Object.assign(new Error('The answer was interrupted before it finished. Try again.'), {code: 'incomplete'});
+    detailed = Boolean(finished.detailed);
+    return {answer: text, notice: finished.notice, evidence: finished.evidence, detailed};
+  }
+
   chatForm.addEventListener('submit', async event => {
     event.preventDefault();
-    if (!chatInput.value.trim()) return;
+    const question = chatInput.value.trim();
+    if (!question) return;
+    chatAbort?.abort();
     chatButton.disabled = true;
+    chatStop.classList.remove('hidden');
+    chatAnswer.classList.remove('is-formatted');
     chatAnswer.textContent = 'Thinking… (this can take up to a minute)';
     try {
-      const payload = await api(`/api/sessions/${encodeURIComponent(result.session_id)}/coach-chat`, jsonBody('POST', {question: chatInput.value}));
-      const sources = payload.evidence?.supporting_shot_frames || [];
-      const references = sources.map(source => `${source.metric_value} ${source.unit} (shot ${source.shot_id}${source.frame == null ? '' : `, frame ${source.frame}`})`);
-      const samples = (payload.evidence?.metrics || []).map(metric => `${metric.label}: ${metric.sample_count} of ${metric.minimum_required} samples`);
-      chatAnswer.textContent = `${payload.answer}\n\n${payload.notice}${samples.length ? `\nMetrics supplied: ${samples.join('; ')}` : ''}${references.length ? `\nEvidence: ${references.join('; ')}` : '\nNo shot-level evidence was available for this answer.'}`;
+      const payload = await askStreaming(question);
+      showFinalAnswer(payload, question);
     } catch (error) {
-      chatAnswer.textContent = error.message;
-      if (error.code && error.code !== 'rate_limited' && error.code !== 'timeout') showChatStatus({state: error.code, message: error.message});
+      if (!(error.code === 'cancelled' && error.partial)) showChatError(error);
+    } finally {
+      chatButton.disabled = false;
+      chatStop.classList.add('hidden');
+      chatAbort = null;
     }
-    finally { chatButton.disabled = false; }
   });
 
   async function refreshInsights() {

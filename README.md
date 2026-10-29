@@ -90,7 +90,9 @@ camera.
 
 Recording works like this:
 - **Controls:**
-  - **Switch camera** (shown when the device has more than one camera);
+  - **Use front camera** / **Use rear camera**: shown when the device has more than one camera. It releases
+    the current camera before opening the other. It is available before recording and after Stop or Retake,
+    not during a clip. If the other camera cannot be opened, the previous one is reopened and the reason is shown;
   - **Start recording**, **Pause** / **Resume** (where the browser supports it) and **Stop**;
   - watch the clip back, then **Retake** or **Analyze this session**.
 - **Recording format:** Safari records MP4 (H.264); Chrome, Edge and Android record WebM. Both go
@@ -140,63 +142,97 @@ You can use your own certificate instead, for example one made with mkcert:
   that device and compare the fingerprint. Do not continue past the warning.
 - **Setup page port is in use:** pass `--setup-port <port>`; `--setup-port 0` turns the setup page off.
 
-#### AI coach chat (Grok)
+#### AI coach chat (Groq, with Gemini as backup)
 
-The **Ask about this session** card on the Review screen can explain your results and suggest training.
-It uses xAI's Grok through the official API:
-- endpoint: `POST https://api.x.ai/v1/responses`;
-- authentication: `Authorization: Bearer $XAI_API_KEY`;
-- documentation: [docs.x.ai](https://docs.x.ai/docs/guides/chat).
-
-Each question is answered from this session's measured results:
+The **Ask about this session** card on the Review screen explains your results and suggests training.
+Each answer is built from this session's measured results:
 - the rule-based findings and their confidence;
 - the metrics;
 - the report's technical summary, correction plan and practice checklist;
 - the latest workout plan, if there is one;
 - the recording limits.
 
-Only text summaries are sent. Video, frames and body landmarks never leave the computer.
+Only text summaries are sent. Video, frames and body landmarks never leave the computer. API keys stay
+on the computer: they are never sent to the browser, shown in API responses, or logged.
 
-1. Create an API key at [console.x.ai](https://console.x.ai). API use is **billed to your xAI account**:
-   the key only works for answers once the account has credits.
-2. In the project folder, create `.env` from the template:
-   ```bash
-   cp .env.example .env        # Windows: copy .env.example .env
-   # edit .env: XAI_API_KEY=xai-...   (optional: XAI_MODEL=grok-4.7)
+**Providers:**
+- **Primary: Groq**, through the official `groq` Python SDK with a streaming chat completion:
+  - parameters: `temperature=1`, `max_completion_tokens=2048`, `top_p=1`, `reasoning_effort="medium"`,
+    `stream=True`;
+  - model: `GROQ_MODEL`, default `openai/gpt-oss-120b` ([models](https://console.groq.com/docs/models));
+  - `reasoning_effort` is sent only to reasoning models (`openai/gpt-oss-*`), because Groq's other
+    models do not accept it.
+- **Backup: Google Gemini** `generateContent`. The default model is `gemini-3.8-flash`, a stable model
+  Google recommends for new projects ([models](https://ai.google.dev/gemini-api/docs/models)).
+
+**Answer style:** answers read like a coach talking to a player:
+- the direct answer comes first, followed by short headings and bullet points in plain words;
+- there are no tables, shot IDs, frame numbers or internal metric names;
+- numbers appear only when they help, and are rounded and explained.
+
+The style adapts to questions such as "What are my strengths?", "What should I practise this week?",
+"What is my biggest weakness?" and "Which results are uncertain?". To see the numbers, ask for detail
+(for example "Show me the detailed measurements"). You then also get a **Technical details** part and a
+"Measurements behind this answer" section. Groq and Gemini receive the same instructions, so answers
+read the same whichever one replies.
+
+**Streaming:** the answer appears in the chat card word by word while it is generated, and a **Stop**
+button cancels it. Stopping closes the connection to Groq, so generation stops too. An answer counts
+as finished only when Groq's stream ends with a finish reason and contains answer text. Neither an
+HTTP 200 nor a stream that breaks off is treated as success. Groq's reasoning text is not shown.
+
+**When the backup is used:**
+- Gemini answers only when Groq fails for a *temporary* reason: rate or usage limit (HTTP 429),
+  capacity or outage (5xx, 498), timeout, no network, or a stream that stopped early or produced no text.
+- Gemini's answer replaces any partial Groq text in the same chat card. The card notes that Groq was
+  unavailable, with its HTTP status and Groq's error code (for example `HTTP 429, rate_limit_exceeded`).
+  The computer's log shows the same, never the key or your question.
+- A wrong key, an unknown model or an invalid question is reported, not retried.
+- Each provider is tried once per question; nothing loops.
+- If both fail, the card says so; it never makes up an answer.
+
+**Setup:**
+1. Create the keys:
+   - Groq: [console.groq.com/keys](https://console.groq.com/keys);
+   - Gemini: [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+
+   Both have usage limits on free plans; heavier use may need a paid plan.
+2. Add the keys to `.env` in the project folder. Start from `.env.example`, which holds placeholders only:
    ```
-   - `.env` is git-ignored.
-   - Variables already set in the shell take precedence.
-   - Never put the key in code, HTML or a commit.
-3. Check the key without starting the app:
-   ```bash
-   python -m basketball.coaching.llm_coach            # lists models (free): "Key check: key_ok …"
-   python -m basketball.coaching.llm_coach --answer   # asks for a one-word reply (uses a few billed tokens)
+   GROQ_API_KEY=gsk_...
+   GEMINI_API_KEY=AIza...
+   # optional: GROQ_MODEL=openai/gpt-oss-120b   GEMINI_MODEL=gemini-3.8-flash
    ```
-   Run these from the project folder with `PYTHONPATH=src`, or after `pip install -e .`.
-4. Start the app as usual (`python web_app.py --lan --https`). Chat turns on automatically when
-   `XAI_API_KEY` is set. The start-up log shows:
-   - `AI coach chat: enabled - xAI Grok, model grok-4.7`;
-   - a moment later, `AI coach chat key check: …`.
+   - `.env` is git-ignored. Never put keys in code, HTML or a commit. Put them in `.env`, **not**
+     `.env.example`: that file is tracked by Git. A test fails if it ever contains a real-looking key.
+   - Placeholder values such as `your_groq_api_key` are ignored.
+3. Install the Groq SDK (once): `python -m pip install groq`. It is also listed in `requirements.txt`.
+   If it is missing, start-up says so, and Gemini answers alone until you install it.
+4. Check the keys without starting the app:
+   ```bash
+   PYTHONPATH=src python -m basketball.coaching.llm_coach            # lists models (no tokens used)
+   PYTHONPATH=src python -m basketball.coaching.llm_coach --answer   # also asks each for a one-word reply
+   ```
+   Expected output: `Groq (primary, model openai/gpt-oss-120b): key_ok - …` and a similar Gemini line.
+   Other possible states: `invalid_key`, `model_not_listed` (the models your key can use are listed),
+   `forbidden`, and `unreachable`.
+5. Start the app as usual: `python web_app.py --lan --https`.
+   - Chat turns on automatically when a key is set.
+   - The start-up log shows `AI coach chat: enabled - Groq (openai/gpt-oss-120b); backup Google Gemini (gemini-3.8-flash)`, followed by one key-check line per provider.
    - To keep chat off, use `--disable-llm-chat`.
+   - To make Gemini the primary, use `--llm-provider gemini`.
 
-**Model:**
-- The default is `grok-4.7`, the flagship model in xAI's model list at the time of writing.
-- Set `XAI_MODEL` to any model your account lists in the xAI Console.
-- If the key check reports `model_not_listed`, it also prints the models your account has.
+**Messages shown in the chat card:**
+- "Groq rejected the API key" or "Gemini rejected the API key";
+- "does not offer the configured model": set `GROQ_MODEL` or `GEMINI_MODEL`;
+- "rate or usage limit was reached";
+- "temporarily unavailable";
+- "took too long";
+- "Could not reach …";
+- "No AI answer is available right now…", when both providers fail.
 
-**Errors are shown in the chat card and on the computer's log:**
-
-| Message | Cause |
-|---|---|
-| "xAI rejected the API key" | Invalid key (HTTP 401) |
-| "Your xAI account has no usable credits" | No credits, billing or spending limit |
-| "not permitted / blocked" | HTTP 403 |
-| "could not find the model" | HTTP 404; set `XAI_MODEL` |
-| "rate limit reached" | HTTP 429 |
-| "took too long" | Timeout after 60 s |
-| "Could not reach api.x.ai" | No internet connection |
-
-Gemini is still available with `--enable-llm-chat --llm-provider gemini` and `GEMINI_API_KEY`.
+When the backup answers, the reply says that Groq was unavailable and why. xAI Grok is still supported,
+but only when chosen explicitly with `--llm-provider xai` and `XAI_API_KEY`.
 
 #### Desktop HUD & Live Pose Analysis
 ```powershell
