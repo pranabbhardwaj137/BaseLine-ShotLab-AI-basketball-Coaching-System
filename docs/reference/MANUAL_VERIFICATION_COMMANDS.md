@@ -365,6 +365,72 @@ Expected Outputs & Effects:
 
 ## 14. Phase 8: Local player app, evidence-gated coaching, history, and reports
 
+### 14a. Drills section
+
+The Drills tab is a self-contained practice mode. No video upload or pose analysis is required.
+
+**Verify the drill catalog module:**
+
+```bash
+# macOS/Linux
+PYTHONPATH=src python3 -c "
+from basketball.coaching.drills_catalog import get_catalog
+cat = get_catalog()
+print('Total drills:', cat['total'])
+for d in cat['drills']:
+    print(' ', d['id'], '|', d['difficulty'], '|', d['video'])
+"
+```
+
+Expected output: 4 drills listed with their video filenames and difficulty levels. Exit code 0.
+
+**Verify drill video files are present:**
+
+```bash
+ls web/drills/
+# Expected: pound_dribble.mp4  pound_plus_cross.mp4  pound_plus_v-dribble.mp4  v-dribble_plus_cross.mp4
+```
+
+**Verify the API endpoint syntax:**
+
+```bash
+PYTHONPATH=src python3 -m py_compile src/basketball/coaching/drills_catalog.py
+# Expected: no output, exit code 0
+```
+
+**Test the live `/api/drills` endpoint** (server must be running):
+
+```bash
+# Start the server first in another terminal:
+# python3 web_app.py --port 8000
+
+curl -s http://127.0.0.1:8000/api/drills | python3 -m json.tool | head -20
+# Expected: JSON with "total": 4 and a "drills" array
+
+# Filter by difficulty
+curl -s "http://127.0.0.1:8000/api/drills?difficulty=beginner" | python3 -m json.tool | grep '"total"'
+# Expected: "total": 2
+
+# Test video streaming (byte-range)
+curl -I http://127.0.0.1:8000/drills/pound_dribble.mp4
+# Expected: HTTP/1.1 200 OK, Content-Type: video/mp4, Accept-Ranges: bytes
+```
+
+**Test the Drills UI in the browser:**
+
+1. Open `http://127.0.0.1:8000/#drills`
+2. Four drill cards appear, each with a video thumbnail, difficulty badge, and skill chips.
+3. Click any card — the drill runner opens with the reference video on the left and camera placeholder on the right.
+4. Click **Start camera & count reps** — browser requests camera permission; allow it.
+5. The reference video plays automatically; the camera feed appears mirrored on the right.
+6. Dribble in view of the camera — the rep count increments and flashes orange.
+7. Click **Stop drill** — the camera stops and a feedback card appears below with pace, rhythm, and cue reminders.
+8. Click **Done — back to drills** to return to the catalog.
+
+No data is written to the database or uploaded. Camera feed stays local.
+
+---
+
 Check Python syntax without starting the server or processing footage:
 
 ```powershell

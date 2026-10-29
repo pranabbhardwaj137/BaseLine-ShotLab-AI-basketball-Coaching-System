@@ -31,6 +31,7 @@ from basketball.persistence.shot_lab_db import ShotLabDB
 from basketball.coaching.coaching_service import build_session_insights
 from basketball.services.history_service import build_player_history
 from basketball.coaching.llm_coach import CoachUnavailable, answer_grounded_question, summarize_findings_for_llm
+from basketball.coaching.drills_catalog import get_catalog as get_drills_catalog
 from basketball.services.video_analysis_service import (AnalysisCancelled, analyze_video, make_browser_replay,
                                     prepare_video_for_analysis)
 from basketball.services.live_service import LiveCameraEngine
@@ -529,6 +530,18 @@ class AppHandler(BaseHTTPRequestHandler):
             folder = self.server.keyframe_dir / session_id
             return self._stream_local_file(str(folder / name), self.server.keyframe_dir, allow_range=False,
                                            content_type="image/jpeg")
+        if parsed.path == "/api/drills":
+            params = parse_qs(parsed.query)
+            category = params.get("category", [None])[0]
+            difficulty = params.get("difficulty", [None])[0]
+            return self._json(200, get_drills_catalog(category=category, difficulty=difficulty))
+
+        drill_video_match = re.fullmatch(r"/drills/([A-Za-z0-9_\-]+\.mp4)", parsed.path)
+        if drill_video_match:
+            video_path = WEB_ROOT / "drills" / drill_video_match.group(1)
+            return self._stream_local_file(str(video_path), WEB_ROOT / "drills",
+                                           allow_range=True, content_type="video/mp4")
+
         if parsed.path == "/api/health":
             ball_status = "unavailable"
             engine = getattr(self.server, "live_engine", None)

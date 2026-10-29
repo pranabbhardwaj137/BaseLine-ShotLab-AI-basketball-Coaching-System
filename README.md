@@ -2,6 +2,8 @@
 
 A local-first AI shooting coach. Upload a video of yourself shooting, from your computer or from your phone over Wi-Fi. The app estimates your pose locally, finds each shot attempt, measures your mechanics, and writes a personalised coaching report: strengths, priorities, drills, a practice plan, and cautious technique and injury-risk-reduction guidance. Every finding is tied to timestamps and measurements from your own video, and the report can be printed or saved as a PDF. Video never leaves your computer.
 
+The app also includes a **Drills section** — a dedicated practice mode with video-backed dribbling drills. Each drill shows a reference video (recorded shorts-format clips) side-by-side with your live camera feed. A motion-based rep counter tracks your dribbles in real time and a post-drill feedback card reports your pace, rhythm consistency, and coaching cue reminders.
+
 > **For AI Assistants:** Agent rules: [`AGENTS.md`](AGENTS.md). Canonical verification commands: [`docs/reference/MANUAL_VERIFICATION_COMMANDS.md`](docs/reference/MANUAL_VERIFICATION_COMMANDS.md). Project status: [`.planning/STATE.md`](.planning/STATE.md), [`.planning/ROADMAP.md`](.planning/ROADMAP.md). Latest audit: [`.planning/phases/08-user-facing-app/08-07-AUDIT.md`](.planning/phases/08-user-facing-app/08-07-AUDIT.md).
 
 ---
@@ -77,6 +79,7 @@ basketball_proj/
 │   │   ├── shot_coach.py              # Rule-based findings, drill plans, and injury guidance
 │   │   ├── coach_engine.py            # Multi-attempt coaching aggregation engine
 │   │   ├── coaching_service.py        # Remediation follow-up and drill plan generation
+│   │   ├── drills_catalog.py          # Video-backed dribbling drill catalog (Drills section)
 │   │   └── llm_coach.py               # Optional grounded Gemini AI explanation
 │   ├── persistence/                   # Data storage layer
 │   │   └── shot_lab_db.py             # SQLite schema v7: sessions, shots, baselines, audits
@@ -129,9 +132,14 @@ basketball_proj/
 │   └── setup/                         # Setup and installation guides
 ├── web/                               # Frontend single-page application
 │   ├── index.html                     # Main application HTML shell
-│   ├── app.js                         # Core client logic, review UI, and player flow
+│   ├── app.js                         # Core client logic, review UI, player flow, and drills
 │   ├── report.js                      # 10-section report rendering and PDF print formatting
-│   └── app.css                        # Modern responsive design and design tokens
+│   ├── app.css                        # Modern responsive design and design tokens
+│   └── drills/                        # Reference drill videos served by the Drills section
+│       ├── pound_dribble.mp4          # Pound dribble reference (shorts format, 9:16)
+│       ├── pound_plus_cross.mp4       # Pound + crossover reference
+│       ├── pound_plus_v-dribble.mp4   # Pound + V-dribble reference
+│       └── v-dribble_plus_cross.mp4   # V-dribble + crossover reference
 ├── models/                            # Machine learning model weights
 │   ├── best.pt                        # Primary YOLO ball & rim detection model (6 MB)
 │   ├── ballRim.pt                     # Alternative ball & rim detection model (22 MB)
@@ -157,7 +165,7 @@ Baseline Shot Lab is designed around **evidence before advice**:
 
 ```
  Browser / Phone Client (web/index.html, app.js, report.js)
-   │  Video Upload (with progress) · Review UI · Replay Player · Report View
+   │  Video Upload (with progress) · Review UI · Replay Player · Report View · Drills Section
    ▼
  web_app.py (Standard Library HTTP Server)
    ├── Security Guard: CSRF check, Host validation, LAN access code, rate limiting
@@ -171,6 +179,9 @@ Baseline Shot Lab is designed around **evidence before advice**:
    │          analysis/shooting_analysis.py (20 biomechanical metrics, consistency, make/miss)
    │          coaching/shot_coach.py (strengths, priority improvements, scaled drills)
    │          OpenCV Keyframe Extraction → user_data/keyframes/<session>/
+   ├── Drills API (GET /api/drills, GET /drills/*.mp4):
+   │     coaching/drills_catalog.py (4 video-backed dribbling drills, form check labels)
+   │     web/drills/*.mp4 (reference video files, streamed with byte-range support)
    └── SQLite Database (shot_lab.db, Schema v7):
          sessions, labeled_clips, shots, attempt_analysis, session_reports, baselines, remediations
 ```
@@ -215,7 +226,43 @@ All tests are designed to run out-of-the-box on standard CPU environments withou
 
 ---
 
-## 6. Academic Profile & Team
+## 6. Drills Section
+
+The **Drills** tab in the web app is a standalone practice mode separate from the shot-analysis workflow.
+
+### What it does
+
+- Shows a catalog of 4 video-backed dribbling drills (beginner → intermediate).
+- Each drill card displays a thumbnail preview of the reference video, difficulty badge, duration, and skill tags.
+- Clicking a card opens the **drill runner**: the reference video (recorded in 9:16 shorts format) plays on the left; your live camera feed appears on the right at the same aspect ratio.
+- A **motion-based rep counter** tracks dribble bounces in real time using frame-differencing — no model weights, no upload. The count and elapsed time are shown as a HUD overlay on the camera feed and as a large number beside the controls.
+- After stopping, a **form feedback card** appears with pace rating, rhythm consistency score (based on inter-rep timing), and drill-specific coaching cue reminders.
+
+### Drills included
+
+| ID | Name | Difficulty | Video file |
+|---|---|---|---|
+| `pound_dribble` | Pound Dribble | Beginner | `web/drills/pound_dribble.mp4` |
+| `pound_plus_cross` | Pound + Crossover | Beginner | `web/drills/pound_plus_cross.mp4` |
+| `pound_plus_v_dribble` | Pound + V-Dribble | Intermediate | `web/drills/pound_plus_v-dribble.mp4` |
+| `v_dribble_plus_cross` | V-Dribble + Crossover | Intermediate | `web/drills/v-dribble_plus_cross.mp4` |
+
+### Adding or replacing drill videos
+
+1. Drop the new `.mp4` file into `web/drills/`.
+2. Add or update the drill entry in `src/basketball/coaching/drills_catalog.py` — set `"video"` to the filename, fill in `"how"`, `"cues"`, `"form_checks"`, and `"difficulty"`.
+3. No server restart is needed if the app is already running; the catalog is fetched fresh on each visit to the Drills tab.
+
+### New API endpoints added
+
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/api/drills` | Returns the full drill catalog. Accepts `?category=` and `?difficulty=` query params. |
+| `GET` | `/drills/<filename>.mp4` | Streams a drill reference video with byte-range support for seeking. |
+
+---
+
+## 7. Academic Profile & Team
 
 - **Course:** BCS506 Major Project, B.E. Information Science & Engineering, VTU — BMS Institute of Technology & Management, Bengaluru (2025–26)
 - **Guide:** Asst. Prof. Amulya P, Department of ISE
