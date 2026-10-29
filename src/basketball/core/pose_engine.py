@@ -1,9 +1,14 @@
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
+try:
+    import mediapipe as mp
+    from mediapipe.tasks import python
+    from mediapipe.tasks.python import vision
+except ImportError:
+    mp = None
+    python = None
+    vision = None
 
 # All 33 MediaPipe Pose Landmarks (0 to 32)
 ALL_LANDMARKS = tuple(range(33))
@@ -21,6 +26,9 @@ class PoseEngine:
     ):
         if not 0 < smoothing_alpha <= 1:
             raise ValueError("smoothing_alpha must be between 0 and 1")
+
+        if vision is None or python is None:
+            raise RuntimeError("MediaPipe is not installed. Install mediapipe to run pose inference.")
 
         base_options = python.BaseOptions(
             model_asset_path=str(Path(model_path).resolve())

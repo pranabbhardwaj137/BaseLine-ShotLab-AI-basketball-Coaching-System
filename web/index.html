@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -42,9 +42,178 @@
     <symbol id="i-stop-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><rect x="8.5" y="8.5" width="7" height="7" rx="1.5"/></symbol>
     <symbol id="i-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="m8.5 12 2.5 2.5 4.5-4.5"/></symbol>
     <symbol id="i-basketball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5v19M5.5 5.5c3.5 3 3.5 10 0 13M18.5 5.5c-3.5 3-3.5 10 0 13"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
   </svg>
 
-  <div class="app">
+  <!-- ============================ STANDALONE LANDING PAGE ============================ -->
+  <div id="landing-page" class="landing-page">
+    <header class="landing-nav">
+      <div class="landing-nav-inner">
+        <a class="landing-brand" href="#landing" aria-label="Baseline Shot Lab Home">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14.5"/><path d="M1.5 16h29M16 1.5v29M5.5 5.8c4.6 4 4.6 16.4 0 20.4M26.5 5.8c-4.6 4-4.6 16.4 0 20.4"/></svg>
+          <span class="landing-brand-text">BASELINE<small>SHOT LAB</small></span>
+        </a>
+        <nav class="landing-links" aria-label="Landing navigation">
+          <a href="#features" class="landing-link">Features</a>
+          <a href="#biomechanics" class="landing-link">Kinematics</a>
+          <a href="#privacy" class="landing-link">Privacy</a>
+        </nav>
+        <div class="landing-auth-actions">
+          <button type="button" class="btn-landing-login" id="landing-btn-login">Sign In</button>
+          <button type="button" class="btn-landing-signup" id="landing-btn-signup">Sign Up</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="landing-main">
+      <!-- Full-bleed Athletic Hero -->
+      <section class="landing-hero">
+        <div class="landing-hero-backdrop" aria-hidden="true">
+          <img src="/assets/hero.jpg" alt="Basketball athlete" class="landing-hero-photo" loading="eager">
+          <div class="landing-hero-shade"></div>
+        </div>
+        <div class="landing-hero-content">
+          <div class="landing-badge">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span>PRO BASKETBALL BIOMECHANICS &middot; LOCAL-FIRST AI</span>
+          </div>
+          <h1 class="landing-hero-headline">
+            PRECISION IN EVERY REP.<br>
+            <span class="landing-headline-gradient">ELEVATE YOUR SHOOTING FORM.</span>
+          </h1>
+          <p class="landing-hero-sub">
+            The intelligent basketball shooting lab. Film your rep, estimate 3D joint kinematics and ball trajectory entirely on your device, and get evidence-gated coaching without cloud tracking.
+          </p>
+          <div class="landing-hero-buttons">
+            <button type="button" class="btn-hero-cta btn-hero-cta-primary" id="hero-action-signup">
+              <span>Sign Up &amp; Start Onboarding</span>
+              <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg>
+            </button>
+            <button type="button" class="btn-hero-cta btn-hero-cta-secondary" id="hero-action-login">
+              <span>Sign In to Your Account</span>
+            </button>
+          </div>
+          <div class="landing-metrics-strip">
+            <div class="landing-metric">
+              <span class="metric-num">33</span>
+              <span class="metric-label">3D Joint Keypoints</span>
+            </div>
+            <div class="landing-metric-sep" aria-hidden="true"></div>
+            <div class="landing-metric">
+              <span class="metric-num">20+</span>
+              <span class="metric-label">Biomechanical Metrics</span>
+            </div>
+            <div class="landing-metric-sep" aria-hidden="true"></div>
+            <div class="landing-metric">
+              <span class="metric-num">100%</span>
+              <span class="metric-label">On-Device Privacy</span>
+            </div>
+            <div class="landing-metric-sep" aria-hidden="true"></div>
+            <div class="landing-metric">
+              <span class="metric-num">&plusmn;1&deg;</span>
+              <span class="metric-label">Angle Precision</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Highlights / How it Works Section -->
+      <section id="features" class="landing-features-section">
+        <div class="landing-section-header">
+          <p class="eyebrow eyebrow-on-dark">HOW IT WORKS</p>
+          <h2>Evidence Before Advice</h2>
+          <p class="section-sub">A scientific approach to player development built around verified video evidence.</p>
+        </div>
+        <div class="landing-features-grid">
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-camera"/></svg></div>
+            <h3>1. Film or Stream</h3>
+            <p>Connect your phone camera over Wi-Fi or upload practice footage. All decoding runs locally with zero cloud upload.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-review"/></svg></div>
+            <h3>2. 3D Pose &amp; Trajectory</h3>
+            <p>Computer vision tracks knee dip depth, sequence lag, release velocity, and ball rim entry angle with mathematical precision.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-report"/></svg></div>
+            <h3>3. Diagnostic Coaching</h3>
+            <p>Receive comprehensive reports comparing your shot to pro baselines (Curry, Thompson, Allen) with targeted drill plans.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-drills"/></svg></div>
+            <h3>4. Interactive Drills</h3>
+            <p>Practice dribbling drills with reference shorts videos and real-time browser motion rep counting.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Kinematics & Biomechanics Section -->
+      <section id="biomechanics" class="landing-features-section">
+        <div class="landing-section-header">
+          <p class="eyebrow eyebrow-on-dark">KINEMATIC METRICS</p>
+          <h2>Mathematical Form Analysis</h2>
+          <p class="section-sub">Calibrated measurements capturing the kinetic chain from floor push-off to wrist snap.</p>
+        </div>
+        <div class="landing-features-grid">
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-workout"/></svg></div>
+            <h3>Kinetic Chain Timing</h3>
+            <p>Quantifies energy transfer sequencing: ankle push-off, knee extension peak velocity, and wrist release timing.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-basketball"/></svg></div>
+            <h3>Release Velocity &amp; Angle</h3>
+            <p>Measures precise trajectory launch angle (optimal 45&deg;&ndash;52&deg;) and parabolic entry descent into the rim cylinder.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-report"/></svg></div>
+            <h3>Pro Model Comparison</h3>
+            <p>Benchmark every release against calibrated baseline curves of elite NBA shooting mechanics.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Privacy & Local Execution Section -->
+      <section id="privacy" class="landing-features-section">
+        <div class="landing-section-header">
+          <p class="eyebrow eyebrow-on-dark">LOCAL &amp; PRIVATE</p>
+          <h2>Your Video Never Leaves Your Device</h2>
+          <p class="section-sub">Engineered from the ground up for total privacy and low-latency offline analysis.</p>
+        </div>
+        <div class="landing-features-grid">
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-shield"/></svg></div>
+            <h3>100% On-Device Processing</h3>
+            <p>All video frames, pose landmark estimations, and ball trajectories are analyzed locally via SQLite and your local machine.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-phone"/></svg></div>
+            <h3>Zero Cloud Uploads</h3>
+            <p>No video or audio is ever uploaded to external cloud servers. Your training stays completely confidential.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-card-icon" aria-hidden="true"><svg class="icon"><use href="#i-check-circle"/></svg></div>
+            <h3>Instant Offline Coaching</h3>
+            <p>Immediate rule-based diagnostic feedback and drill suggestions with zero internet dependency.</p>
+          </div>
+        </div>
+        <div class="landing-features-cta">
+          <button type="button" class="btn-landing-signup btn-large" id="landing-footer-signup">Sign Up &amp; Get Started Free</button>
+        </div>
+      </section>
+    </main>
+
+    <footer class="landing-footer">
+      <div class="landing-footer-inner">
+        <span>&copy; Baseline Shot Lab. All analysis performed locally on your device.</span>
+        <span>Privacy-First Basketball Biomechanics</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ============================ MAIN APPLICATION WORKSPACE ============================ -->
+  <div class="app" id="app-workspace" hidden>
     <!-- Sidebar on desktop, icon rail on tablets, bottom tab bar on phones -->
     <aside class="sidebar" aria-label="Main">
       <a class="brand" href="#new" aria-label="Baseline Shot Lab, new session">
@@ -78,6 +247,10 @@
           </a>
           <p class="crumbs" aria-hidden="true"><span>Shot Lab</span><span class="crumb-sep">/</span><span id="topbar-title">New session</span></p>
           <span class="local-pill" title="Video and analysis stay on this computer"><i aria-hidden="true"></i>Runs on this computer</span>
+          <div class="auth-toolbar" id="auth-toolbar">
+            <button type="button" class="btn-auth-trigger" id="btn-open-login"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg><span>Sign In</span></button>
+            <button type="button" class="btn-auth-trigger btn-auth-primary" id="btn-open-signup"><span>Join Lab</span></button>
+          </div>
           <button type="button" class="theme-toggle" id="theme-toggle" aria-label="Switch to dark theme">
             <svg class="icon icon-sun" aria-hidden="true"><use href="#i-sun"/></svg>
             <svg class="icon icon-moon" aria-hidden="true"><use href="#i-moon"/></svg>
@@ -566,6 +739,165 @@
       </div>
     </div>
   </div>
+
+  <!-- ============================ AUTHENTICATION & ONBOARDING MODAL ============================ -->
+  <div id="auth-modal" class="modal-backdrop hidden" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+    <div class="modal-card auth-modal-card">
+      <button type="button" class="modal-close" id="auth-modal-close" aria-label="Close dialog">&times;</button>
+      
+      <!-- Tab Switcher (Sign In vs Create Account) -->
+      <div class="auth-tabs" id="auth-tabs-nav" role="tablist">
+        <button type="button" class="auth-tab is-active" id="tab-btn-login" role="tab" aria-selected="true" data-tab="login">Sign In</button>
+        <button type="button" class="auth-tab" id="tab-btn-signup" role="tab" aria-selected="false" data-tab="signup">Create Account</button>
+      </div>
+
+      <!-- Sign In Form -->
+      <form id="form-login" class="auth-form-pane" novalidate>
+        <h2 id="auth-modal-title">Welcome Back, Shooter</h2>
+        <p class="auth-subtext">Sign in to track your personal baseline, review quarantined shots, and progress over time.</p>
+        <div class="auth-alert hidden" id="login-alert" role="alert"></div>
+        
+        <label class="field">Email Address
+          <input type="email" id="login-email" name="email" required autocomplete="email" placeholder="shooter@court.com">
+        </label>
+        <label class="field">Password
+          <input type="password" id="login-password" name="password" required autocomplete="current-password" placeholder="••••••••">
+        </label>
+        <button type="submit" class="btn-auth-submit" id="btn-login-submit">Sign In to Shot Lab</button>
+        <div class="auth-footnote">
+          Don't have an athlete account? <button type="button" class="auth-link" id="switch-to-signup">Create one free</button>
+        </div>
+      </form>
+
+      <!-- Sign Up & Onboarding Form -->
+      <form id="form-signup" class="auth-form-pane hidden" novalidate>
+        <h2>Join Baseline Shot Lab</h2>
+        <p class="auth-subtext">Set up your shooter profile to tailor computer vision baselines to your physique.</p>
+        <div class="auth-alert hidden" id="signup-alert" role="alert"></div>
+
+        <!-- Onboarding Step Indicator -->
+        <div class="onboarding-steps" id="onboarding-steps">
+          <span class="step-chip active" id="chip-step-1">1. Account</span>
+          <span class="step-chip" id="chip-step-2">2. Shooter Profile</span>
+        </div>
+
+        <!-- Step 1: Account info -->
+        <div class="step-pane" id="step-pane-1">
+          <div class="field-grid auth-grid">
+            <label class="field">Full Name
+              <input type="text" id="signup-name" name="name" required autocomplete="name" placeholder="e.g. Maya Moore">
+            </label>
+            <label class="field">Player ID / Handle
+              <input type="text" id="signup-player-id" name="player_id" maxlength="32" pattern="[A-Za-z0-9_\-]{1,32}" placeholder="e.g. maya_11">
+              <small>Letters, numbers, - or _</small>
+            </label>
+          </div>
+          <label class="field">Email Address
+            <input type="email" id="signup-email" name="email" required autocomplete="email" placeholder="maya@team.com">
+          </label>
+          <label class="field">Password
+            <input type="password" id="signup-password" name="password" minlength="6" required autocomplete="new-password" placeholder="At least 6 characters">
+          </label>
+          <button type="button" class="btn-auth-submit" id="btn-goto-step-2">Continue to Shooter Profile &rarr;</button>
+        </div>
+
+        <!-- Step 2: Onboarding Questionnaire -->
+        <div class="step-pane hidden" id="step-pane-2">
+          <div class="field-grid auth-grid">
+            <label class="field">Shooting Hand
+              <select id="signup-handedness" name="handedness">
+                <option value="right">Right</option>
+                <option value="left">Left</option>
+                <option value="ambidextrous">Ambidextrous</option>
+              </select>
+            </label>
+            <label class="field">Skill Level
+              <select id="signup-skill-level" name="skill_level">
+                <option value="beginner">Beginner (Building basics)</option>
+                <option value="intermediate" selected>Intermediate (Developing consistency)</option>
+                <option value="advanced">Advanced (Experienced player)</option>
+                <option value="coach">Coach / Instructor</option>
+              </select>
+            </label>
+            <label class="field">Shot Style
+              <select id="signup-shot-style" name="shot_style">
+                <option value="jump_shot" selected>Jump Shot</option>
+                <option value="set_shot">Set Shot</option>
+              </select>
+            </label>
+            <label class="field">Height (cm)
+              <input type="number" id="signup-height" name="height_cm" min="100" max="250" step="0.5" placeholder="e.g. 195">
+            </label>
+            <label class="field">Wingspan (cm) <span class="optional">(optional)</span>
+              <input type="number" id="signup-wingspan" name="wingspan_cm" min="100" max="270" step="0.5" placeholder="e.g. 202">
+            </label>
+          </div>
+          <label class="field">Shooting Focus / Goals <span class="optional">(optional)</span>
+            <textarea id="signup-goals" name="goals" rows="2" maxlength="300" placeholder="e.g. repeatable high release, minimize elbow flare, balanced landing"></textarea>
+          </label>
+          <div class="auth-actions-row">
+            <button type="button" class="btn-auth-secondary" id="btn-back-step-1">&larr; Back</button>
+            <button type="submit" class="btn-auth-submit" id="btn-finish-signup">Complete Onboarding &amp; Sign Up</button>
+          </div>
+        </div>
+
+        <div class="auth-footnote">
+          Already registered? <button type="button" class="auth-link" id="switch-to-login">Sign in</button>
+        </div>
+      </form>
+
+      <!-- Profile Manager Pane (when authenticated) -->
+      <div id="profile-manager" class="auth-form-pane hidden">
+        <h2>Shooter Profile &amp; Settings</h2>
+        <p class="auth-subtext" id="profile-header-sub">Manage your athletic profile and shooting preferences.</p>
+        <div class="auth-alert hidden" id="profile-alert" role="alert"></div>
+
+        <form id="form-update-profile" novalidate>
+          <div class="field-grid auth-grid">
+            <label class="field">Full Name
+              <input type="text" id="profile-name" name="name" required>
+            </label>
+            <label class="field">Player ID
+              <input type="text" id="profile-player-id" name="player_id" readonly disabled class="input-readonly">
+            </label>
+            <label class="field">Shooting Hand
+              <select id="profile-handedness" name="handedness">
+                <option value="right">Right</option>
+                <option value="left">Left</option>
+                <option value="ambidextrous">Ambidextrous</option>
+              </select>
+            </label>
+            <label class="field">Skill Level
+              <select id="profile-skill-level" name="skill_level">
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+                <option value="coach">Coach</option>
+              </select>
+            </label>
+            <label class="field">Primary Shot Style
+              <select id="profile-shot-style" name="shot_style">
+                <option value="jump_shot">Jump Shot</option>
+                <option value="set_shot">Set Shot</option>
+              </select>
+            </label>
+            <label class="field">Height (cm)
+              <input type="number" id="profile-height" name="height_cm" min="100" max="250" step="0.5">
+            </label>
+          </div>
+          <label class="field">Shooting Focus / Goals
+            <textarea id="profile-goals" name="goals" rows="2" maxlength="300"></textarea>
+          </label>
+          <div class="auth-actions-row">
+            <button type="submit" class="btn-auth-submit" id="btn-save-profile">Save Profile Changes</button>
+            <button type="button" class="btn-auth-danger" id="btn-logout-action">Sign Out</button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </div>
+
   <script src="/assets/app.js" defer></script>
   <script src="/assets/workout.js" defer></script>
 </body>

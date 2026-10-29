@@ -926,6 +926,48 @@ API checks:
 PYTHONPATH=src:. python3 -m pytest -q tests/unit/test_llm_coach.py tests/e2e/test_ai_chat_and_https.py   # mocked xAI; no key needed
 ```
 
+## 19. Athletic Monochrome Landing Page & User Authentication / Onboarding
+
+**Overview:**
+Integrates the athletic black-and-white landing page theme (featuring the male basketball athlete visual from `landing-page-black-white-with-male-basketball-athlete`) into the web UI without breaking existing functionality. Adds local SQLite user authentication and athlete onboarding (`users` and `user_sessions` tables in `shot_lab.db`), syncing shooting hand, experience, style, and physical profile directly into session setup.
+
+**Start the web application:**
+```bash
+python -m basketball.app.web_app --port 8000
+# Or using the root entry point:
+python web_app.py --port 8000
+```
+
+**Run automated unit and integration tests:**
+```bash
+PYTHONPATH="src:." python3 -m unittest tests/unit/test_auth.py tests/integration/test_auth_routes.py
+```
+Expected output:
+```text
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 0.4s
+
+OK
+```
+
+**Manual Browser Verification Steps:**
+1. Open `http://127.0.0.1:8000/` in a browser.
+2. Confirm the athletic high-contrast black-and-white theme is active by default, displaying the male basketball athlete hero banner (`/assets/hero.jpg`) with gradient overlay, bold athletic typography ("PRECISION IN EVERY REP. ELEVATE YOUR SHOOTING FORM."), and metric highlights (33 Keypoints, 20+ Biomechanical Metrics, 100% On-Device Privacy).
+3. In the top bar, click **Join Lab** (or click **Shooter Profile & Onboarding** on the hero card):
+   - **Step 1 (Account):** Enter Full Name, Player ID / Handle, Email, Password. Click **Continue to Shooter Profile**.
+   - **Step 2 (Shooter Profile):** Select Shooting Hand (Right/Left/Ambidextrous), Experience Level (Beginner/Intermediate/Advanced/Coach), Primary Shot Style (Jump Shot/Set Shot), Height (cm), Wingspan (cm), and Goals.
+   - Click **Complete Onboarding & Sign Up**.
+4. Confirm success:
+   - A welcome toast appears ("Welcome to Shot Lab...").
+   - The topbar replaces "Sign In / Join Lab" with the athlete user badge showing user avatar, name, and skill level.
+   - The **Player and session** setup form (`#upload-form`) is automatically pre-filled with the user's Player ID, Shooting hand, Experience, Shot style, and Goals.
+5. Click the user badge to open **Shooter Profile & Settings**:
+   - Update shooting goals or height and click **Save Profile Changes** — data updates in SQLite `users` and `players` tables.
+   - Click **Sign Out** — session is invalidated, and topbar returns to "Sign In / Join Lab".
+6. Click **Sign In**: enter registered email and password to log back in.
+7. Confirm all existing workflows (drag-and-drop video upload, camera recording, reviewing quarantined attempts, coaching reports, and dribble drills) work with full backward compatibility.
+
 ## Expected verification outputs
 
 - Annotation Lab: video window opens; edits are saved to the selected SQLite DB when saved/committed.

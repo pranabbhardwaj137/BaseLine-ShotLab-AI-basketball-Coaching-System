@@ -61,6 +61,7 @@ VALID_SKILL_LEVELS = {"beginner", "intermediate", "advanced", "coach"}
 MIME_EXTENSIONS = {"video/mp4": ".mp4", "video/quicktime": ".mov", "video/x-m4v": ".m4v", "video/x-msvideo": ".avi",
                    "video/x-matroska": ".mkv", "video/webm": ".webm"}
 ACCESS_COOKIE = "shotlab_access"
+USER_COOKIE = "shotlab_user_session"
 CSRF_HEADER = "X-Shotlab"
 LOOPBACK_NAMES = {"127.0.0.1", "localhost", "::1"}
 WORKOUT_ID = re.compile(r"wk_[a-f0-9]{20}")
@@ -417,6 +418,37 @@ class AppHandler(BaseHTTPRequestHandler):
         count, first = self.server.auth_failures.get(str(ip), (0, time.time()))
         self.server.auth_failures[str(ip)] = (count + 1, first)
 
+    # ------------------------------------------------------------------ user session
+    def _get_session_token(self):
+        cookie = self.headers.get("Cookie") or ""
+        for part in cookie.split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == USER_COOKIE:
+                return value.strip()
+        auth = self.headers.get("Authorization") or ""
+        if auth.startswith("Bearer "):
+            return auth[7:].strip()
+        return None
+
+    def _get_current_user(self):
+        token = self._get_session_token()
+        if not token:
+            return None
+        db = ShotLabDB(self.server.db_path)
+        return db.get_user_by_session(token)
+
+    def _set_user_cookie(self, token, max_age=30 * 86400):
+        cookie = f"{USER_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}"
+        if getattr(self.server, "tls_enabled", False):
+            cookie += "; Secure"
+        self.send_header("Set-Cookie", cookie)
+
+    def _clear_user_cookie(self):
+        cookie = f"{USER_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+        if getattr(self.server, "tls_enabled", False):
+            cookie += "; Secure"
+        self.send_header("Set-Cookie", cookie)
+
     def _send_html(self, status, body, extra_headers=()):
         data = body.encode("utf-8")
         self.send_response(status)
@@ -528,6 +560,8 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def _do_get(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/auth/me":
+            return self._json(200, {"user": self._get_current_user()})
         if parsed.path == "/api/connection":
             if not self._is_local_request():
                 return self._text_error(403, "Connection details are only shown on the computer running the app.")
@@ -711,6 +745,8 @@ class AppHandler(BaseHTTPRequestHandler):
                   "/assets/app.css": ("app.css", "text/css; charset=utf-8"),
                   "/assets/report.js": ("report.js", "text/javascript; charset=utf-8"),
                   "/assets/workout.js": ("workout.js", "text/javascript; charset=utf-8"),
+                  "/assets/hero.jpg": ("assets/hero.jpg", "image/jpeg"),
+                  "/assets/4918497.jpg": ("assets/4918497.jpg", "image/jpeg"),
                   "/assets/fonts/archivo-variable.woff2": ("fonts/archivo-variable.woff2", "font/woff2")}
         asset = assets.get(parsed.path)
         if asset:
@@ -803,6 +839,105 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def _do_post(self):
         path = urlparse(self.path).path
+        if path == "/api/auth/signup":
+            try:
+                data = self._read_json(32 * 1024)
+            except ValueError as e:
+                return self._text_error(400, str(e))
+            email = (data.get("email") or "").strip().lower()
+            password = data.get("password") or ""
+            name = (data.get("name") or "").strip()
+            player_id = (data.get("player_id") or "").strip()
+            skill_level = data.get("skill_level") or "intermediate"
+            handedness = data.get("handedness") or "right"
+            shot_style = data.get("shot_style") or "jump_shot"
+            height_cm = data.get("height_cm")
+            wingspan_cm = data.get("wingspan_cm")
+            goals = data.get("goals")
+            onboarding_completed = data.get("onboarding_completed", False)
+
+            db = ShotLabDB(self.server.db_path)
+            if db.get_user_by_email(email):
+                return self._text_error(409, "An account with this email already exists.")
+            try:
+                user = db.create_user(
+                    email=email,
+                    password=password,
+                    name=name,
+                    player_id=player_id,
+                    skill_level=skill_level,
+                    handedness=handedness,
+                    shot_style=shot_style,
+                    height_cm=float(height_cm) if height_cm else None,
+                    wingspan_cm=float(wingspan_cm) if wingspan_cm else None,
+                    goals=goals,
+                    onboarding_completed=bool(onboarding_completed)
+                )
+            except ValueError as exc:
+                return self._text_error(400, str(exc))
+            except Exception as exc:
+                return self._text_error(500, f"Registration failed: {exc}")
+
+            token = db.create_user_session(user["id"])
+            body = json.dumps({"user": user, "token": token}, ensure_ascii=False).encode("utf-8")
+            self.send_response(201)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self._set_user_cookie(token)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/auth/login":
+            try:
+                data = self._read_json(16 * 1024)
+            except ValueError as e:
+                return self._text_error(400, str(e))
+            email = (data.get("email") or "").strip().lower()
+            password = data.get("password") or ""
+            db = ShotLabDB(self.server.db_path)
+            user = db.verify_user_credentials(email, password)
+            if not user:
+                return self._text_error(401, "Invalid email or password.")
+            token = db.create_user_session(user["id"])
+            body = json.dumps({"user": user, "token": token}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self._set_user_cookie(token)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/auth/logout":
+            token = self._get_session_token()
+            if token:
+                db = ShotLabDB(self.server.db_path)
+                db.delete_user_session(token)
+            body = json.dumps({"ok": True}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self._clear_user_cookie()
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/auth/profile":
+            user = self._get_current_user()
+            if not user:
+                return self._text_error(401, "You must be logged in to update your profile.")
+            try:
+                data = self._read_json(32 * 1024)
+            except ValueError as e:
+                return self._text_error(400, str(e))
+            db = ShotLabDB(self.server.db_path)
+            updated = db.update_user_profile(user["id"], data)
+            return self._json(200, {"user": updated})
+
         if path == "/api/live/process-frame":
             return self._handle_live_process_frame()
         if path == "/api/live/reset":

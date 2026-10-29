@@ -7,11 +7,13 @@ src/basketball/analysis/baseline_engine.py
 src/basketball/analysis/pro_comparator.py
 src/basketball/analysis/shooting_analysis.py
 src/basketball/app/__init__.py
+src/basketball/app/local_tls.py
 src/basketball/app/main.py
 src/basketball/app/web_app.py
 src/basketball/coaching/__init__.py
 src/basketball/coaching/coach_engine.py
 src/basketball/coaching/coaching_service.py
+src/basketball/coaching/drills_catalog.py
 src/basketball/coaching/llm_coach.py
 src/basketball/coaching/shot_coach.py
 src/basketball/core/__init__.py
@@ -24,6 +26,7 @@ src/basketball/persistence/__init__.py
 src/basketball/persistence/shot_lab_db.py
 src/basketball/services/__init__.py
 src/basketball/services/history_service.py
+src/basketball/services/live_service.py
 src/basketball/services/report_service.py
 src/basketball/services/video_analysis_service.py
 src/basketball/tracking/__init__.py
@@ -31,6 +34,10 @@ src/basketball/tracking/ball_geometry.py
 src/basketball/tracking/ball_tracker.py
 src/basketball/tracking/calibrated_fsm.py
 src/basketball/tracking/shot_detector_ml.py
+src/basketball/workout/__init__.py
+src/basketball/workout/catalog.py
+src/basketball/workout/planner.py
+src/basketball/workout/progress.py
 src/basketball_shot_lab.egg-info/PKG-INFO
 src/basketball_shot_lab.egg-info/SOURCES.txt
 src/basketball_shot_lab.egg-info/dependency_links.txt

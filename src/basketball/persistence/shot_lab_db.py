@@ -13,6 +13,7 @@ import json
 from typing import Dict, Any, List, Optional, Tuple
 
 import contextlib
+import hashlib, base64, os, secrets, re
 
 SCHEMA_VERSION = 8
 
@@ -71,6 +72,37 @@ class ShotLabDB:
                     height_m REAL,
                     wingspan_m REAL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Users & Authentication
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    player_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    skill_level TEXT DEFAULT 'intermediate',
+                    handedness TEXT DEFAULT 'right',
+                    shot_style TEXT DEFAULT 'jump_shot',
+                    height_cm REAL,
+                    wingspan_cm REAL,
+                    goals TEXT,
+                    onboarding_completed INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (player_id) REFERENCES players (player_id)
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    token TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
                 )
             """)
 
@@ -448,6 +480,14 @@ class ShotLabDB:
             """, (player_id, name, height_m, wingspan_m))
             conn.commit()
             return player_id
+
+    def get_player(self, player_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a player record by player_id."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM players WHERE player_id = ?", (player_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     def create_session(
         self,
@@ -1385,4 +1425,206 @@ class ShotLabDB:
             "proposals": proposals,
             "intervals": intervals
         }
+
+    # =========================================================================
+    # User Authentication & Onboarding
+    # =========================================================================
+
+    @staticmethod
+    def hash_password(password: str, salt: bytes | None = None) -> str:
+        """Hash a password using PBKDF2-HMAC-SHA256 with 100,000 iterations."""
+        if salt is None:
+            salt = secrets.token_bytes(16)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
+        return base64.b64encode(salt + dk).decode("ascii")
+
+    @staticmethod
+    def verify_password(stored: str, password: str) -> bool:
+        """Verify a password against stored PBKDF2 hash."""
+        try:
+            raw = base64.b64decode(stored.encode("ascii"))
+            if len(raw) < 17:
+                return False
+            salt, dk = raw[:16], raw[16:]
+            chk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
+            return secrets.compare_digest(dk, check) if "check" in locals() else secrets.compare_digest(dk, chk)
+        except Exception:
+            return False
+
+    def create_user(
+        self,
+        email: str,
+        password: str,
+        name: str,
+        player_id: Optional[str] = None,
+        skill_level: str = "intermediate",
+        handedness: str = "right",
+        shot_style: str = "jump_shot",
+        height_cm: Optional[float] = None,
+        wingspan_cm: Optional[float] = None,
+        goals: Optional[str] = None,
+        onboarding_completed: bool = False
+    ) -> Dict[str, Any]:
+        """Register a new user and link to player registry."""
+        email_clean = email.strip().lower()
+        if not email_clean or "@" not in email_clean:
+            raise ValueError("A valid email address is required.")
+        if len(password) < 6:
+            raise ValueError("Password must be at least 6 characters long.")
+        name_clean = name.strip() or "Shooter"
+
+        # Derive a valid player_id if not explicitly passed
+        if not player_id or not player_id.strip():
+            derived = re.sub(r"[^A-Za-z0-9_\-]", "_", name_clean.lower()).strip("_")
+            player_id = derived[:32] if derived else f"player_{uuid.uuid4().hex[:6]}"
+        player_id = re.sub(r"[^A-Za-z0-9_\-]", "_", player_id.strip())
+
+        user_id = f"usr_{uuid.uuid4().hex[:12]}"
+        pwd_hash = self.hash_password(password)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        height_m = (height_cm / 100.0) if height_cm and height_cm > 0 else None
+        wingspan_m = (wingspan_cm / 100.0) if wingspan_cm and wingspan_cm > 0 else None
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Ensure player exists in players table
+            cursor.execute("""
+                INSERT OR IGNORE INTO players (player_id, name, height_m, wingspan_m, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (player_id, name_clean, height_m, wingspan_m, now))
+
+            cursor.execute("""
+                INSERT INTO users (
+                    id, player_id, name, email, password_hash,
+                    skill_level, handedness, shot_style,
+                    height_cm, wingspan_cm, goals,
+                    onboarding_completed, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                user_id, player_id, name_clean, email_clean, pwd_hash,
+                skill_level, handedness, shot_style,
+                height_cm, wingspan_cm, goals or "",
+                1 if onboarding_completed else 0, now, now
+            ))
+            conn.commit()
+
+        return self.get_user_by_id(user_id)
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Fetch user record by email including password_hash."""
+        email_clean = email.strip().lower()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE LOWER(email) = ?", (email_clean,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch public user record by id (excludes password_hash)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, player_id, name, email, skill_level, handedness,
+                       shot_style, height_cm, wingspan_cm, goals,
+                       onboarding_completed, created_at, updated_at
+                FROM users WHERE id = ?
+            """, (user_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            res = dict(row)
+            res["onboarding_completed"] = bool(res.get("onboarding_completed"))
+            return res
+
+    def verify_user_credentials(self, email: str, password: str) -> Optional[Dict[str, Any]]:
+        """Verify user credentials and return sanitized user record if valid."""
+        user = self.get_user_by_email(email)
+        if not user:
+            return None
+        if self.verify_password(user["password_hash"], password):
+            return self.get_user_by_id(user["id"])
+        return None
+
+    def update_user_profile(self, user_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update profile fields and sync player attributes."""
+        allowed_fields = {
+            "name", "skill_level", "handedness", "shot_style",
+            "height_cm", "wingspan_cm", "goals", "onboarding_completed"
+        }
+        fields_to_update = {k: v for k, v in updates.items() if k in allowed_fields}
+        if not fields_to_update:
+            return self.get_user_by_id(user_id)
+
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        set_clauses = [f"{k} = ?" for k in fields_to_update.keys()]
+        set_clauses.append("updated_at = ?")
+        values = list(fields_to_update.values())
+        if "onboarding_completed" in fields_to_update:
+            idx = list(fields_to_update.keys()).index("onboarding_completed")
+            values[idx] = 1 if fields_to_update["onboarding_completed"] else 0
+        values.extend([now, user_id])
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE users SET {', '.join(set_clauses)} WHERE id = ?", values)
+            conn.commit()
+
+            if "name" in fields_to_update or "height_cm" in fields_to_update or "wingspan_cm" in fields_to_update:
+                cursor.execute("SELECT player_id, name, height_cm, wingspan_cm FROM users WHERE id = ?", (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    h_m = (row["height_cm"] / 100.0) if row["height_cm"] else None
+                    w_m = (row["wingspan_cm"] / 100.0) if row["wingspan_cm"] else None
+                    cursor.execute("""
+                        UPDATE players SET name = ?, height_m = ?, wingspan_m = ?
+                        WHERE player_id = ?
+                    """, (row["name"], h_m, w_m, row["player_id"]))
+                    conn.commit()
+
+        return self.get_user_by_id(user_id)
+
+    def create_user_session(self, user_id: str, duration_days: int = 30) -> str:
+        """Create a session token stored in user_sessions table."""
+        token = secrets.token_hex(24)
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        expires_dt = now_dt + datetime.timedelta(days=duration_days)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO user_sessions (token, user_id, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+            """, (token, user_id, now_dt.isoformat(), expires_dt.isoformat()))
+            conn.commit()
+        return token
+
+    def get_user_by_session(self, token: str) -> Optional[Dict[str, Any]]:
+        """Validate session token and return user if active."""
+        if not token or not isinstance(token, str):
+            return None
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT user_id, expires_at FROM user_sessions WHERE token = ?
+            """, (token,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            if row["expires_at"] < now_iso:
+                cursor.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
+                conn.commit()
+                return None
+            user_id = row["user_id"]
+        return self.get_user_by_id(user_id)
+
+    def delete_user_session(self, token: str) -> bool:
+        """Invalidate a session token upon logout."""
+        if not token:
+            return False
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
+            conn.commit()
+            return cursor.rowcount > 0
 

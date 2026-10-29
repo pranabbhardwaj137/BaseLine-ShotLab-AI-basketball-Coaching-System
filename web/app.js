@@ -93,6 +93,7 @@ let currentReport = null;
 let refreshReturnJob = null;
 let pendingSeek = null;     // {time, attempt} to apply once the replay for a session is ready
 let reviewApi = null;       // seek/select helpers of the open Review screen
+let currentAthlete = null;
 
 /* ------------------------------------------------------------------ helpers */
 function el(tag, attrs = {}, ...children) {
@@ -536,10 +537,12 @@ function setView(name, {push = true} = {}) {
     if (link.dataset.nav === view) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   }
-  if (push && location.hash !== `#${view}`) history.replaceState(null, '', `#${view}`);
-  const topbarTitle = document.getElementById('topbar-title');
-  if (topbarTitle) topbarTitle.textContent = VIEW_TITLES[view];
-  document.title = `${VIEW_TITLES[view]} · Baseline Shot Lab`;
+  if (currentAthlete && push && location.hash !== `#${view}`) history.replaceState(null, '', `#${view}`);
+  if (currentAthlete) {
+    const topbarTitle = document.getElementById('topbar-title');
+    if (topbarTitle) topbarTitle.textContent = VIEW_TITLES[view];
+    document.title = `${VIEW_TITLES[view]} · Baseline Shot Lab`;
+  }
   if (view === 'progress') loadPlayerHistory(progressPlayer.value || playerIdInput.value);
   if (view === 'report') showReport(reportSessionId || activeSessionId);
   if (view === 'workout') {
@@ -564,7 +567,29 @@ function setView(name, {push = true} = {}) {
     }
   }
 }
-window.addEventListener('hashchange', () => setView(location.hash.slice(1), {push: false}));
+window.addEventListener('hashchange', () => {
+  if (!currentAthlete) {
+    const hash = location.hash.replace(/^#/, '');
+    if (hash === 'login' || hash === 'signin') {
+      showAuthModal('login');
+      return;
+    }
+    if (hash === 'signup') {
+      showAuthModal('signup');
+      return;
+    }
+    if (['features', 'biomechanics', 'privacy', 'landing'].includes(hash)) {
+      const target = document.getElementById(hash);
+      if (target) {
+        target.scrollIntoView({behavior: 'smooth'});
+        return;
+      }
+    }
+    showLanding();
+    return;
+  }
+  setView(location.hash.slice(1), {push: false});
+});
 
 /* -------------------------------------------------------------- video source */
 for (const tab of document.querySelectorAll('[data-source]')) {
@@ -2873,7 +2898,7 @@ async function loadPhoneCard() {
     prepareJobPanel('Restoring your last session', 'queued', 'Loading saved analysis and reviews.');
     pollJob(lastJob);
   }
-  setView(VIEWS.includes(requested) ? requested : 'new', {push: true});
+  setView(VIEWS.includes(requested) ? requested : 'new', {push: false});
   syncThemeUi();
   moveNavIndicator(false);
   moveSegmentThumb(false);
@@ -3376,3 +3401,455 @@ function showFormFeedback() {
   drillFeedbackPanel.hidden = false;
   drillFeedbackPanel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
 }
+
+/* ==================================================================
+   Authentication & Shooter Onboarding
+   ================================================================== */
+
+const landingPage = $('#landing-page');
+const appWorkspace = $('#app-workspace');
+
+const authModal = $('#auth-modal');
+const authModalClose = $('#auth-modal-close');
+const authToolbar = $('#auth-toolbar');
+const tabBtnLogin = $('#tab-btn-login');
+const tabBtnSignup = $('#tab-btn-signup');
+const formLogin = $('#form-login');
+const formSignup = $('#form-signup');
+const profileManager = $('#profile-manager');
+const formUpdateProfile = $('#form-update-profile');
+const loginAlert = $('#login-alert');
+const signupAlert = $('#signup-alert');
+const profileAlert = $('#profile-alert');
+const stepPane1 = $('#step-pane-1');
+const stepPane2 = $('#step-pane-2');
+const chipStep1 = $('#chip-step-1');
+const chipStep2 = $('#chip-step-2');
+const btnGotoStep2 = $('#btn-goto-step-2');
+const btnBackStep1 = $('#btn-back-step-1');
+const switchToSignup = $('#switch-to-signup');
+const switchToLogin = $('#switch-to-login');
+
+// Landing page CTA triggers
+const landingBtnLogin = $('#landing-btn-login');
+const landingBtnSignup = $('#landing-btn-signup');
+const heroActionSignup = $('#hero-action-signup');
+const heroActionLogin = $('#hero-action-login');
+const landingFooterSignup = $('#landing-footer-signup');
+
+function showLanding() {
+  if (landingPage) landingPage.hidden = false;
+  if (appWorkspace) appWorkspace.hidden = true;
+  document.title = 'Baseline Shot Lab · Pro Basketball Biomechanics';
+  window.scrollTo({top: 0});
+}
+
+function showWorkspace() {
+  if (landingPage) landingPage.hidden = true;
+  if (appWorkspace) appWorkspace.hidden = false;
+  const targetView = (!currentView || currentView === 'landing') ? 'new' : currentView;
+  setView(targetView, {push: true});
+}
+
+function getInitials(name) {
+  if (!name) return 'S';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function showAuthModal(mode = 'login') {
+  if (!authModal) return;
+  authModal.classList.remove('hidden');
+  authModal.removeAttribute('aria-hidden');
+
+  if (loginAlert) loginAlert.classList.add('hidden');
+  if (signupAlert) signupAlert.classList.add('hidden');
+  if (profileAlert) profileAlert.classList.add('hidden');
+
+  if (mode === 'profile' && currentAthlete) {
+    if (tabBtnLogin && tabBtnLogin.parentElement) tabBtnLogin.parentElement.classList.add('hidden');
+    formLogin?.classList.add('hidden');
+    formSignup?.classList.add('hidden');
+    profileManager?.classList.remove('hidden');
+    populateProfileManager(currentAthlete);
+    return;
+  }
+
+  if (tabBtnLogin && tabBtnLogin.parentElement) {
+    tabBtnLogin.parentElement.classList.remove('hidden');
+  }
+  profileManager?.classList.add('hidden');
+
+  if (mode === 'signup') {
+    switchAuthTab('signup');
+  } else {
+    switchAuthTab('login');
+  }
+}
+
+function hideAuthModal() {
+  if (!authModal) return;
+  authModal.classList.add('hidden');
+  authModal.setAttribute('aria-hidden', 'true');
+}
+
+function switchAuthTab(tab) {
+  if (tab === 'signup') {
+    tabBtnSignup?.classList.add('is-active');
+    tabBtnSignup?.setAttribute('aria-selected', 'true');
+    tabBtnLogin?.classList.remove('is-active');
+    tabBtnLogin?.setAttribute('aria-selected', 'false');
+    formSignup?.classList.remove('hidden');
+    formLogin?.classList.add('hidden');
+    goToSignupStep(1);
+  } else {
+    tabBtnLogin?.classList.add('is-active');
+    tabBtnLogin?.setAttribute('aria-selected', 'true');
+    tabBtnSignup?.classList.remove('is-active');
+    tabBtnSignup?.setAttribute('aria-selected', 'false');
+    formLogin?.classList.remove('hidden');
+    formSignup?.classList.add('hidden');
+  }
+}
+
+function goToSignupStep(step) {
+  if (step === 2) {
+    stepPane1?.classList.add('hidden');
+    stepPane2?.classList.remove('hidden');
+    chipStep1?.classList.remove('active');
+    chipStep2?.classList.add('active');
+  } else {
+    stepPane2?.classList.add('hidden');
+    stepPane1?.classList.remove('hidden');
+    chipStep2?.classList.remove('active');
+    chipStep1?.classList.add('active');
+  }
+}
+
+function populateProfileManager(athlete) {
+  if (!athlete) return;
+  const nameInput = $('#profile-name');
+  const playerIdInput = $('#profile-player-id');
+  const handSelect = $('#profile-handedness');
+  const skillSelect = $('#profile-skill-level');
+  const styleSelect = $('#profile-shot-style');
+  const heightInput = $('#profile-height');
+  const goalsInput = $('#profile-goals');
+  const headerSub = $('#profile-header-sub');
+
+  if (nameInput) nameInput.value = athlete.name || '';
+  if (playerIdInput) playerIdInput.value = athlete.player_id || '';
+  if (handSelect) handSelect.value = athlete.handedness || 'right';
+  if (skillSelect) skillSelect.value = athlete.skill_level || 'intermediate';
+  if (styleSelect) styleSelect.value = athlete.shot_style || 'jump_shot';
+  if (heightInput) heightInput.value = athlete.height_cm || '';
+  if (goalsInput) goalsInput.value = athlete.goals || '';
+  if (headerSub) {
+    headerSub.textContent = `Player ID: ${athlete.player_id} · Email: ${athlete.email}`;
+  }
+}
+
+function applyAthleteToSessionForm(athlete) {
+  if (!athlete) return;
+  const form = $('#upload-form');
+  if (!form) return;
+  const pid = form.querySelector('[name="player_id"]');
+  const hand = form.querySelector('[name="handedness"]');
+  const skill = form.querySelector('[name="skill_level"]');
+  const style = form.querySelector('[name="shot_style"]');
+  const goals = form.querySelector('[name="goals"]');
+
+  if (pid && athlete.player_id) pid.value = athlete.player_id;
+  if (hand && athlete.handedness) hand.value = athlete.handedness;
+  if (skill && athlete.skill_level) skill.value = athlete.skill_level;
+  if (style && athlete.shot_style) style.value = athlete.shot_style;
+  if (goals && athlete.goals) goals.value = athlete.goals;
+
+  const progressPlayer = $('#progress-player');
+  if (progressPlayer && athlete.player_id) {
+    progressPlayer.value = athlete.player_id;
+  }
+}
+
+function renderAuthToolbar() {
+  if (!authToolbar) return;
+  authToolbar.innerHTML = '';
+  if (currentAthlete) {
+    const badge = document.createElement('button');
+    badge.type = 'button';
+    badge.className = 'athlete-user-badge';
+    badge.title = 'Shooter Profile & Account Settings';
+    badge.innerHTML = `
+      <span class="athlete-user-avatar">${getInitials(currentAthlete.name)}</span>
+      <span class="athlete-user-name">${currentAthlete.name}</span>
+      <span class="athlete-user-skill">${currentAthlete.skill_level || 'Shooter'}</span>
+    `;
+    badge.addEventListener('click', () => showAuthModal('profile'));
+    authToolbar.appendChild(badge);
+  } else {
+    const btnLogin = document.createElement('button');
+    btnLogin.type = 'button';
+    btnLogin.className = 'btn-auth-trigger';
+    btnLogin.id = 'btn-open-login';
+    btnLogin.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#i-user"/></svg><span>Sign In</span>`;
+    btnLogin.addEventListener('click', () => showAuthModal('login'));
+
+    const btnSignup = document.createElement('button');
+    btnSignup.type = 'button';
+    btnSignup.className = 'btn-auth-trigger btn-auth-primary';
+    btnSignup.id = 'btn-open-signup';
+    btnSignup.innerHTML = `<span>Join Lab</span>`;
+    btnSignup.addEventListener('click', () => showAuthModal('signup'));
+
+    authToolbar.appendChild(btnLogin);
+    authToolbar.appendChild(btnSignup);
+  }
+}
+
+async function checkAuthStatus() {
+  try {
+    const resp = await fetch('/api/auth/me');
+    if (resp.ok) {
+      const data = await resp.json();
+      currentAthlete = data.user || null;
+      renderAuthToolbar();
+      if (currentAthlete) {
+        applyAthleteToSessionForm(currentAthlete);
+        showWorkspace();
+      } else {
+        showLanding();
+      }
+    } else {
+      showLanding();
+    }
+  } catch (err) {
+    console.debug('Auth check offline or unavailable:', err);
+    showLanding();
+  }
+}
+
+// Wire landing triggers
+landingBtnLogin?.addEventListener('click', () => showAuthModal('login'));
+heroActionLogin?.addEventListener('click', () => showAuthModal('login'));
+
+landingBtnSignup?.addEventListener('click', () => showAuthModal('signup'));
+heroActionSignup?.addEventListener('click', () => showAuthModal('signup'));
+landingFooterSignup?.addEventListener('click', () => showAuthModal('signup'));
+
+// Wire modal buttons
+authModalClose?.addEventListener('click', hideAuthModal);
+authModal?.addEventListener('click', e => {
+  if (e.target === authModal) hideAuthModal();
+});
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && authModal && !authModal.classList.contains('hidden')) {
+    hideAuthModal();
+  }
+});
+
+tabBtnLogin?.addEventListener('click', () => switchAuthTab('login'));
+tabBtnSignup?.addEventListener('click', () => switchAuthTab('signup'));
+switchToSignup?.addEventListener('click', () => switchAuthTab('signup'));
+switchToLogin?.addEventListener('click', () => switchAuthTab('login'));
+
+// Step 1 to Step 2
+btnGotoStep2?.addEventListener('click', () => {
+  const name = $('#signup-name')?.value.trim();
+  const email = $('#signup-email')?.value.trim();
+  const pwd = $('#signup-password')?.value;
+
+  if (signupAlert) signupAlert.classList.add('hidden');
+  if (!name) {
+    showSignupAlert('Please enter your full name.');
+    return;
+  }
+  if (!email || !email.includes('@')) {
+    showSignupAlert('Please enter a valid email address.');
+    return;
+  }
+  if (!pwd || pwd.length < 6) {
+    showSignupAlert('Password must be at least 6 characters.');
+    return;
+  }
+  goToSignupStep(2);
+});
+
+btnBackStep1?.addEventListener('click', () => goToSignupStep(1));
+
+function showLoginAlert(msg, isSuccess = false) {
+  if (!loginAlert) return;
+  loginAlert.textContent = msg;
+  loginAlert.className = `auth-alert ${isSuccess ? 'is-success' : ''}`;
+  loginAlert.classList.remove('hidden');
+}
+
+function showSignupAlert(msg, isSuccess = false) {
+  if (!signupAlert) return;
+  signupAlert.textContent = msg;
+  signupAlert.className = `auth-alert ${isSuccess ? 'is-success' : ''}`;
+  signupAlert.classList.remove('hidden');
+}
+
+function showProfileAlert(msg, isSuccess = false) {
+  if (!profileAlert) return;
+  profileAlert.textContent = msg;
+  profileAlert.className = `auth-alert ${isSuccess ? 'is-success' : ''}`;
+  profileAlert.classList.remove('hidden');
+}
+
+// Login submission
+formLogin?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = $('#login-email')?.value.trim();
+  const password = $('#login-password')?.value;
+  const btn = $('#btn-login-submit');
+
+  if (!email || !password) {
+    showLoginAlert('Please enter both email and password.');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Verifying credentials...';
+  if (loginAlert) loginAlert.classList.add('hidden');
+
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Shotlab': '1'},
+      body: JSON.stringify({email, password})
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showLoginAlert(data.error || 'Login failed. Please check credentials.');
+      return;
+    }
+    currentAthlete = data.user;
+    renderAuthToolbar();
+    applyAthleteToSessionForm(currentAthlete);
+    showWorkspace();
+    toast(`Welcome back, ${currentAthlete.name}!`);
+    hideAuthModal();
+  } catch (err) {
+    showLoginAlert('Network error while connecting to Shot Lab server.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In to Shot Lab';
+  }
+});
+
+// Signup & Onboarding submission
+formSignup?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('#signup-name')?.value.trim();
+  const player_id = $('#signup-player-id')?.value.trim();
+  const email = $('#signup-email')?.value.trim();
+  const password = $('#signup-password')?.value;
+  const handedness = $('#signup-handedness')?.value;
+  const skill_level = $('#signup-skill-level')?.value;
+  const shot_style = $('#signup-shot-style')?.value;
+  const height_cm = parseFloat($('#signup-height')?.value) || null;
+  const wingspan_cm = parseFloat($('#signup-wingspan')?.value) || null;
+  const goals = $('#signup-goals')?.value.trim() || null;
+  const btn = $('#btn-finish-signup');
+
+  btn.disabled = true;
+  btn.textContent = 'Creating shooter profile...';
+  if (signupAlert) signupAlert.classList.add('hidden');
+
+  const payload = {
+    name, player_id, email, password,
+    handedness, skill_level, shot_style,
+    height_cm, wingspan_cm, goals,
+    onboarding_completed: true
+  };
+
+  try {
+    const resp = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Shotlab': '1'},
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showSignupAlert(data.error || 'Failed to create athlete account.');
+      goToSignupStep(1);
+      return;
+    }
+    currentAthlete = data.user;
+    renderAuthToolbar();
+    applyAthleteToSessionForm(currentAthlete);
+    showWorkspace();
+    toast(`Welcome to Shot Lab, ${currentAthlete.name}! Profile initialized.`);
+    hideAuthModal();
+  } catch (err) {
+    showSignupAlert('Network error while registering account.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Complete Onboarding & Sign Up';
+  }
+});
+
+// Profile update submission
+formUpdateProfile?.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!currentAthlete) return;
+  const name = $('#profile-name')?.value.trim();
+  const handedness = $('#profile-handedness')?.value;
+  const skill_level = $('#profile-skill-level')?.value;
+  const shot_style = $('#profile-shot-style')?.value;
+  const height_cm = parseFloat($('#profile-height')?.value) || null;
+  const goals = $('#profile-goals')?.value.trim() || null;
+  const btn = $('#btn-save-profile');
+
+  btn.disabled = true;
+  btn.textContent = 'Saving changes...';
+  if (profileAlert) profileAlert.classList.add('hidden');
+
+  const payload = {name, handedness, skill_level, shot_style, height_cm, goals};
+
+  try {
+    const resp = await fetch('/api/auth/profile', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-Shotlab': '1'},
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showProfileAlert(data.error || 'Could not save profile changes.');
+      return;
+    }
+    currentAthlete = data.user;
+    renderAuthToolbar();
+    applyAthleteToSessionForm(currentAthlete);
+    showProfileAlert('Profile updated successfully!', true);
+    toast('Shooter profile saved.');
+    setTimeout(() => hideAuthModal(), 900);
+  } catch (err) {
+    showProfileAlert('Network error while saving profile.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Profile Changes';
+  }
+});
+
+// Logout
+$('#btn-logout-action')?.addEventListener('click', async () => {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: {'X-Shotlab': '1'}
+    });
+  } catch { /* proceed with client logout */ }
+  currentAthlete = null;
+  renderAuthToolbar();
+  hideAuthModal();
+  showLanding();
+  toast('Signed out from Shot Lab.');
+});
+
+// Check auth status on launch
+checkAuthStatus();
+
+
