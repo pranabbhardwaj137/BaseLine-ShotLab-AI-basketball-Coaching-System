@@ -12,7 +12,7 @@ deterministic: the same report and the same choices always give the same workout
 | `configs/workout_catalog.json` | Editable exercise catalog: 121 exercises across 9 equipment groups, dosing, areas and rep cadence. 102 exercises map to a demonstration video. 19 have no video yet (for example plank, side plank, bird dog, Pallof press, step-up, single-leg balance, landing stick, marching, arm circles and leg swings). The planner does not prescribe those 19. |
 | `src/basketball/workout/catalog.py` | Loads and validates the catalog. Resolves an exercise **id** to a video file inside `workout/`. |
 | `src/basketball/workout/planner.py` | Validates preferences, links report findings to training areas, selects exercises, doses them and computes the duration. |
-| `src/basketball/workout/progress.py` | Validates player state and progress, defines the final-10% voice rule, and builds the end-of-workout summary. |
+| `src/basketball/workout/progress.py` | Validates player state and progress, documents the spoken repetition count (`spoken_rep_numbers`), and builds the end-of-workout summary. |
 | `src/basketball/persistence/shot_lab_db.py` | Adds the `workout_plans` table (schema v8). Deleting a session also deletes its workouts. |
 | `src/basketball/app/web_app.py` | Adds the workout routes (below) and the `--workout-dir` option. |
 | `web/workout.js`, `web/index.html`, `web/app.js`, `web/app.css` | Workout page: setup stages A–D, plan review, guided player, feedback and summary. |
@@ -89,9 +89,20 @@ work         = seconds (timed) or ceil(reps × cadence)   (× 2 for exercises do
 plan total   = sum of item seconds
 ```
 
-Rests come from `dosing` in the catalog, so they differ by exercise type. For example, compound
-strength rests 75–120 s between sets, core rests 30 s, and conditioning rests 20–30 s. The warm-up ends
-with a 30 s transition. There is no rest after the last main exercise or after the final item.
+Rest is exercise-specific. The base comes from `dosing` in the catalog, per exercise type and fitness
+level. For example, compound strength rests 75–120 s between sets, core 30 s and conditioning
+20–30 s. The planner then adjusts it (`_finalize_rest` in `planner.py`):
+
+| Adjustment | Applies to | Rest between sets |
+|---|---|---|
+| Moderate or high impact (landing, plyometric stress) | Sets of that exercise | +15 s |
+| Compound strength with heavier external load (barbell, Smith, machine) | Sets of that exercise | +15 s |
+| 4 or more sets | Sets of that exercise | +10 s |
+| Pain or a limitation reported | Every set; main exercises also get +15 s after them | +15 s |
+
+Rest between sets is capped at 180 s and rest after an exercise at 120 s. Each plan item carries
+`rest_basis`, a sentence shown under **Why this exercise › Rest**. The warm-up ends with a 30 s
+transition. There is no rest after the last main exercise or after the final item.
 
 The planner never returns less than 20 minutes or less than the requested length. If the plan is too
 short, it adds, in order:
@@ -121,12 +132,28 @@ the plan and the actual position.
 - **Counting.** Repetitions are a *guided count* at the planned cadence. The app does not detect or
   verify the movement, and the summary says so.
 - **Voice.** It uses the browser's `speechSynthesis` and has no other dependencies.
-  - The exercise name is spoken once, when the exercise starts.
-  - During a set, only the last `max(1, ceil(N × 0.10))` numbers are spoken, counting down. For
-    N = 50 that is "5, 4, 3, 2, 1"; for N = 10 it is "1".
-  - Rest is silent.
-  - Pause, skip and end cancel speech. The mute button stops speech.
-  - Spoken numbers and announced exercises are saved, so a reload never repeats them.
+  - **Exercise name:** spoken once, when the exercise starts. After a rest, it is part of the
+    end-of-rest announcement and is not repeated.
+  - **Repetitions:** every repetition is counted aloud, counting down, as it starts: "10, 9, 8 … 2, 1".
+    The on-screen counter shows the same number at the same moment.
+  - **Each-side exercises:** each side counts down separately: "10 … 1", "Switch sides. 10", "9 … 1".
+  - **Timed sets:** the cues are the duration at the start ("45 seconds"), every 10 seconds (not
+    within 8 seconds of the start), "Switch sides" at halfway for each-side holds, then "5, 4, 3, 2, 1".
+    The on-screen countdown shows whole seconds remaining, so it matches the voice.
+  - **Start of rest:** one announcement with the planned duration ("Rest for 30 seconds", or "Rest for
+    2 minutes" for longer rests).
+  - **During rest:** nothing is spoken; the countdown is on screen only. **Add 15 seconds** extends the
+    rest silently.
+  - **End of rest:** one announcement, then the next exercise starts:
+    - "Rest complete. Next exercise: Calf raise.";
+    - between sets: "Rest complete. Next set: Squat, set 2 of 3.";
+    - after **Skip rest**: "Rest skipped. Next exercise: …".
+  - **No overlap:** utterances are queued, so they never overlap. A newer count replaces an older one
+    that has not been spoken yet.
+  - **Cancelling:** pause, skip, end and mute cancel speech immediately.
+  - **No repeats:** every cue said (or due while muted) is saved with the workout state, together
+    with "rest already announced". Resuming, un-muting or reloading never repeats or bursts old cues.
+  - **Mute:** with the voice muted, counting continues on screen only.
 - **Controls.**
   - During work: Pause/Resume, Set done, Skip set, Skip exercise, End workout.
   - During rest: Skip rest, Add 15 seconds.
@@ -162,7 +189,10 @@ PYTHONPATH=src:. python3 -m pytest -q tests/unit/test_workout_planner.py -k vide
 - The demonstration videos are H.264 MP4s and should play in Safari and Chrome on macOS. This was not
   verified in the agent's workspace, whose Chromium has no H.264 decoder. The automated tests use
   temporary VP9 stand-ins to check loop and pause logic only.
-- Voice was tested with a recording stand-in for `speechSynthesis`. Real audio, voice choice and the
+- Voice timing and wording were tested with a recording stand-in for `speechSynthesis` under a
+  controlled clock. How fast a real voice speaks varies by device. At the fastest cadence (2 s per
+  repetition) a slow voice may fall slightly behind; the queue then drops the stale number rather
+  than letting speech pile up. Real audio, voice choice and the
   iOS "speech needs a user gesture first" behaviour must be checked on real devices.
 - 203 of the 305 videos are not mapped to catalog entries yet. Mapping more of them, especially
   ankle-friendly and seated options, widens the choices for restrictive limitations. This needs no

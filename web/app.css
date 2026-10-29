@@ -794,7 +794,64 @@ details[open] > summary::after { transform: rotate(225deg) translate(-2px, 0); }
   transform: translateY(-1px);
   box-shadow: 0 6px 22px rgba(249, 115, 22, 0.65);
 }
-.camera-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+/* camera recorder (10): real frame shape, HUD only while live, controls sized for thumbs */
+.camera-viewport {
+  container-type: inline-size;
+  aspect-ratio: var(--cam-ratio, 16 / 9);
+  max-height: min(72vh, 640px);
+}
+.camera-preview, .camera-review { object-fit: contain; background: #000; }
+.camera-review { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; }
+.camera-viewport:not(.is-live) :is(.camera-hud-top, .camera-hud-bottom, .hud-vertical-level, .hud-outcome-banner, .camera-overlay) { display: none; }
+.camera-idle { display: grid; justify-items: center; gap: 6px; color: #94a3b8; text-align: center; padding: 24px; }
+.camera-idle .icon { width: 36px; height: 36px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.camera-idle p { margin: 0; font-size: .9rem; }
+.camera-idle[hidden] { display: none; }
+.rec-indicator {
+  position: absolute; z-index: 5; left: 50%; top: 66px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+  background: rgba(15, 23, 42, .82); color: #fff; font: 750 .86rem/1 var(--font); letter-spacing: .06em;
+  font-variant-numeric: tabular-nums; pointer-events: none;
+}
+.rec-indicator i { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: rec-blink 1.2s steps(2, start) infinite; }
+.rec-indicator.is-paused i { background: #f59e0b; animation: none; }
+@keyframes rec-blink { to { visibility: hidden; } }
+.camera-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.camera-controls .btn { min-height: 46px; }
+.camera-controls .cam-main { flex: 1 1 200px; }
+.btn-stop { background: #be123c; color: #fff; flex: 1 1 140px; }
+.btn-stop i { width: 11px; height: 11px; border-radius: 2px; background: #fff; }
+.btn-stop:hover:not(:disabled) { background: #9f1239; }
+.camera-secure-note { margin: 0; line-height: 1.5; }
+.camera-secure-note code { overflow-wrap: anywhere; }
+/* small viewports (phones, narrow cards): keep the frame visible, drop non-essential HUD parts */
+@container (max-width: 640px) {
+  .hud-pill-dual, .hud-vertical-level { display: none; }
+  .camera-hud-top { top: 10px; left: 10px; right: 10px; }
+  .camera-hud-bottom { left: 10px; right: 10px; bottom: 10px; gap: 8px; align-items: center; }
+  .hud-stats-card { gap: 14px; padding: 6px 14px; }
+  .stat-number { font-size: 1.1rem; }
+  .stat-label { font-size: .55rem; }
+  .hud-actions { gap: 6px; }
+  .btn-hud-action, .btn-hud-finish { width: 40px; height: 40px; padding: 0; justify-content: center; }
+  .btn-hud-action span, .btn-hud-finish span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .btn-hud-round { width: 38px; height: 38px; }
+  .hud-pill-badge { font-size: .72rem; padding: 6px 10px; }
+  .rec-indicator { top: 12px; }
+}
+@container (max-width: 440px) {
+  .camera-viewport.is-recording #hud-hoop-text { display: none; }
+  .camera-viewport.is-recording .hud-pill-badge { padding: 8px; }
+}
+@container (max-width: 340px) {
+  .stat-col.stat-acc { display: none; }
+}
+@media (max-width: 760px) {
+  .camera-viewport { max-height: 64vh; }
+  .camera-controls { display: grid; grid-template-columns: 1fr 1fr; }
+  .camera-controls .cam-main, .camera-controls .btn-stop:only-child { grid-column: 1 / -1; }
+  .camera-controls .btn { width: 100%; min-height: 48px; }
+}
 .timeline-dip { position: absolute; top: 0; bottom: 0; width: 3px; background: #38bdf8; z-index: 1; pointer-events: none; border-radius: 2px; }
 .swatch-dip { width: 3px !important; background: #38bdf8; }
 .auto-outcome-banner {
@@ -1562,3 +1619,12 @@ table { width: 100%; border-collapse: collapse; font-size: .88rem; }
   .conf, .chip, .focus-box, .pain-flagged, .warn, .finding-kind, .facts dt { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   a { color: #111; text-decoration: none; }
 }
+code.fingerprint { display: inline-block; max-width: 100%; overflow-wrap: anywhere; font-size: .72rem; }
+.chat-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.chat-suggestions .btn { white-space: normal; text-align: left; }
+.chat-status { color: var(--review-ink); font-weight: 600; }
+.camera-diagnostics { font-size: .84rem; color: var(--fg-2); }
+.camera-diagnostics summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+.camera-diagnostics dl { display: grid; grid-template-columns: minmax(120px, 34%) 1fr; gap: 4px 12px; margin: 8px 0 0; }
+.camera-diagnostics dt { font-weight: 650; color: var(--fg); }
+.camera-diagnostics dd { margin: 0; overflow-wrap: anywhere; }

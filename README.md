@@ -38,6 +38,164 @@ Open **`http://127.0.0.1:8000/`** in your browser to upload clips, view biomecha
 
 **Personalized workout:** after a report is ready, select **Generate My Personalized Workout** on the Report page. The demonstration videos are read from `workout/` in the project root (not in Git); point elsewhere with `--workout-dir PATH`. Design, rules and limits: [`docs/reference/WORKOUT_COACH.md`](docs/reference/WORKOUT_COACH.md).
 
+#### Phone camera over Wi-Fi (HTTPS)
+
+Browsers only allow camera access on secure pages: `https://…` or `http://localhost`. On the computer
+running Shot Lab, `http://127.0.0.1:8765` can already use its own camera. A phone, or another laptop,
+opening `http://<computer's Wi-Fi IP>:8765` is **not** a secure page. The browser then hides the camera
+API, and recording cannot work. Uploading files still works over plain http.
+
+Start Shot Lab with built-in HTTPS:
+
+```bash
+python -m pip install cryptography          # once; needed by --https
+python web_app.py --lan --https             # macOS/Linux (Windows: same command)
+```
+
+The terminal prints:
+- the `https://<Wi-Fi IP>:8765/` address and the access code;
+- a **phone setup page**, `http://<Wi-Fi IP>:8766/`. It is plain http and serves only the public certificate
+  and the steps below; it cannot open Shot Lab;
+- the certificate file (`user_data/certs/shotlab-local-ca.crt`) and its SHA-256 **fingerprint**.
+
+The certificate is created on first start and kept for 10 years. Each phone must **install and trust it
+once**. Until then, the phone's browser refuses the connection. On the computer this shows as
+`SSLV3_ALERT_CERTIFICATE_UNKNOWN` / `TLSV1_ALERT_UNKNOWN_CA` lines (Shot Lab now prints one plain-English
+`[https] <phone IP>: …` line instead). **Never tap through a certificate warning**; install the certificate
+instead:
+
+- **iPhone / iPad: use Safari** (Chrome on iOS uses the same trust store).
+  1. Open the setup page `http://<Wi-Fi IP>:8766/` and tap **Download the Shot Lab certificate**, then
+     **Allow**. Alternatively, AirDrop `user_data/certs/shotlab-local-ca.crt` from the Mac.
+  2. Open **Settings › General › VPN & Device Management** (or tap **Profile Downloaded** at the top of
+     Settings). Choose **Shot Lab Local CA**, tap **Install** and enter your passcode.
+  3. Open **Settings › General › About › Certificate Trust Settings**. Turn on **Shot Lab Local CA** and
+     confirm. *This step is easy to miss; without it the browser still refuses the connection.*
+  4. Check the fingerprint: **Settings › General › VPN & Device Management › Shot Lab Local CA › More
+     Details › SHA-256** must equal the fingerprint printed on the computer.
+- **Android: use Chrome.**
+  1. Open the setup page `http://<Wi-Fi IP>:8766/` and tap **Download the Shot Lab certificate**.
+  2. Open **Settings**, search for **"CA certificate"** and choose **Install a certificate › CA certificate**.
+     The path is usually **Security & privacy › More security settings › Encryption & credentials**.
+     Accept the warning and pick `shotlab-local-ca.crt`. Android may ask you to set a screen lock first.
+  3. Check it under **Trusted credentials › User**.
+- **Mac, only if you open Shot Lab by its Wi-Fi address** (`http://127.0.0.1:8765` needs nothing):
+  1. Double-click `shotlab-local-ca.crt`.
+  2. In Keychain Access, open it and set **Trust › When using this certificate › Always Trust**.
+
+Then open the `https://` address, enter the access code, choose **Record with camera** and allow the
+camera.
+
+Recording works like this:
+- **Controls:**
+  - **Switch camera** (shown when the device has more than one camera);
+  - **Start recording**, **Pause** / **Resume** (where the browser supports it) and **Stop**;
+  - watch the clip back, then **Retake** or **Analyze this session**.
+- **Recording format:** Safari records MP4 (H.264); Chrome, Edge and Android record WebM. Both go
+  through the same analysis pipeline. The limit is 250 MB or 10 minutes.
+- **Screen lock:** keep the phone's screen on. Locking it, or switching apps, stops the camera; what
+  was already recorded is kept for review.
+
+**Security:**
+- The certificate authority made by `--https` is **name-constrained**: it can only vouch for private
+  network addresses, `localhost` and `.local` names. Even if its key leaked, it could not be used to
+  impersonate a public website.
+- Private keys stay in `user_data/certs/` (git-ignored, owner-only permissions) and are never served.
+  Only the public certificate is offered at `/shotlab-ca.crt`.
+- `--lan` still binds only to private addresses and still requires the access code. Nothing is exposed
+  to the internet.
+
+**Changing or removing the certificate:**
+- When the computer's Wi-Fi address changes, the server certificate is renewed automatically.
+  Phones do not need to reinstall anything.
+- To revoke trust, remove the profile or certificate on each device. To start over, delete
+  `user_data/certs/`.
+
+You can use your own certificate instead, for example one made with mkcert:
+`--tls-cert cert.pem --tls-key key.pem`.
+
+**Troubleshooting:**
+- **Terminal shows `[https] <IP>: … CERTIFICATE_UNKNOWN / UNKNOWN_CA`:** that phone has not installed *and*
+  trusted the certificate. Repeat the steps above, including **Certificate Trust Settings** on iPhone.
+  The computer's **Use it from your phone** panel lists such devices too.
+- **`[https] <IP>: HTTP_REQUEST`:** the phone used `http://…:8765`; use `https://…:8765`.
+- **The Wi-Fi address changed:** restart Shot Lab. The server certificate is renewed automatically, and
+  phones keep trusting the same CA.
+- **The address printed is not your Wi-Fi network** (for example a VPN):
+  1. Start with `--host <Wi-Fi IP>`.
+  2. Use an address listed under "Covers".
+- **"Camera recording is not available on this http:// address":** open the `https://` address instead.
+- **Anything else:** open **Camera diagnostics** under the camera. It shows:
+  - whether the page is a secure context;
+  - whether `getUserMedia` and `MediaRecorder` are available;
+  - which recording formats the browser supports;
+  - the last camera error.
+- **"Camera permission was blocked":**
+  - Safari: **aA › Website Settings › Camera › Allow**;
+  - Chrome: the icon left of the address › **Permissions**.
+- **macOS firewall prompt:** allow incoming connections for Python.
+- **Certificate warning on the phone:** the certificate is not trusted yet; repeat the trust steps for
+  that device and compare the fingerprint. Do not continue past the warning.
+- **Setup page port is in use:** pass `--setup-port <port>`; `--setup-port 0` turns the setup page off.
+
+#### AI coach chat (Grok)
+
+The **Ask about this session** card on the Review screen can explain your results and suggest training.
+It uses xAI's Grok through the official API:
+- endpoint: `POST https://api.x.ai/v1/responses`;
+- authentication: `Authorization: Bearer $XAI_API_KEY`;
+- documentation: [docs.x.ai](https://docs.x.ai/docs/guides/chat).
+
+Each question is answered from this session's measured results:
+- the rule-based findings and their confidence;
+- the metrics;
+- the report's technical summary, correction plan and practice checklist;
+- the latest workout plan, if there is one;
+- the recording limits.
+
+Only text summaries are sent. Video, frames and body landmarks never leave the computer.
+
+1. Create an API key at [console.x.ai](https://console.x.ai). API use is **billed to your xAI account**:
+   the key only works for answers once the account has credits.
+2. In the project folder, create `.env` from the template:
+   ```bash
+   cp .env.example .env        # Windows: copy .env.example .env
+   # edit .env: XAI_API_KEY=xai-...   (optional: XAI_MODEL=grok-4.7)
+   ```
+   - `.env` is git-ignored.
+   - Variables already set in the shell take precedence.
+   - Never put the key in code, HTML or a commit.
+3. Check the key without starting the app:
+   ```bash
+   python -m basketball.coaching.llm_coach            # lists models (free): "Key check: key_ok …"
+   python -m basketball.coaching.llm_coach --answer   # asks for a one-word reply (uses a few billed tokens)
+   ```
+   Run these from the project folder with `PYTHONPATH=src`, or after `pip install -e .`.
+4. Start the app as usual (`python web_app.py --lan --https`). Chat turns on automatically when
+   `XAI_API_KEY` is set. The start-up log shows:
+   - `AI coach chat: enabled - xAI Grok, model grok-4.7`;
+   - a moment later, `AI coach chat key check: …`.
+   - To keep chat off, use `--disable-llm-chat`.
+
+**Model:**
+- The default is `grok-4.7`, the flagship model in xAI's model list at the time of writing.
+- Set `XAI_MODEL` to any model your account lists in the xAI Console.
+- If the key check reports `model_not_listed`, it also prints the models your account has.
+
+**Errors are shown in the chat card and on the computer's log:**
+
+| Message | Cause |
+|---|---|
+| "xAI rejected the API key" | Invalid key (HTTP 401) |
+| "Your xAI account has no usable credits" | No credits, billing or spending limit |
+| "not permitted / blocked" | HTTP 403 |
+| "could not find the model" | HTTP 404; set `XAI_MODEL` |
+| "rate limit reached" | HTTP 429 |
+| "took too long" | Timeout after 60 s |
+| "Could not reach api.x.ai" | No internet connection |
+
+Gemini is still available with `--enable-llm-chat --llm-provider gemini` and `GEMINI_API_KEY`.
+
 #### Desktop HUD & Live Pose Analysis
 ```powershell
 # Analyze a sample video clip with default ball & rim tracking

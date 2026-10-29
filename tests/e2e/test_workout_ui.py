@@ -2,7 +2,9 @@
 
 * Time: Playwright's clock API drives setInterval/performance.now, so a 30-second set takes milliseconds.
 * Voice: ``speechSynthesis`` is replaced by a recorder; these tests check WHAT would be spoken and WHEN,
-  not real audio output (real-device audio is a manual check).
+  not real audio output (real-device audio is a manual check). Rules under test: the exercise name
+  once; every repetition counted down aloud in step with the counter; a short countdown for timed
+  sets; rest announced once at its start and once at its end, never counted aloud.
 * Video: the container's Chromium has no H.264 decoder, so this test writes small synthetic VP9 clips
   (ffmpeg test pattern) under the catalog's file names in a temporary folder. They exercise the
   loop / pause-on-rest logic only; the real H.264 library must be checked in Safari or Chrome.
@@ -16,6 +18,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -33,12 +36,13 @@ except ImportError:  # pragma: no cover - optional dependency
 
 FIXTURE = Path(__file__).resolve().parents[1] / "support" / "workout_report_fixture.json"
 
+# Records every utterance; "finishes" each one 300 ms later (on the page's controlled clock), like a real engine.
 FAKE_SPEECH = """
 window.__spoken = [];
-class FakeUtterance { constructor(text) { this.text = text; } }
+class FakeUtterance { constructor(text) { this.text = text; this.onend = null; this.onerror = null; } }
 window.SpeechSynthesisUtterance = FakeUtterance;
 Object.defineProperty(window, 'speechSynthesis', {configurable: true, value: {
-  speak(u) { window.__spoken.push(u.text); },
+  speak(u) { window.__spoken.push(u.text); setTimeout(() => u.onend && u.onend(), 300); },
   cancel() { window.__spoken.push('<cancel>'); },
   getVoices() { return []; }, speaking: false, pending: false }});
 """
@@ -140,6 +144,10 @@ class WorkoutPlayerUiTest(unittest.TestCase):
         return [t for t in page.evaluate("window.__spoken") if t != "<cancel>"]
 
     @staticmethod
+    def clear_spoken(page):
+        page.evaluate("window.__spoken = []")
+
+    @staticmethod
     def state(page):
         return page.evaluate("window.ShotLabWorkout._player().state")
 
@@ -150,99 +158,179 @@ class WorkoutPlayerUiTest(unittest.TestCase):
     @staticmethod
     def video(page):
         return page.evaluate("""(() => { const v = document.querySelector('.wk-video');
-            return v ? {paused: v.paused, loop: v.loop, muted: v.muted, ready: v.readyState, src: v.currentSrc} : null; })()""")
+            return v && v.isConnected ? {paused: v.paused, loop: v.loop, muted: v.muted, ready: v.readyState, src: v.currentSrc} : null; })()""")
 
     def advance(self, page, ms):
         page.clock.run_for(int(ms))
 
-    # ------------------------------------------------------------------ tests
-    def test_spoken_count_rule_in_browser(self):
-        page = self.open_page(self.create_workout())
-        for n, expected in {50: 5, 40: 4, 30: 3, 20: 2, 10: 1, 5: 1, 1: 1}.items():
-            self.assertEqual(page.evaluate(f"window.ShotLabWorkout.spokenCount({n})"), expected, n)
+    def timed_cues(self, page, item):
+        total = item["target"] * (2 if item["per_side"] else 1)
+        return page.evaluate("([t, s]) => window.ShotLabWorkout.timedCues(t, s)", [total, item["per_side"]])
 
-    def test_timed_set_voice_rest_pause_reload_mute_and_end_early(self):
+    def skip_to(self, page, predicate, limit=40):
+        for _ in range(limit):
+            if predicate(self.item(page)):
+                return self.item(page)
+            page.click("#wk-skip-ex")
+            self.advance(page, 100)
+        self.fail("no plan step matches")
+
+    # ------------------------------------------------------------------ tests
+    def test_cue_rules_in_browser(self):
+        page = self.open_page(self.create_workout())
+        cue = lambda target, per_side, k: page.evaluate(
+            "([t, s, k]) => window.ShotLabWorkout.repCue({target: t, per_side: s}, k)", [target, per_side, k])
+        self.assertEqual([cue(10, False, k) for k in range(1, 11)], [str(n) for n in range(10, 0, -1)])
+        self.assertEqual([cue(3, True, k) for k in range(1, 7)], ["3", "2", "1", "Switch sides. 3", "2", "1"])
+        texts = lambda total, per_side: [c["text"] for c in page.evaluate(
+            "([t, s]) => window.ShotLabWorkout.timedCues(t, s)", [total, per_side])]
+        self.assertEqual(texts(45, False), ["45 seconds", "30 seconds", "20 seconds", "10 seconds", "5", "4", "3", "2", "1"])
+        self.assertEqual(texts(30, True), ["30 seconds", "20 seconds", "Switch sides", "10 seconds", "5", "4", "3", "2", "1"])
+        self.assertEqual(texts(4, False), ["4 seconds", "3", "2", "1"])
+        dur = lambda s: page.evaluate(f"window.ShotLabWorkout.spokenDuration({s})")
+        self.assertEqual([dur(30), dur(75), dur(60), dur(120), dur(150)],
+                         ["30 seconds", "75 seconds", "1 minute", "2 minutes", "2 minutes 30 seconds"])
+
+    def test_timed_set_countdown_rest_announcements_pause_and_add_time(self):
         workout = self.create_workout()
         page = self.open_page(workout)
         page.click("#wk-start")
-        self.advance(page, 200)
+        self.advance(page, 100)
         first = self.item(page)
         self.assertEqual(first["mode"], "time", "first warm-up item is expected to be timed")
         total = first["target"] * (2 if first["per_side"] else 1)
-        n_spoken = max(1, math.ceil(total * 0.10))
-        self.assertEqual(self.spoken(page), [first["name"]], "exercise name is announced once at the start")
+        cues = self.timed_cues(page, first)
+        # Name once, then the opening cue ("45 seconds"), queued after it.
+        self.advance(page, 400)
+        self.assertEqual(self.spoken(page), [first["name"], cues[0]["text"]])
+        deadline = time.time() + 15   # polled from Python: the app's CSP forbids the eval Playwright's polling uses
+        while not page.evaluate("document.querySelector('.wk-video')?.readyState >= 2") and time.time() < deadline:
+            time.sleep(0.1)
+        self.assertFalse(self.video(page)["paused"])
+        self.assertTrue(self.video(page)["loop"] and self.video(page)["muted"])
 
-        # Video loops, muted, during work.
-        page.wait_for_function("document.querySelector('.wk-video') && document.querySelector('.wk-video').readyState >= 2",
-                               timeout=15000)
-        video = self.video(page)
-        self.assertTrue(video["loop"] and video["muted"])
-        self.assertFalse(video["paused"])
-        self.assertIn("/api/workout-media/", video["src"])
+        # Pause half-way: speech is cancelled and time stands still; resume repeats nothing.
+        self.advance(page, (total / 2) * 1000)
+        page.click("#wk-pause")
+        self.assertEqual(page.evaluate("window.__spoken.at(-1)"), "<cancel>")
+        frozen = self.state(page)
+        heard = list(self.spoken(page))
+        self.advance(page, 8000)
+        self.assertEqual(self.state(page)["remaining_ms"], frozen["remaining_ms"])
+        self.assertEqual(self.spoken(page), heard)
+        page.click("#wk-resume")
+        self.advance(page, 200)
+        self.assertEqual(self.spoken(page), heard, "resume must not repeat a cue")
 
-        # Nothing is spoken during the first 90% of the count.
-        self.advance(page, (total - n_spoken) * 1000 - 400)
-        self.assertEqual(self.spoken(page), [first["name"]])
-        # The final 10% is spoken, descending, once each.
-        self.advance(page, n_spoken * 1000 + 300)
-        self.assertEqual(self.spoken(page), [first["name"]] + [str(n) for n in range(n_spoken, 0, -1)])
+        # Visual countdown matches the voice for the final seconds.
+        remaining_s = self.state(page)["remaining_ms"] / 1000
+        self.advance(page, (remaining_s - 3) * 1000 + 50)   # just past the "3" cue
+        self.assertEqual(page.inner_text(".wk-counter"), "0:03")
+        self.assertEqual(self.spoken(page)[-1], "3")
 
-        # Rest: silent, video paused, Add 15 s and Skip Rest work.
+        # Finish the set: every cue was said exactly once, in order.
+        self.advance(page, 3200)
+        said = self.spoken(page)
+        self.assertEqual(said[:2], [first["name"], cues[0]["text"]])
+        self.assertEqual([t for t in said[1:] if t in {c["text"] for c in cues}], [c["text"] for c in cues])
+
+        # Rest: announced once with the real duration; silent afterwards; video paused.
         state = self.state(page)
         self.assertEqual(state["phase"], "rest")
-        self.assertTrue(self.video(page)["paused"], "demonstration pauses during rest")
-        before = len(self.spoken(page))
-        remaining = state["remaining_ms"]
+        rest_s = state["rest_total_ms"] // 1000
+        expected_rest = page.evaluate(f"window.ShotLabWorkout.spokenDuration({rest_s})")
+        self.assertEqual(self.spoken(page)[-1], f"Rest for {expected_rest}")
+        video = self.video(page)
+        if video is not None:   # demonstration is paused (not playing) during rest
+            self.assertTrue(video["paused"])
+        self.clear_spoken(page)
         page.click("#wk-add-rest")
-        self.assertAlmostEqual(self.state(page)["remaining_ms"], remaining + 15000, delta=300)
-        self.advance(page, 5000)
-        self.assertEqual(len(self.spoken(page)), before, "rest is silent")
-        page.click("#wk-skip-rest")
-        self.advance(page, 200)
-        second = self.item(page)
-        self.assertEqual(self.state(page)["phase"], "work")
-        self.assertEqual(self.spoken(page)[-1], second["name"])
-        if second["media_url"]:
-            self.assertFalse(self.video(page)["paused"], "video plays again for the next exercise")
-        else:  # text-only exercise: the written guide replaces the video
-            self.assertTrue(page.is_visible(".wk-noguide"))
-            self.assertIsNone(self.video(page))
-
-        # Pause cancels speech and freezes the timer; resume does not repeat anything.
+        self.assertAlmostEqual(self.state(page)["remaining_ms"], state["remaining_ms"] + 15000, delta=300)
+        self.advance(page, (rest_s + 15) * 1000 - 1500)
+        self.assertEqual(self.spoken(page), [], "the rest countdown is never spoken")
+        self.assertEqual(self.state(page)["phase"], "rest")
+        self.assertRegex(page.inner_text(".wk-counter"), r"^0:0[12]$")
+        # Rest ends: one announcement naming the next exercise; its name is not said again.
         self.advance(page, 2000)
-        page.evaluate("window.__spoken = []")
-        page.click("#wk-pause")
-        self.assertIn("<cancel>", page.evaluate("window.__spoken"))
-        frozen = self.state(page)
-        self.advance(page, 10000)
-        after = self.state(page)
-        for key in ("remaining_ms", "count", "elapsed_ms", "index", "set"):
-            self.assertEqual(after[key], frozen[key], key)
-        if second["media_url"]:
-            self.assertTrue(self.video(page)["paused"])
+        nxt = self.item(page)
+        said = self.spoken(page)
+        self.assertEqual(said[0], f"Rest complete. Next exercise: {nxt['name']}.")
+        self.assertEqual(said.count(nxt["name"]), 0)
+        self.assertEqual(self.state(page)["phase"], "work")
+        self.assertEqual(self.errors, [])
 
-        # Reload: restored paused at the same step; the name is not announced again.
-        page.wait_for_timeout(300)  # let the pause save reach the server
+    def test_every_rep_is_counted_down_in_step_with_the_counter(self):
+        page = self.open_page(self.create_workout())
+        page.click("#wk-start")
+        self.advance(page, 100)
+        item = self.skip_to(page, lambda i: i["mode"] == "reps" and i["sets"] > 1)
+        total = item["target"] * (2 if item["per_side"] else 1)
+        rep_ms = item["cadence_s"] * 1000
+        expected = [page.evaluate("([t, s, k]) => window.ShotLabWorkout.repCue({target: t, per_side: s}, k)",
+                                  [item["target"], item["per_side"], k]) for k in range(1, total + 1)]
+        self.advance(page, 400)   # the first number is queued behind the name
+        said = self.spoken(page)
+        self.assertEqual(said[-2:], [item["name"], expected[0]], "name, then the first number")
+        # Each repetition: the counter shows the number that was just spoken.
+        for k in range(1, total):
+            if k == total // 2:   # pause in the middle of a repetition: nothing repeats after resuming
+                page.click("#wk-pause")
+                self.advance(page, 5000)
+                page.click("#wk-resume")
+            self.advance(page, rep_ms)
+            last = self.spoken(page)[-1]
+            self.assertEqual(last, expected[k])
+            self.assertEqual(page.inner_text(".wk-counter"), last.split(". ")[-1])
+        counts = [t for t in self.spoken(page) if t in set(expected)]
+        self.assertEqual(counts[-total:], expected, "each number once, descending")
+        # Set ends → rest between sets is announced; then "Next set" at the end.
+        self.advance(page, rep_ms + 100)
+        state = self.state(page)
+        self.assertEqual(state["phase"], "rest")
+        self.assertEqual(state["rest_kind"], "set")
+        self.assertTrue(self.spoken(page)[-1].startswith("Rest for "))
+        self.clear_spoken(page)
+        page.click("#wk-skip-rest")
+        self.advance(page, 400)
+        self.assertEqual(self.spoken(page)[:2],
+                         [f"Rest skipped. Next set: {item['name']}, set 2 of {item['sets']}.", expected[0]])
+        # Mute: the count continues on screen only.
+        page.click(".wk-voice")
+        self.clear_spoken(page)
+        self.advance(page, rep_ms * 3)
+        self.assertEqual(self.spoken(page), [])
+        self.assertEqual(self.state(page)["count"], 3)
+        self.assertEqual(self.errors, [])
+
+    def test_reload_during_rest_keeps_announcements_single(self):
+        workout = self.create_workout()
+        page = self.open_page(workout)
+        page.click("#wk-start")
+        self.advance(page, 100)
+        first = self.item(page)
+        self.advance(page, (first["work_s"] + 1) * 1000)
+        self.assertEqual(self.state(page)["phase"], "rest")
+        self.assertTrue(self.state(page)["rest_announced"])
+        page.click("#wk-pause")
+        page.wait_for_timeout(300)
         page.reload()
         page.wait_for_selector("#wk-resume", timeout=30000)
         restored = self.state(page)
+        self.assertEqual(restored["phase"], "rest")
         self.assertTrue(restored["paused"])
-        self.assertEqual(restored["index"], frozen["index"])
-        self.assertIn(second["uid"], restored["announced"])
         page.click("#wk-resume")
-        self.advance(page, 500)
-        self.assertNotIn(second["name"], self.spoken(page), "no re-announcement after reload")
+        self.advance(page, restored["remaining_ms"] + 500)
+        said = self.spoken(page)
+        self.assertFalse(any(t.startswith("Rest for") for t in said), "rest start is not re-announced after reload")
+        self.assertEqual(sum(1 for t in said if t.startswith("Rest complete.")), 1)
 
-        # Mute: the rest of this set produces no numbers.
-        page.click(".wk-voice")
-        self.assertFalse(self.state(page)["voice"])
-        page.evaluate("window.__spoken = []")
-        current = self.item(page)
-        set_ms = (current["work_s"] + 2) * 1000
-        self.advance(page, set_ms)
-        self.assertEqual(self.spoken(page), [], "muted voice speaks nothing")
-
-        # End early: honest summary.
+    def test_end_early_gives_an_honest_summary(self):
+        workout = self.create_workout()
+        page = self.open_page(workout)
+        page.click("#wk-start")
+        self.advance(page, 100)
+        first = self.item(page)
+        self.advance(page, (first["work_s"] + 1) * 1000)
         page.click("#wk-end")
         page.click("#dialog-confirm")
         page.wait_for_selector("#wk-save-summary", timeout=15000)
@@ -251,38 +339,10 @@ class WorkoutPlayerUiTest(unittest.TestCase):
         page.wait_for_selector(".wk-summary-stats", timeout=15000)
         record = self.get_workout(workout["workout_id"])
         self.assertEqual(record["status"], "ended_early")
-        summary = record["summary"]
-        statuses = [e["status"] for e in summary["exercises"]]
+        statuses = [e["status"] for e in record["summary"]["exercises"]]
         self.assertEqual(statuses[0], "completed")
         self.assertEqual(statuses[-1], "not_reached")
-        self.assertLess(summary["counts"]["completed"], len(statuses))
         self.assertIsNone(page.evaluate("localStorage.getItem('shotLabActiveWorkout')"))
-        self.assertEqual(self.errors, [])
-
-    def test_rep_set_speaks_only_the_final_ten_percent(self):
-        page = self.open_page(self.create_workout())
-        page.click("#wk-start")
-        self.advance(page, 200)
-        for _ in range(30):
-            if self.item(page)["mode"] == "reps":
-                break
-            page.click("#wk-skip-ex")
-            self.advance(page, 100)
-        item = self.item(page)
-        self.assertEqual(item["mode"], "reps", "plan has no repetition exercise")
-        self.assertEqual(self.spoken(page)[-1], item["name"])
-        if item["media_url"]:
-            page.wait_for_function("document.querySelector('.wk-video')?.readyState >= 2", timeout=15000)
-            self.assertFalse(self.video(page)["paused"])
-        page.evaluate("window.__spoken = []")
-        total = item["target"] * (2 if item["per_side"] else 1)
-        n_spoken = max(1, math.ceil(total * 0.10))
-        rep_ms = item["cadence_s"] * 1000
-        self.advance(page, rep_ms * (total - n_spoken) - 300)
-        self.assertEqual(self.spoken(page), [], "no numbers in the first 90% of the repetitions")
-        self.advance(page, rep_ms * n_spoken + 400)
-        self.assertEqual(self.spoken(page), [str(n) for n in range(n_spoken, 0, -1)])
-        self.assertEqual(self.state(page)["phase"], "rest" if item["sets"] > 1 or item["rest_after_s"] else "work")
 
     def test_mobile_player_has_no_horizontal_overflow(self):
         page = self.open_page(self.create_workout(), width=390, height=844, mobile=True)

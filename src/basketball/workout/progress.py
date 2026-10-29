@@ -22,11 +22,18 @@ def set_count_target(item: dict[str, Any]) -> int:
     return int(item["target"]) * (2 if item.get("per_side") else 1)
 
 
-def spoken_numbers(target_count: int) -> list[int]:
-    """Final-10% countdown: numbers spoken, in order, for a count of ``target_count``."""
-    import math
-    count = max(1, math.ceil(int(target_count) * 0.10))
-    return list(range(min(count, int(target_count)), 0, -1))
+def spoken_rep_numbers(target: int, per_side: bool = False) -> list[str]:
+    """What the voice says during one repetition set, in order (mirrors web/workout.js repCue).
+
+    Every repetition is counted aloud in descending order as it starts: 10, 9, … 1. Exercises done
+    on each side count each side down separately, with "Switch sides" before the second side.
+    The count is a guided pace; it does not detect or verify movement.
+    """
+    target = int(target)
+    calls = [str(n) for n in range(target, 0, -1)]
+    if per_side:
+        calls += ["Switch sides. " + str(target)] + [str(n) for n in range(target - 1, 0, -1)]
+    return calls
 
 
 def _int(value, low, high, name):
@@ -92,7 +99,7 @@ def validate_state(plan: dict[str, Any], state: Any) -> dict[str, Any]:
     if not isinstance(announced, list) or any(uid not in uids for uid in announced):
         raise ValueError("state.announced must list plan steps")
     spoken = state.get("spoken") or []
-    if not isinstance(spoken, list) or len(spoken) > 50:
+    if not isinstance(spoken, list) or len(spoken) > 400:
         raise ValueError("state.spoken is invalid")
     return {
         "index": index, "set": set_index, "phase": phase,
@@ -105,6 +112,7 @@ def validate_state(plan: dict[str, Any], state: Any) -> dict[str, Any]:
         "paused": bool(state.get("paused", True)),
         "voice": bool(state.get("voice", True)),
         "rest_kind": state.get("rest_kind") if state.get("rest_kind") in ("set", "exercise") else None,
+        "rest_announced": bool(state.get("rest_announced")),
         "ending": state.get("ending") if state.get("ending") in FINAL_STATUSES else None,
     }
 

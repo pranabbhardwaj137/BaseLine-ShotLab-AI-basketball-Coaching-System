@@ -2,9 +2,11 @@
 /* Baseline Shot Lab — Personalized Workout Coach (page + player).
    Plans come from the server (built from the persisted report of ONE shooting session). The player
    is a small state machine: work (guided repetitions or a timer) → rest → next set/exercise.
-   Minimal voice: the exercise name once when a new exercise starts, then only the final 10% of each
-   count, spoken in descending order. Rest is silent. The counter is a guided pace, never presented
-   as detected or verified movement. */
+   Voice: the exercise name once when a new exercise starts; every repetition counted aloud in
+   descending order (10, 9 … 1) in step with the on-screen counter; timed sets get a spoken
+   countdown (start, every 10 s, then 5…1). Rest is announced once at the start ("Rest for 30
+   seconds") and once at the end ("Rest complete. Next exercise: …"); the rest countdown itself is
+   visual only. The counter is a guided pace, never presented as detected or verified movement. */
 
 (function () {
   const root = document.getElementById('workout-root');
@@ -72,6 +74,8 @@
     const m = Math.floor(s / 60);
     return `${m}:${String(s % 60).padStart(2, '0')}`;
   };
+  /* Countdowns show the whole seconds still to go (5.0 → 0:05, 4.9 → 0:05, 4.0 → 0:04), matching the voice. */
+  const fmtCountdown = seconds => fmtClock(Math.ceil(Math.max(0, seconds) - 1e-6));
   const fmtMinutes = seconds => `${Math.round(seconds / 60)} min`;
   const fmtDate = value => {
     if (!value) return 'unknown date';
@@ -85,28 +89,89 @@
       {duration: 0.45, ease: EASE, delay: MotionLib.stagger(opts.stagger ?? 0.05, {startDelay: opts.delay ?? 0})});
   };
 
-  /* Count the final 10%: spokenCount = max(1, ceil(N × 0.10)). Exposed for tests. */
-  function spokenCount(total) {
-    return Math.min(total, Math.max(1, Math.ceil(total * 0.1)));
-  }
   const setTarget = item => item.target * (item.per_side ? 2 : 1);
 
+  /* ------------------------------------------------------------------ voice cues (pure, exposed for tests) */
+  /* Repetition k (1-based) of a set is announced as it starts. Exercises done on each side count each
+     side down separately: 8 … 1, "Switch sides. 8", 7 … 1. */
+  function repCue(item, k) {
+    if (!item.per_side) return String(item.target - k + 1);
+    const left = item.target - ((k - 1) % item.target);
+    return k === item.target + 1 ? `Switch sides. ${left}` : String(left);
+  }
+  /* What the counter shows while repetition (count + 1) is under way: the same number the voice said. */
+  function repDisplay(item, count) {
+    const k = Math.min(count + 1, setTarget(item));
+    if (!item.per_side) return {left: item.target - k + 1, side: null};
+    return {left: item.target - ((k - 1) % item.target), side: k > item.target ? 2 : 1};
+  }
+  /* Timed sets: the duration at the start, every 10 s (not within 8 s of the start), "Switch sides"
+     at halfway for each-side holds, then 5, 4, 3, 2, 1. `at` is seconds remaining. */
+  function timedCues(total, perSide) {
+    const cues = new Map();
+    const add = (at, text) => {
+      if (at < 1 || at > total) return;
+      cues.set(at, cues.has(at) ? `${cues.get(at)}. ${text}` : text);
+    };
+    add(total, `${total} seconds`);
+    if (perSide) add(Math.ceil(total / 2), 'Switch sides');
+    for (let at = Math.floor((total - 1) / 10) * 10; at > 5; at -= 10) if (at <= total - 8) add(at, `${at} seconds`);
+    for (let at = Math.min(5, total - 1); at >= 1; at -= 1) add(at, String(at));
+    return [...cues.entries()].sort((a, b) => b[0] - a[0]).map(([at, text]) => ({at, text}));
+  }
+  function spokenDuration(seconds) {
+    const s = Math.round(seconds);
+    if (s < 120 && s % 60 !== 0) return `${s} seconds`;
+    const m = Math.floor(s / 60), r = s % 60;
+    return `${m} minute${m === 1 ? '' : 's'}${r ? ` ${r} seconds` : ''}`;
+  }
+
   /* ------------------------------------------------------------------ voice
-     One utterance at a time: every call cancels anything queued, so speech never overlaps. */
+     A small queue on top of speechSynthesis so utterances never overlap or pile up:
+     announcements play in order; a newer count replaces an older count still waiting;
+     cancel() (pause, skip, end, mute, rest start) drops everything at once. */
   const Voice = {
     supported: 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function',
     enabled: true,
-    speak(text) {
+    queue: [],
+    busy: false,
+    gen: 0,
+    guard: null,
+    say(text, {kind = 'announce'} = {}) {
       if (!this.supported || !this.enabled) return false;
+      if (kind === 'count') this.queue = this.queue.filter(entry => entry.kind !== 'count');
+      this.queue.push({text: String(text), kind});
+      this.pump();
+      return true;
+    },
+    pump() {
+      if (this.busy || !this.queue.length) return;
+      const next = this.queue.shift();
+      const gen = this.gen;
+      let finished = false;
+      const done = () => {
+        if (finished || gen !== this.gen) return;
+        finished = true;
+        clearTimeout(this.guard);
+        this.busy = false;
+        this.pump();
+      };
+      this.busy = true;
       try {
-        window.speechSynthesis.cancel();
-        const utterance = new window.SpeechSynthesisUtterance(String(text));
+        const utterance = new window.SpeechSynthesisUtterance(next.text);
         utterance.rate = 1.0;
+        utterance.onend = done;
+        utterance.onerror = done;
         window.speechSynthesis.speak(utterance);
-        return true;
-      } catch { return false; }
+      } catch { finished = true; this.busy = false; return; }
+      // Some engines occasionally never fire 'end'; never let the queue stall.
+      this.guard = setTimeout(done, Math.max(1200, next.text.length * 110));
     },
     cancel() {
+      this.gen += 1;
+      this.queue = [];
+      this.busy = false;
+      clearTimeout(this.guard);
       if (!this.supported) return;
       try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
     },
@@ -437,6 +502,7 @@
               h('dt', {text: 'Fit for you'}), h('dd', {text: r.fit}),
               h('dt', {text: 'Limits of the evidence'}), h('dd', {text: r.evidence_limit}),
               h('dt', {text: 'Coaching cue'}), h('dd', {text: r.cue}),
+              item.rest_basis ? h('dt', {text: 'Rest'}) : null, item.rest_basis ? h('dd', {text: item.rest_basis}) : null,
               h('dt', {text: 'Easier / harder'}), h('dd', {text: `${r.regression} / ${r.progression}`}))) : null));
       }
       timeline.append(list);
@@ -448,7 +514,7 @@
       workout.status === 'planned' ? h('button', {type: 'button', class: 'btn btn-danger', onclick: () => discardPlan()}, 'Discard plan') : null,
       ['completed', 'ended_early'].includes(workout.status) ? h('button', {type: 'button', class: 'btn btn-quiet', onclick: () => renderSummary()}, 'View summary') : null);
     const audio = h('p', {class: 'muted wk-audio-note', text: Voice.supported
-      ? 'Voice: the exercise name once, then only the last 10% of each count. Rest is silent. You can mute it at any time.'
+      ? 'Voice: the exercise name once, then every repetition counted down (10, 9 … 1) with the on-screen counter; timed sets get a short spoken countdown. Rest is announced at its start and end only; the rest countdown is on screen. You can mute it at any time.'
       : 'Voice guidance is not available in this browser; the workout works fully with on-screen counts.'});
     const bottom = statusText ? h('div', {class: 'wk-plan-actions'},
       h('button', {type: 'button', class: 'btn btn-primary', onclick: () => startPlayer()}, statusText)) : null;
@@ -517,6 +583,7 @@
         remaining_ms: saved.remaining_ms || 0, rest_total_ms: saved.rest_total_ms || 0, count: saved.count || 0,
         elapsed_ms: saved.elapsed_ms || 0, announced: saved.announced || [], spoken: saved.spoken || [],
         paused: true, voice: saved.voice !== false, rest_kind: saved.rest_kind || null, ending: saved.ending || null,
+        rest_announced: Boolean(saved.rest_announced),
       };
       if (this.state.phase === 'done' && this.state.ending) this.finalStatus = this.state.ending;
       this.progress = {items: progress.items || {}, active_s: progress.active_s || 0,
@@ -614,15 +681,39 @@
       this.state.count = 0;
       this.state.spoken = [];
       this.state.rest_kind = null;
+      this.state.rest_announced = false;
       this.state.remaining_ms = item.mode === 'time' ? setTarget(item) * 1000 : 0;
       this.repElapsed = 0;
       // Announce the exercise name once, only when a genuinely new exercise begins.
-      if (announce && set === 0 && !this.state.announced.includes(item.uid)) {
+      if (set === 0 && !this.state.announced.includes(item.uid)) {
         this.state.announced.push(item.uid);
-        Voice.speak(item.name);
+        if (announce) Voice.say(item.name);
       }
       this.renderAll();
       this.playVideo();
+      this.speakCues();   // the first count ("10" / "45 seconds") follows the name
+    }
+
+    /* Speak the cue for the current moment of the set, once. Cues are recorded in state.spoken even
+       when muted, so un-muting, pausing or reloading never repeats or bursts old numbers. */
+    speakCues() {
+      const s = this.state;
+      const item = this.item;
+      if (!item || s.phase !== 'work' || s.paused) return;
+      if (item.mode === 'time') {
+        const remaining = s.remaining_ms / 1000;
+        const due = timedCues(setTarget(item), item.per_side).filter(cue => remaining <= cue.at && !s.spoken.includes(cue.at));
+        if (!due.length) return;
+        for (const cue of due) s.spoken.push(cue.at);
+        const latest = due[due.length - 1];   // after a stall only the current cue is worth saying
+        Voice.say(latest.text, {kind: /^\d+$/.test(latest.text) ? 'count' : 'announce'});
+      } else {
+        const k = s.count + 1;
+        if (k > setTarget(item) || s.spoken.includes(k)) return;
+        s.spoken.push(k);
+        const text = repCue(item, k);
+        Voice.say(text, {kind: /^\d+$/.test(text) ? 'count' : 'announce'});
+      }
     }
 
     startRest(kind, seconds) {
@@ -633,6 +724,11 @@
       this.state.rest_total_ms = seconds * 1000;
       this.state.spoken = [];
       this.pauseVideo();
+      // Announced once; the countdown during rest is visual only.
+      if (!this.state.rest_announced) {
+        this.state.rest_announced = true;
+        Voice.say(`Rest for ${spokenDuration(seconds)}`);
+      }
       this.renderAll();
     }
 
@@ -652,9 +748,23 @@
       this.startWork(this.state.index + 1, 0);
     }
 
-    endRest() {
-      if (this.state.rest_kind === 'set') this.startWork(this.state.index, this.state.set + 1);
-      else this.startWork(this.state.index + 1, 0);
+    endRest({skipped = false} = {}) {
+      const s = this.state;
+      const item = this.item;
+      const sameExercise = s.rest_kind === 'set';
+      const nextIndex = sameExercise ? s.index : s.index + 1;
+      const nextSet = sameExercise ? s.set + 1 : 0;
+      const nextItem = this.items[nextIndex];
+      Voice.cancel();
+      const lead = skipped ? 'Rest skipped.' : 'Rest complete.';
+      if (sameExercise) {
+        Voice.say(`${lead} Next set: ${item.name}, set ${nextSet + 1} of ${item.sets}.`);
+      } else {
+        Voice.say(`${lead} Next exercise: ${nextItem.name}.`);
+        // The name was just said as part of the rest announcement: do not say it again.
+        if (!s.announced.includes(nextItem.uid)) s.announced.push(nextItem.uid);
+      }
+      this.startWork(nextIndex, nextSet, {announce: false});
       this.saveNow();
     }
 
@@ -688,6 +798,7 @@
     finish(status) {
       this.stopTimer();
       Voice.cancel();
+      if (status === 'completed') Voice.say('Workout complete.');
       this.pauseVideo();
       this.state.phase = 'done';
       this.state.paused = true;
@@ -720,28 +831,19 @@
         if (this.state.remaining_ms <= 0) return this.endRest();
       } else if (this.state.phase === 'work') {
         const total = setTarget(item);
-        const spokenN = spokenCount(total);
         if (item.mode === 'time') {
           this.state.remaining_ms = Math.max(0, this.state.remaining_ms - dt);
-          const left = Math.ceil(this.state.remaining_ms / 1000);
-          if (left > 0 && left <= spokenN && !this.state.spoken.includes(left)) {
-            this.state.spoken.push(left);
-            Voice.speak(String(left));
-          }
           if (this.state.remaining_ms <= 0) return this.completeSet('completed');
+          this.speakCues();
         } else {
           this.repElapsed += dt;
           const repMs = item.cadence_s * 1000;
           while (this.repElapsed >= repMs && this.state.count < total) {
             this.repElapsed -= repMs;
             this.state.count += 1;
-            const left = total - this.state.count;
-            if (left > 0 && left <= spokenN && !this.state.spoken.includes(left)) {
-              this.state.spoken.push(left);
-              Voice.speak(String(left));
-            }
           }
           if (this.state.count >= total) return this.completeSet('completed');
+          this.speakCues();   // the new repetition's number, said as it starts
         }
       }
       this.renderTick();
@@ -766,6 +868,7 @@
       if (this.state.phase === 'work') this.playVideo();
       this.el.status.textContent = 'Resumed.';
       this.renderAll();
+      this.speakCues();   // only a cue that is now due and was never said; nothing is repeated
     }
     addRest(seconds) {
       if (this.state.phase !== 'rest') return;
@@ -778,7 +881,7 @@
     skipRest() {
       if (this.state.phase !== 'rest') return;
       this.progress.rest_skipped += 1;
-      this.endRest();
+      this.endRest({skipped: true});
     }
     toggleVoice() {
       this.state.voice = !this.state.voice;
@@ -894,7 +997,7 @@
         const next = s.rest_kind === 'set' ? item : this.items[s.index + 1];
         this.el.name.textContent = 'Rest';
         this.el.muscles.textContent = s.rest_kind === 'set' ? `Next: ${item.name}, set ${s.set + 2} of ${item.sets}` : `Next: ${next ? next.name : 'finish'}`;
-        this.el.setInfo.textContent = s.rest_kind === 'set' ? 'Rest between sets (silent)' : 'Rest before the next exercise (silent)';
+        this.el.setInfo.textContent = s.rest_kind === 'set' ? 'Rest between sets · countdown on screen' : 'Rest before the next exercise · countdown on screen';
         this.el.sideNote.textContent = '';
       } else {
         this.el.name.textContent = item.name;
@@ -934,19 +1037,19 @@
       this.el.bar.style.width = `${(doneShare * 100).toFixed(1)}%`;
       this.el.bar.parentElement.setAttribute('aria-valuenow', String(Math.round(doneShare * 100)));
       if (s.phase === 'rest') {
-        this.el.counter.textContent = fmtClock(s.remaining_ms / 1000);
-        this.el.counterLabel.textContent = 'rest left';
+        this.el.counter.textContent = fmtCountdown(s.remaining_ms / 1000);
+        this.el.counterLabel.textContent = 'rest left (on screen only)';
       } else if (s.phase === 'work' || s.phase === 'ready') {
         const total = setTarget(item);
         if (item.mode === 'time') {
-          this.el.counter.textContent = fmtClock(s.phase === 'ready' ? total : s.remaining_ms / 1000);
+          this.el.counter.textContent = fmtCountdown(s.phase === 'ready' ? total : s.remaining_ms / 1000);
           this.el.counterLabel.textContent = 'time left';
           const half = total / 2;
           this.el.sideNote.textContent = item.per_side ? (s.remaining_ms / 1000 > half ? 'Side 1 — switch at halfway' : 'Side 2') : '';
         } else {
-          const left = total - s.count;
-          this.el.counter.textContent = String(left);
-          this.el.counterLabel.textContent = `reps left · rep ${Math.min(total, s.count + 1)} of ${total} (guided pace)`;
+          const shown = repDisplay(item, s.count);
+          this.el.counter.textContent = String(shown.left);
+          this.el.counterLabel.textContent = `${shown.left === 1 ? 'last rep' : 'reps to go'}${shown.side ? ` · side ${shown.side} of 2` : ''} (guided pace)`;
           this.el.sideNote.textContent = item.per_side ? `${item.target} each side` : '';
         }
       }
@@ -1125,5 +1228,5 @@
     enter(root.children, {stagger: 0.06});
   }
 
-  window.ShotLabWorkout = {show, hide, spokenCount, _player: () => player};
+  window.ShotLabWorkout = {show, hide, repCue, repDisplay, timedCues, spokenDuration, _player: () => player};
 })();

@@ -183,7 +183,13 @@
                   <div class="camera-recorder">
                     <div class="camera-viewport" id="camera-viewport">
                       <video id="camera-preview" class="camera-preview" autoplay muted playsinline></video>
+                      <video id="camera-review" class="camera-review" controls playsinline preload="metadata" hidden></video>
                       <canvas id="camera-overlay" class="camera-overlay"></canvas>
+                      <div class="camera-idle" id="camera-idle">
+                        <svg class="icon" aria-hidden="true"><use href="#i-camera"/></svg>
+                        <p>Camera is off</p>
+                      </div>
+                      <div class="rec-indicator hidden" id="rec-indicator" role="status" aria-live="polite"><i aria-hidden="true"></i><span id="rec-label">REC</span> <span id="rec-time">0:00</span></div>
 
                       <!-- Top Status HUD Bar (matches reference broadcast design) -->
                       <div class="camera-hud-top" id="camera-hud-top">
@@ -272,13 +278,18 @@
                       </div>
                     </div>
 
-                    <div class="camera-controls">
-                      <button id="camera-start" type="button" class="btn btn-quiet">Turn on camera</button>
-                      <button id="record-start" type="button" class="btn btn-record" disabled><i aria-hidden="true"></i>Start recording</button>
-                      <button id="record-stop" type="button" class="btn btn-quiet" disabled>Stop</button>
-                      <button id="camera-stop" type="button" class="btn btn-quiet" disabled>Turn off camera</button>
+                    <div class="camera-controls" id="camera-controls">
+                      <button id="camera-start" type="button" class="btn btn-primary cam-main">Turn on camera</button>
+                      <button id="record-start" type="button" class="btn btn-record cam-main hidden" disabled><i aria-hidden="true"></i>Start recording</button>
+                      <button id="record-pause" type="button" class="btn btn-quiet hidden" disabled aria-pressed="false">Pause</button>
+                      <button id="record-stop" type="button" class="btn btn-stop hidden" disabled><i aria-hidden="true"></i>Stop</button>
+                      <button id="record-retake" type="button" class="btn btn-quiet hidden">Retake</button>
+                      <button id="camera-switch" type="button" class="btn btn-quiet hidden" disabled>Switch camera</button>
+                      <button id="camera-stop" type="button" class="btn btn-quiet hidden" disabled>Turn off camera</button>
                     </div>
-                    <p id="camera-status" class="hint" aria-live="polite">Your browser will ask for camera permission. Real-time ball & pose tracking runs locally on this computer.</p>
+                    <p id="camera-status" class="hint" aria-live="polite">Your browser will ask for camera permission. The clip is recorded in this browser and analysed on the computer running Shot Lab.</p>
+                    <div id="camera-secure-note" class="quality-banner camera-secure-note hidden" role="note"></div>
+                    <details id="camera-diagnostics" class="camera-diagnostics"><summary>Camera diagnostics</summary><dl id="camera-diag-list"></dl></details>
                   </div>
                 </div>
                 <p id="form-error" class="form-error hidden" role="alert"></p>

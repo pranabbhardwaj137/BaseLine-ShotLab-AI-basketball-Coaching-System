@@ -268,6 +268,30 @@ class PlannerTest(unittest.TestCase):
             self.assertGreater(min(by_kind["strength_compound"]), max(by_kind["mobility"]))
         self.assertEqual(plan["items"][-1]["rest_after_s"], 0)
 
+    def test_rest_adjusts_for_intensity_sets_level_and_pain(self):
+        base = self.catalog["dosing"]
+        for prefs in ({"fitness_level": "advanced", "equipment": list(self.catalog["equipment"]), "duration_min": 45},
+                      {"fitness_level": "beginner", "equipment": ["bodyweight", "band"], "duration_min": 30}):
+            plan = self.plan(**prefs)
+            level = prefs["fitness_level"]
+            for item in plan["items"]:
+                if item["sets"] < 2:
+                    self.assertEqual(item["rest_between_sets_s"], 0)
+                    continue
+                expected = base[item["kind"]][level]["rest_between_sets"]
+                expected += 15 if item["impact"] in ("moderate", "high") else 0
+                expected += 15 if item["kind"] == "strength_compound" and item["equipment"] in ("barbell", "smith", "machine") else 0
+                expected += 10 if item["sets"] >= 4 else 0
+                self.assertEqual(item["rest_between_sets_s"], min(expected, wp.REST_CAP_BETWEEN_S), item["exercise_id"])
+                self.assertIn(f"{item['rest_between_sets_s']} s between sets", item["rest_basis"])
+        calm = self.plan(duration_min=30)
+        sore = self.plan(duration_min=30, pain=True)
+        calm_rest = {i["exercise_id"]: i["rest_between_sets_s"] for i in calm["items"] if i["sets"] > 1}
+        for item in sore["items"]:
+            if item["sets"] > 1 and item["exercise_id"] in calm_rest and item["kind"] in ("strength_accessory", "core_dynamic", "balance"):
+                self.assertGreater(item["rest_between_sets_s"], 0)
+                self.assertIn("pain", item["rest_basis"])
+
     def test_only_video_demonstrated_exercises_are_prescribed(self):
         text_only = {e["id"] for e in self.catalog["exercises"] if not e.get("video")}
         self.assertTrue({"plank", "side_plank", "bird_dog", "pallof_press_band", "step_up", "march_in_place"} <= text_only)
@@ -313,12 +337,19 @@ class PlannerTest(unittest.TestCase):
 
 
 class VoiceRuleTest(unittest.TestCase):
-    def test_final_ten_percent(self):
-        cases = {50: [5, 4, 3, 2, 1], 40: [4, 3, 2, 1], 30: [3, 2, 1], 20: [2, 1], 10: [1], 5: [1], 1: [1],
-                 12: [2, 1], 45: [5, 4, 3, 2, 1]}
-        for n, expected in cases.items():
-            self.assertEqual(wpr.spoken_numbers(n), expected, n)
-            self.assertEqual(len(expected), max(1, math.ceil(n * 0.10)))
+    def test_every_rep_counted_down(self):
+        self.assertEqual(wpr.spoken_rep_numbers(10), [str(n) for n in range(10, 0, -1)])
+        self.assertEqual(wpr.spoken_rep_numbers(3, per_side=True), ["3", "2", "1", "Switch sides. 3", "2", "1"])
+        self.assertEqual(len(wpr.spoken_rep_numbers(12)), 12)
+
+    def test_state_keeps_rest_announcement_and_long_cue_lists(self):
+        catalog = wc.load_catalog()
+        prefs = wp.validate_preferences({"equipment": ["bodyweight"], "fitness_level": "beginner", "duration_min": 20}, catalog)
+        plan = wp.build_plan(load_report(), prefs, catalog, video_available=ALL_VIDEOS)
+        state = wpr.validate_state(plan, {"phase": "rest", "rest_announced": True, "spoken": list(range(1, 41))})
+        self.assertTrue(state["rest_announced"])
+        self.assertEqual(len(state["spoken"]), 40)
+        self.assertFalse(wpr.validate_state(plan, {})["rest_announced"])
 
     def test_per_side_doubles_the_count(self):
         self.assertEqual(wpr.set_count_target({"target": 8, "per_side": True}), 16)

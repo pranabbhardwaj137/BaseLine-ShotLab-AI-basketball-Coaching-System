@@ -97,3 +97,8 @@ Thumbs.db
 
 # Workout demonstration videos (local media library, read-only; see docs/reference/WORKOUT_COACH.md)
 /workout/
+
+# Local secrets (API keys). Never commit; see .env.example
+.env
+.env.*
+!.env.example
