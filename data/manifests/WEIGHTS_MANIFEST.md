@@ -62,6 +62,25 @@ This document records the provenance, licensing, architecture, class taxonomy, a
 
 ---
 
-## 4. Compliance and Licensing Summary
+## 4. Local Neural Speech Synthesis Checkpoints (Kokoro ONNX)
 
-All weights are tracked outside source control versioning (`.gitignore` excludes `*.pt`). Runtime modules access weights via explicit CLI parameter (`--weights models/best.pt`) with graceful fallback to `UNAVAILABLE_NO_WEIGHTS` status if weights are missing.
+### `models/kokoro/kokoro-v0_19.int8.onnx`
+- **Role:** High-fidelity offline neural speech synthesizer for live Practice audio coaching cues and Guided Workout voice guidance.
+- **Architecture:** Kokoro v0.19 (StyleTTS 2 + ISTFTNet acoustic and vocoder pipeline, INT8 quantized ONNX graph).
+- **File Size:** 92,360,686 bytes (~92.36 MB).
+- **SHA-256 Checksum:** `03e2815f4be9c8289b3b0919f40f5857acd24cfd121ca258cf042d309ee3a0cf`
+- **Model Provenance:** Hugging Face repository `hexgrad/Kokoro-82M`.
+- **License:** Apache-2.0.
+
+### `models/kokoro/voices.bin`
+- **Role:** Precomputed speaker voice embeddings (54 distinct multi-accent voices, including `af_sarah`, `af_bella`, `am_adam`, `am_michael`, `bf_emma`).
+- **File Size:** 5,758,648 bytes (~5.76 MB).
+- **SHA-256 Checksum:** `157eab2fa1dd1c91b46599ea6f514bf86f66944c0c760250ed324e6cd99af075`
+- **Provenance:** Hexgrad Kokoro-82M repository.
+- **License:** Apache-2.0.
+
+---
+
+## 5. Compliance and Licensing Summary
+
+All weights are tracked outside source control versioning (`.gitignore` excludes `*.pt`, `*.onnx`, `*.bin`). Runtime modules access weights via explicit local paths or configuration with automatic, graceful fallback to native browser Web Speech API (`speechSynthesis`) if Kokoro neural models are uninstalled or offline.

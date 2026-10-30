@@ -1,9 +1,9 @@
 /**
- * practice_voice.js - Audio coach speech synthesizer and queue manager for live Practice.
+ * practice_voice.js - Audio coach speech synthesizer and queue manager for live Practice and Workouts.
  *
- * Implements a small replaceable TTS interface adhering to the voice queue,
- * mute toggle, and watchdog cancellation patterns from web/workout.js.
- * Pluggable backend allows future local Kokoro benchmarking/swap without altering coaching logic.
+ * Implements a pluggable TTS interface supporting:
+ * 1. Kokoro Neural TTS (local high-fidelity voice via Kokoro ONNX)
+ * 2. Browser SpeechSynthesis (native Web Speech fallback)
  */
 
 (function (root, factory) {
@@ -15,8 +15,9 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  // Default browser speech synthesis speaker backend
+  // Native browser speech synthesis fallback backend
   const BrowserSpeechBackend = {
+    name: 'browser',
     isSupported() {
       return (
         typeof window !== 'undefined' &&
@@ -87,6 +88,108 @@
     },
   };
 
+  // Kokoro Neural TTS backend via local server ONNX engine
+  const KokoroSpeechBackend = {
+    name: 'kokoro',
+    currentAudio: null,
+    audioCache: new Map(),
+
+    isSupported() {
+      return typeof window !== 'undefined' && typeof window.fetch === 'function';
+    },
+
+    unlock() {
+      // Audio element playback permitted under user gesture
+    },
+
+    async speak(text, onEnd, onError) {
+      this.cancel();
+      const cleanText = String(text || '').trim();
+      if (!cleanText) {
+        if (onEnd) onEnd();
+        return null;
+      }
+
+      try {
+        let audioUrl = this.audioCache.get(cleanText);
+        if (!audioUrl) {
+          const res = await fetch('/api/voice/synthesize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Shotlab': '1' },
+            body: JSON.stringify({ text: cleanText }),
+          });
+          if (!res.ok) {
+            throw new Error(`Kokoro synthesis HTTP error ${res.status}`);
+          }
+          const blob = await res.blob();
+          audioUrl = URL.createObjectURL(blob);
+          if (cleanText.length <= 40) {
+            this.audioCache.set(cleanText, audioUrl);
+          }
+        }
+
+        const audio = new Audio(audioUrl);
+        this.currentAudio = audio;
+
+        const cleanup = () => {
+          if (this.currentAudio === audio) {
+            this.currentAudio = null;
+          }
+        };
+
+        audio.onended = () => {
+          cleanup();
+          if (onEnd) onEnd();
+        };
+
+        audio.onerror = (err) => {
+          cleanup();
+          if (onError) onError(err);
+        };
+
+        await audio.play();
+        return audio;
+      } catch (err) {
+        this.currentAudio = null;
+        if (onError) onError(err);
+        return null;
+      }
+    },
+
+    cancel() {
+      if (this.currentAudio) {
+        try {
+          this.currentAudio.pause();
+          this.currentAudio.currentTime = 0;
+        } catch {
+          /* ignore */
+        }
+        this.currentAudio = null;
+      }
+    },
+
+    async prewarm(phrases) {
+      if (!Array.isArray(phrases) || typeof window === 'undefined' || !window.fetch) return;
+      for (const phrase of phrases) {
+        const clean = String(phrase || '').trim();
+        if (!clean || this.audioCache.has(clean)) continue;
+        try {
+          const res = await fetch('/api/voice/synthesize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Shotlab': '1' },
+            body: JSON.stringify({ text: clean }),
+          });
+          if (res.ok) {
+            const blob = await res.blob();
+            this.audioCache.set(clean, URL.createObjectURL(blob));
+          }
+        } catch {
+          /* ignore prewarm error */
+        }
+      }
+    },
+  };
+
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
     try {
       window.speechSynthesis.onvoiceschanged = () => {
@@ -123,6 +226,7 @@
 
   const PracticeVoice = {
     backend: BrowserSpeechBackend,
+    provider: 'browser',
     enabled: readStoredVoicePref(),
     queue: [],
     busy: false,
@@ -143,6 +247,7 @@
       if (customBackend && typeof customBackend.speak === 'function' && typeof customBackend.cancel === 'function') {
         this.cancel();
         this.backend = customBackend;
+        this.provider = customBackend.name || 'custom';
       }
     },
 
@@ -163,16 +268,19 @@
       return this.isMuted();
     },
 
-    say(text, { priority = 'normal', kind = 'coach' } = {}) {
+    say(text, { priority = 'normal', kind = 'coach', force = false } = {}) {
       if (!text || typeof text !== 'string' || !text.trim()) return false;
-      if (!this.isSupported() || !this.enabled) return false;
+      if (!this.isSupported()) return false;
+      if (!this.enabled && !force) return false;
 
-      // Drop older pending coach cues if a new one arrives (latest focus supersedes)
+      // Drop older pending coach cues or counts of the same kind
       if (kind === 'coach') {
         this.queue = this.queue.filter(item => item.kind !== 'coach');
+      } else if (kind === 'count') {
+        this.queue = this.queue.filter(item => item.kind !== 'count');
       }
 
-      this.queue.push({ text: String(text).trim(), kind, priority });
+      this.queue.push({ text: String(text).trim(), kind, priority, force });
       this.pump();
       return true;
     },
@@ -192,21 +300,33 @@
         this.pump();
       };
 
+      const onError = (err) => {
+        // If Kokoro backend fails, gracefully fall back to browser speech for this cue
+        if (this.backend !== BrowserSpeechBackend && BrowserSpeechBackend.isSupported()) {
+          try {
+            BrowserSpeechBackend.speak(next.text, done, done);
+            return;
+          } catch {
+            /* ignore */
+          }
+        }
+        done();
+      };
+
       this.busy = true;
       try {
-        const res = this.backend.speak(next.text, done, done);
+        const res = this.backend.speak(next.text, done, onError);
         if (!res && !this.backend.isSupported()) {
           finished = true;
           this.busy = false;
           return;
         }
       } catch {
-        finished = true;
-        this.busy = false;
+        onError();
         return;
       }
 
-      // Watchdog timeout to prevent voice queue stall if browser speech drops end event
+      // Watchdog timeout to prevent voice queue stall
       this.guard = setTimeout(done, Math.max(1400, next.text.length * 115));
     },
 
@@ -227,6 +347,34 @@
       }
     },
   };
+
+  // Expose backends for testing or manual selection
+  PracticeVoice.BrowserSpeechBackend = BrowserSpeechBackend;
+  PracticeVoice.KokoroSpeechBackend = KokoroSpeechBackend;
+
+  // Auto-probe server for Kokoro ONNX neural speech availability
+  if (typeof window !== 'undefined' && typeof window.fetch === 'function') {
+    fetch('/api/voice/status')
+      .then(res => res.json())
+      .then(status => {
+        if (status && status.available) {
+          PracticeVoice.setBackend(KokoroSpeechBackend);
+          PracticeVoice.provider = 'kokoro';
+          console.log('[PracticeVoice] Kokoro neural TTS active (model: ' + status.model + ')');
+          setTimeout(() => {
+            KokoroSpeechBackend.prewarm([
+              '1', '2', '3', '4', '5', '6', '7', '8', '9', '10',
+              'Rest complete.', 'Workout complete.', 'Next set', 'Next exercise'
+            ]);
+          }, 1000);
+        } else {
+          PracticeVoice.provider = 'browser';
+        }
+      })
+      .catch(() => {
+        PracticeVoice.provider = 'browser';
+      });
+  }
 
   return PracticeVoice;
 });

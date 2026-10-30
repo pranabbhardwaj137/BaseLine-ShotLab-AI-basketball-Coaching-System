@@ -11,6 +11,7 @@ from basketball.configs.shot_types import (
     get_all_shot_types,
     validate_shot_types_config,
 )
+from basketball.configs.demo_athletes import DEMO_ATHLETES
 
 __all__ = [
     "CONFIG_VERSION",
@@ -20,5 +21,5 @@ __all__ = [
     "get_shot_type",
     "get_all_shot_types",
     "validate_shot_types_config",
+    "DEMO_ATHLETES",
 ]
-

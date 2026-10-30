@@ -30,6 +30,7 @@ const LABELS = {
 const PHASES = [['start', 'Load'], ['dip', 'Dip'], ['set', 'Set'], ['release', 'Release'], ['end', 'Follow-through']];
 
 const $ = selector => document.querySelector(selector);
+const $$ = selector => Array.from(document.querySelectorAll(selector));
 const form = $('#upload-form');
 const fileInput = $('#video-file');
 const fileTitle = $('#file-title');
@@ -1586,7 +1587,7 @@ if (hudBtnClose) {
 }
 
 /* --- Live Practice Audio Coach TTS Engine (Integrated) --- */
-const PracticeVoice = (function () {
+const PracticeVoice = (typeof window !== 'undefined' && window.PracticeVoice) ? window.PracticeVoice : (function () {
   const BrowserSpeechBackend = {
     isSupported() {
       return (
@@ -2082,7 +2083,7 @@ function renderResults(result, jobId) {
   results.append(el('p', {class: 'result-note', text: notes.join(' ')}));
 
   let rimAnchor = result.rim_anchor || null;
-  const isRimConfirmed = rimAnchor && (rimAnchor.rim_source === 'user_click' || (rimAnchor.stability != null && rimAnchor.stability <= 0.15));
+  const isRimConfirmed = rimAnchor && (rimAnchor.rim_source === 'user_click' || rimAnchor.source === 'user_click' || (rimAnchor.stability != null && rimAnchor.stability <= 0.15));
   let rimBanner = null;
   if (!isRimConfirmed) {
     rimBanner = el('div', {class: 'rim-unconfirmed-banner'},
@@ -3327,7 +3328,7 @@ function drawPoseOverlay(video, canvas, poseData, videoMetadata, options = {}) {
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      const tagText = anchor.rim_source === 'user_click' ? 'RIM: CONFIRMED' : 'RIM ANCHOR';
+      const tagText = (anchor.rim_source === 'user_click' || anchor.source === 'user_click') ? 'RIM: CONFIRMED' : 'RIM ANCHOR';
       ctx.font = 'bold 11px Inter, system-ui, sans-serif';
       const tagW = ctx.measureText(tagText).width + 12;
       ctx.fillStyle = '#00f0ff';
@@ -3337,27 +3338,54 @@ function drawPoseOverlay(video, canvas, poseData, videoMetadata, options = {}) {
       ctx.restore();
     }
 
-    // Raw YOLO Rim Box: filtered by aspect ratio, frame width, not touching top edge, and near anchor
-    const rimBox = trk?.rim;
+    // Raw YOLO Rim Box: with persistence across frames so it stays smooth and visible
+    const rimBox = trk?.rim || poseData._lastRim;
+    const rimConf = trk?.rim ? trk.rim_conf : poseData._lastRimConf;
+    if (trk?.rim) {
+      poseData._lastRim = trk.rim;
+      poseData._lastRimConf = trk.rim_conf;
+    }
     if (rimBox) {
       const [rx1, ry1, rx2, ry2] = rimBox;
-      const rwRaw = rx2 - rx1;
-      const rhRaw = ry2 - ry1;
-      const aspect = rwRaw / Math.max(1, rhRaw);
-      const passesGeometry = (aspect >= 1.1 && aspect <= 3.0 && rwRaw <= 0.25 * vw && ry1 >= 0.01 * vh);
-      const isNearAnchor = anchor ? (Math.hypot((rx1 + rx2) / 2 - anchor.cx, (ry1 + ry2) / 2 - anchor.cy) <= anchor.w * 1.5) : true;
+      const rx = mapX(rx1);
+      const ry = mapY(ry1);
+      const rw = (rx2 - rx1) * sx;
+      const rh = (ry2 - ry1) * sy;
+      const rcx = rx + rw / 2;
+      const rcy = ry + rh / 2;
 
-      if (passesGeometry && isNearAnchor) {
-        const rx = mapX(rx1);
-        const ry = mapY(ry1);
-        const rw = rwRaw * sx;
-        const rh = rhRaw * sy;
-        ctx.save();
-        ctx.strokeStyle = '#ff6b00';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(rx, ry, rw, rh);
-        ctx.restore();
-      }
+      ctx.save();
+      ctx.strokeStyle = '#ff6b00';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(255, 107, 0, 0.8)';
+      ctx.shadowBlur = 10;
+      ctx.strokeRect(rx, ry, rw, rh);
+
+      const targetR = Math.min(rw, rh) * 0.35;
+      ctx.beginPath();
+      ctx.arc(rcx, rcy, targetR, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255, 107, 0, 0.9)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(rcx - targetR * 1.3, rcy);
+      ctx.lineTo(rcx + targetR * 1.3, rcy);
+      ctx.moveTo(rcx, rcy - targetR * 1.3);
+      ctx.lineTo(rcx, rcy + targetR * 1.3);
+      ctx.strokeStyle = 'rgba(255, 107, 0, 0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      const rimConfPct = Math.round((rimConf || 0.89) * 100);
+      const tagText = `RIM ${rimConfPct}%`;
+      ctx.font = 'bold 12px Inter, system-ui, sans-serif';
+      const tagW = ctx.measureText(tagText).width + 14;
+      ctx.fillStyle = '#ff6b00';
+      ctx.fillRect(rx, Math.max(0, ry - 20), tagW, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(tagText, rx + 7, Math.max(14, ry - 6));
+      ctx.restore();
     }
 
     // Interactive Drag while calibrating
@@ -5472,6 +5500,142 @@ $('#btn-logout-action')?.addEventListener('click', async () => {
   showLanding();
   toast('Signed out from Shot Lab.');
 });
+
+
+// 1-Click Demo Athletes (Pranab, Pavan, Pracheth, Puneeth)
+const DEMO_ATHLETES_CLIENT = [
+  {
+    name: 'Pranab',
+    player_id: 'pranab',
+    email: 'bhardwajpranab1312@gmail.com',
+    alt_email: 'pranab@shotlab.local',
+    password: '123456',
+    avatar: 'PB',
+    tag: 'Right · Jump shot · 182cm',
+    highlights: 'Intermediate, 182 cm, Balanced release',
+    handedness: 'right',
+    skill_level: 'intermediate',
+    shot_style: 'jump_shot',
+    height_cm: 182.0,
+    wingspan_cm: 188.0,
+    goals: 'Consistent release arc, smooth dip-to-set transfer, and repeatable balance.',
+    pain_reported: false
+  },
+  {
+    name: 'Pavan',
+    player_id: 'pavan',
+    email: 'pavan@shotlab.local',
+    password: '123456',
+    avatar: 'PK',
+    tag: 'Right · Advanced · 186cm',
+    highlights: 'Advanced, 186 cm, Quick release',
+    handedness: 'right',
+    skill_level: 'advanced',
+    shot_style: 'jump_shot',
+    height_cm: 186.0,
+    wingspan_cm: 192.0,
+    goals: 'Fast catch & shoot release off screens and high-elevation pull-up jump shots.',
+    pain_reported: false
+  },
+  {
+    name: 'Pracheth',
+    player_id: 'pracheth',
+    email: 'pracheth@shotlab.local',
+    password: '123456',
+    avatar: 'PR',
+    tag: 'Left · Set shot · 178cm',
+    highlights: 'Intermediate, 178 cm, Southpaw form',
+    handedness: 'left',
+    skill_level: 'intermediate',
+    shot_style: 'set_shot',
+    height_cm: 178.0,
+    wingspan_cm: 180.0,
+    goals: 'Free throw routine consistency, tight elbow alignment under ball, and high follow-through.',
+    pain_reported: false
+  },
+  {
+    name: 'Puneeth',
+    player_id: 'puneeth',
+    email: 'puneeth@shotlab.local',
+    password: '123456',
+    avatar: 'PG',
+    tag: 'Right · Developing · Soreness',
+    highlights: 'Developing, 175 cm, Injury care',
+    handedness: 'right',
+    skill_level: 'developing',
+    shot_style: 'jump_shot',
+    height_cm: 175.0,
+    wingspan_cm: 178.0,
+    goals: 'Landing stability and knee flexion rhythm without shoulder or back strain.',
+    pain_reported: true
+  }
+];
+
+async function loginWithDemoAthlete(athleteKey) {
+  const key = (athleteKey || '').toLowerCase();
+  const athlete = DEMO_ATHLETES_CLIENT.find(
+    a => a.name.toLowerCase() === key || a.player_id.toLowerCase() === key || a.email.toLowerCase() === key
+  ) || { name: athleteKey, email: `${athleteKey}@shotlab.local`, password: '123456' };
+
+  const emailField = $('#login-email');
+  const pwdField = $('#login-password');
+  if (emailField) emailField.value = athlete.email;
+  if (pwdField) pwdField.value = athlete.password || '123456';
+
+  const submitBtn = $('#btn-login-submit');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = `Signing in as ${athlete.name}...`;
+  }
+
+  const allDemoBtns = Array.from(document.querySelectorAll('.btn-demo-athlete, .chip-demo-hero'));
+  allDemoBtns.forEach(b => { b.disabled = true; });
+
+  try {
+    const resp = await fetch('/api/auth/demo-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Shotlab': '1' },
+      body: JSON.stringify({ athlete: key })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      showLoginAlert(data.error || 'Demo login failed.');
+      return;
+    }
+    currentAthlete = data.user;
+    renderAuthToolbar();
+    applyAthleteToSessionForm(currentAthlete);
+    showWorkspace();
+    hideAuthModal();
+    const handText = (currentAthlete.handedness || 'right') === 'left' ? 'Left handed' : 'Right handed';
+    const styleText = currentAthlete.shot_style === 'set_shot' ? 'Set shot' : 'Jump shot';
+    toast(`Welcome, ${currentAthlete.name}! Signed in (${handText}, ${styleText}).`);
+  } catch (err) {
+    console.error('Demo login error:', err);
+    showLoginAlert('Network error connecting to Shot Lab server.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Sign In to Shot Lab';
+    }
+    allDemoBtns.forEach(b => b.disabled = false);
+  }
+}
+
+function initDemoAthletes() {
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.btn-demo-athlete, .chip-demo-hero');
+    if (!btn) return;
+    const athleteKey = btn.getAttribute('data-athlete');
+    if (athleteKey) {
+      e.preventDefault();
+      loginWithDemoAthlete(athleteKey);
+    }
+  });
+}
+
+
+initDemoAthletes();
 
 // Check auth status on launch
 checkAuthStatus();

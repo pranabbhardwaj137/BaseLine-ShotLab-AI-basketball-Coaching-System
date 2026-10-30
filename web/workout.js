@@ -131,14 +131,41 @@
      announcements play in order; a newer count replaces an older count still waiting;
      cancel() (pause, skip, end, mute, rest start) drops everything at once. */
   const Voice = {
-    supported: 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function',
-    enabled: true,
+    get supported() {
+      if (typeof window !== 'undefined' && window.PracticeVoice) {
+        return window.PracticeVoice.isSupported();
+      }
+      return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function';
+    },
+    get enabled() {
+      return this._enabled !== false;
+    },
+    set enabled(val) {
+      this._enabled = Boolean(val);
+      if (!this._enabled) {
+        this.cancel();
+      }
+    },
+    _enabled: true,
     queue: [],
     busy: false,
     gen: 0,
     guard: null,
     say(text, {kind = 'announce'} = {}) {
-      if (!this.supported || !this.enabled) return false;
+      if (!this.enabled) return false;
+      if (typeof window !== 'undefined' && window.PracticeVoice && window.PracticeVoice.isSupported()) {
+        try {
+          window.PracticeVoice.unlock();
+          return window.PracticeVoice.say(text, {
+            kind,
+            priority: kind === 'count' ? 'high' : 'normal',
+            force: true,
+          });
+        } catch {
+          /* fall through to standalone fallback */
+        }
+      }
+      if (!this.supported) return false;
       if (kind === 'count') this.queue = this.queue.filter(entry => entry.kind !== 'count');
       this.queue.push({text: String(text), kind});
       this.pump();
@@ -168,12 +195,16 @@
       this.guard = setTimeout(done, Math.max(1200, next.text.length * 110));
     },
     cancel() {
+      if (typeof window !== 'undefined' && window.PracticeVoice) {
+        try { window.PracticeVoice.cancel(); } catch { /* ignore */ }
+      }
       this.gen += 1;
       this.queue = [];
       this.busy = false;
       clearTimeout(this.guard);
-      if (!this.supported) return;
-      try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+      }
     },
   };
 

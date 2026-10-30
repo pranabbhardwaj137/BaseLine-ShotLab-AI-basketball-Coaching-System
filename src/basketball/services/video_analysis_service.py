@@ -337,8 +337,11 @@ def reestimate_session_outcomes(
     if ball_tracker is not None and (type(ball_tracker).__module__ == "unittest.mock" or hasattr(ball_tracker, "_mock_return_value")):
         return shots
 
-    if anchor is None or (anchor.stability > 0.15 and rim_source != "user_click"):
+    if anchor is None or (anchor.stability > 0.25 and rim_source != "user_click"):
         for shot in shots:
+            curr_outcome = shot.get("automated_outcome")
+            if curr_outcome in ("make", "miss"):
+                continue
             db.update_shot_machine_outcome(shot["shot_id"], {
                 "automated_outcome": "unknown",
                 "automated_outcome_conf": 0.0,
@@ -773,7 +776,7 @@ def analyze_video(
             )
         else:
             cand_anchor = consensus_rim(rim_dets, metadata["width"], metadata["height"])
-            if cand_anchor and cand_anchor.stability <= 0.15:
+            if cand_anchor and cand_anchor.stability <= 0.25:
                 clip_anchor = cand_anchor
                 db.set_session_rim_anchor(session_id, asdict(clip_anchor), rim_source="auto")
 

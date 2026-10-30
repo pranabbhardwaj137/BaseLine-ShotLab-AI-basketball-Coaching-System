@@ -204,6 +204,42 @@ class TestAuthRoutes(unittest.TestCase):
         self.assertEqual(hdrs.get("content-type"), "image/jpeg")
         self.assertTrue(len(body) > 1000)
 
+    def test_demo_accounts_endpoint(self):
+        code, hdrs, body = simulate_request(self.server, "GET", "/api/auth/demo-accounts")
+        self.assertEqual(code, 200)
+        data = json.loads(body.decode("utf-8"))
+        self.assertIn("accounts", data)
+        self.assertEqual(len(data["accounts"]), 4)
+        names = [a["name"] for a in data["accounts"]]
+        self.assertIn("Pranab", names)
+        self.assertIn("Pavan", names)
+        self.assertIn("Pracheth", names)
+        self.assertIn("Puneeth", names)
+
+    def test_demo_login_endpoint(self):
+        # 1. 1-click login as Pranab
+        code, hdrs, body = simulate_request(self.server, "POST", "/api/auth/demo-login", body={"athlete": "pranab"})
+        self.assertEqual(code, 200)
+        res = json.loads(body.decode("utf-8"))
+        self.assertIn("user", res)
+        self.assertEqual(res["user"]["name"], "Pranab")
+        self.assertEqual(res["user"]["player_id"], "pranab")
+        self.assertEqual(res["user"]["handedness"], "right")
+        self.assertEqual(res["user"]["height_cm"], 182.0)
+        self.assertFalse(res["user"]["pain_reported"])
+        self.assertIn("shotlab_user_session=", hdrs.get("set-cookie", ""))
+
+        # 2. 1-click login as Puneeth (has soreness noted)
+        code, hdrs, body = simulate_request(self.server, "POST", "/api/auth/demo-login", body={"athlete": "puneeth"})
+        self.assertEqual(code, 200)
+        res_puneeth = json.loads(body.decode("utf-8"))
+        self.assertEqual(res_puneeth["user"]["name"], "Puneeth")
+        self.assertTrue(res_puneeth["user"]["pain_reported"])
+
+        # 3. Invalid athlete returns 404
+        code, hdrs, body = simulate_request(self.server, "POST", "/api/auth/demo-login", body={"athlete": "nonexistent_player"})
+        self.assertEqual(code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

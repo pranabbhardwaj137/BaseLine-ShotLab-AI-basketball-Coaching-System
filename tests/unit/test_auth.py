@@ -97,6 +97,56 @@ class TestAuth(unittest.TestCase):
         after_logout = self.db.get_user_by_session(token)
         self.assertIsNone(after_logout)
 
+    def test_demo_accounts_seed_and_retrieve(self):
+        """Verify the 4 canonical demo accounts can be seeded, queried, and authenticated."""
+        demo_accounts = self.db.get_demo_accounts()
+        self.assertEqual(len(demo_accounts), 4)
+
+        names = [a["name"] for a in demo_accounts]
+        self.assertIn("Pranab", names)
+        self.assertIn("Pavan", names)
+        self.assertIn("Pracheth", names)
+        self.assertIn("Puneeth", names)
+
+        # Test querying each demo athlete
+        pranab = self.db.get_demo_user("pranab")
+        self.assertIsNotNone(pranab)
+        self.assertEqual(pranab["name"], "Pranab")
+        self.assertEqual(pranab["handedness"], "right")
+        self.assertEqual(pranab["skill_level"], "intermediate")
+        self.assertEqual(pranab["shot_style"], "jump_shot")
+        self.assertEqual(pranab["height_cm"], 182.0)
+        self.assertEqual(pranab["wingspan_cm"], 188.0)
+        self.assertFalse(pranab["pain_reported"])
+        self.assertTrue(pranab["onboarding_completed"])
+        # Verify 123456 credential
+        self.assertIsNotNone(self.db.verify_user_credentials(pranab["email"], "123456"))
+
+        pavan = self.db.get_demo_user("pavan")
+        self.assertIsNotNone(pavan)
+        self.assertEqual(pavan["name"], "Pavan")
+        self.assertEqual(pavan["skill_level"], "advanced")
+        self.assertEqual(pavan["height_cm"], 186.0)
+        self.assertFalse(pavan["pain_reported"])
+        self.assertIsNotNone(self.db.verify_user_credentials(pavan["email"], "123456"))
+
+        pracheth = self.db.get_demo_user("pracheth")
+        self.assertIsNotNone(pracheth)
+        self.assertEqual(pracheth["name"], "Pracheth")
+        self.assertEqual(pracheth["handedness"], "left")
+        self.assertEqual(pracheth["shot_style"], "set_shot")
+        self.assertEqual(pracheth["height_cm"], 178.0)
+        self.assertFalse(pracheth["pain_reported"])
+        self.assertIsNotNone(self.db.verify_user_credentials(pracheth["email"], "123456"))
+
+        puneeth = self.db.get_demo_user("puneeth")
+        self.assertIsNotNone(puneeth)
+        self.assertEqual(puneeth["name"], "Puneeth")
+        self.assertEqual(puneeth["skill_level"], "developing")
+        self.assertEqual(puneeth["height_cm"], 175.0)
+        self.assertTrue(puneeth["pain_reported"])
+        self.assertIsNotNone(self.db.verify_user_credentials(puneeth["email"], "123456"))
+
 
 if __name__ == "__main__":
     unittest.main()

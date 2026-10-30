@@ -634,6 +634,9 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/auth/me":
             return self._json(200, {"user": self._get_current_user()})
+        if parsed.path == "/api/auth/demo-accounts":
+            db = ShotLabDB(self.server.db_path)
+            return self._json(200, {"accounts": db.get_demo_accounts()})
         if parsed.path == "/api/shot-types":
             return self._json(200, {
                 "version": CONFIG_VERSION,
@@ -690,6 +693,9 @@ class AppHandler(BaseHTTPRequestHandler):
             folder = self.server.keyframe_dir / session_id
             return self._stream_local_file(str(folder / name), self.server.keyframe_dir, allow_range=False,
                                            content_type="image/jpeg")
+        if parsed.path == "/api/voice/status":
+            kokoro = getattr(self.server, "kokoro", None)
+            return self._json(200, kokoro.get_status() if kokoro else {"available": False, "provider": "unavailable"})
         if parsed.path == "/api/live/recap":
             return self._handle_live_recap()
         if parsed.path == "/api/drills/session/status":
@@ -715,6 +721,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "processing": "local_pose_analysis",
                 "ball_rim_tracking": ball_status,
+                "neural_tts": bool(getattr(self.server, "kokoro", None) and self.server.kokoro.is_available()),
                 "llm_chat_enabled": bool(self.server.llm_chat_enabled),
                 "max_upload_bytes": MAX_UPLOAD_BYTES,
                 "llm_provider": self._llm_provider() if self.server.llm_chat_enabled else None,
@@ -933,7 +940,7 @@ class AppHandler(BaseHTTPRequestHandler):
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
             pass
 
-    def _read_json(self, limit):
+    def _read_json(self, limit=32 * 1024):
         try:
             size = int(self.headers.get("Content-Length", "0"))
         except ValueError:
@@ -1021,6 +1028,29 @@ class AppHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
 
+        if path == "/api/auth/demo-login":
+            try:
+                data = self._read_json(16 * 1024)
+            except ValueError as e:
+                return self._text_error(400, str(e))
+            target = (data.get("athlete") or data.get("player_id") or data.get("email") or "").strip()
+            if not target:
+                return self._text_error(400, "Missing athlete identifier.")
+            db = ShotLabDB(self.server.db_path)
+            user = db.get_demo_user(target)
+            if not user:
+                return self._text_error(404, f"Demo account '{target}' not found.")
+            token = db.create_user_session(user["id"])
+            body = json.dumps({"user": user, "token": token}, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self._set_user_cookie(token)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if path == "/api/auth/logout":
             token = self._get_session_token()
             if token:
@@ -1059,6 +1089,8 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._handle_live_process_frame()
         if path == "/api/live/reset":
             return self._handle_live_reset()
+        if path == "/api/voice/synthesize":
+            return self._handle_voice_synthesize()
         if path == "/api/live/recap":
             return self._handle_live_recap()
 
@@ -1398,6 +1430,34 @@ class AppHandler(BaseHTTPRequestHandler):
         recap = engine.get_session_recap()
         return self._json(200, recap)
 
+    def _handle_voice_synthesize(self):
+        kokoro = getattr(self.server, "kokoro", None)
+        if kokoro is None or not kokoro.is_available():
+            return self._text_error(503, "Neural voice synthesis is unavailable")
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+            if size <= 0 or size > 32 * 1024:
+                return self._text_error(400, "Invalid payload size")
+            payload = json.loads(self.rfile.read(size))
+        except Exception:
+            return self._text_error(400, "Invalid JSON payload")
+
+        text = (payload.get("text") or "").strip()
+        if not text:
+            return self._text_error(400, "Text is required for voice synthesis")
+        voice = payload.get("voice")
+        speed = float(payload.get("speed", 1.0))
+        wav_bytes = kokoro.synthesize_wav(text=text, voice=voice, speed=speed)
+        if not wav_bytes:
+            return self._text_error(500, "Voice synthesis failed")
+        self.send_response(200)
+        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Length", str(len(wav_bytes)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(wav_bytes)
+
     def _get_drill_engine(self):
         engine = getattr(self.server, "drill_engine", None)
         if engine is None:
@@ -1487,13 +1547,13 @@ class AppHandler(BaseHTTPRequestHandler):
         db = ShotLabDB(self.server.db_path)
         if not db.get_session(session_id):
             return self._text_error(404, "Session not found")
-        data = self._read_json()
+        data = self._read_json(16 * 1024)
         if not isinstance(data, dict):
             return self._text_error(400, "Expected JSON object")
         try:
-            cx = float(data.get("cx", 0.0))
-            cy = float(data.get("cy", 0.0))
-            w = float(data.get("w", 0.0))
+            cx = float(data.get("cx", data.get("center_x", 0.0)))
+            cy = float(data.get("cy", data.get("center_y", 0.0)))
+            w = float(data.get("w", data.get("width", 0.0)))
         except (ValueError, TypeError):
             return self._text_error(400, "cx, cy, and w must be valid numbers")
 
@@ -1547,9 +1607,12 @@ class AppHandler(BaseHTTPRequestHandler):
         for shot in shots:
             shot["review_history"] = db.get_shot_review_history(shot["shot_id"])
 
+        anchor_dict = asdict(anchor)
+        anchor_dict["source"] = "user_click"
+        anchor_dict["rim_source"] = "user_click"
         return self._json(200, {
             "status": "ok",
-            "rim_anchor": asdict(anchor),
+            "rim_anchor": anchor_dict,
             "shots": shots,
         })
 
@@ -2069,6 +2132,11 @@ class LocalAppServer(ThreadingHTTPServer):
             self.drill_engine = DrillTrackingEngine()
         except Exception:
             self.live_engine = None
+        try:
+            from basketball.services.kokoro_service import KokoroService
+            self.kokoro = KokoroService()
+        except Exception:
+            self.kokoro = None
 
 
 ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I to avoid typos on a phone
@@ -2324,6 +2392,10 @@ def main():
         enable_tls(server, args.tls_cert, args.tls_key)
         scheme = "https"
     server.db_path = db_path
+    try:
+        ShotLabDB(db_path).seed_demo_accounts()
+    except Exception as exc:
+        print(f"[WARN] Failed to seed demo accounts: {exc}")
     server.upload_dir = upload_dir
     server.pose_cache_dir = pose_cache_dir
     server.keyframe_dir = keyframe_dir
@@ -2355,6 +2427,11 @@ def main():
         server.drill_engine = DrillTrackingEngine()
     except Exception:
         server.drill_engine = None
+    try:
+        from basketball.services.kokoro_service import KokoroService
+        server.kokoro = KokoroService()
+    except Exception:
+        server.kokoro = None
     server.lan_mode = bool(args.lan)
     server.access_token = access_code
     server.tls_enabled = scheme == "https"

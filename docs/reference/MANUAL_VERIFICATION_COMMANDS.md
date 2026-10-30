@@ -88,22 +88,22 @@ python tools/annotation_lab.py --video <VIDEO_PATH> --clip-id <CANONICAL_ID> --p
 Examples using the canonical clip IDs:
 
 ```powershell
-# Lavish — requested train grouping
+# Lavish - requested train grouping
 python tools/annotation_lab.py --video raw_clips\lavish_1_90deg.mp4 --clip-id lavish_1_90deg --player-id lavish --split train
 python tools/annotation_lab.py --video raw_clips\lavish_2_90deg.mp4 --clip-id lavish_2_90deg --player-id lavish --split train
 python tools/annotation_lab.py --video raw_clips\lavish_3_mix.mp4 --clip-id lavish_3_mix --player-id lavish --split train
 python tools/annotation_lab.py --video raw_clips\lavish_4_0deg.mp4 --clip-id lavish_4_0deg --player-id lavish --split train
 python tools/annotation_lab.py --video raw_clips\lavish_5_0deg.mp4 --clip-id lavish_5_0deg --player-id lavish --split train
 
-# Klay — requested train grouping
+# Klay - requested train grouping
 python tools/annotation_lab.py --video raw_clips\klay_vid.mp4 --clip-id klay_vid --player-id klay_thompson --split train
 
-# Mike Dunn — requested validation grouping
+# Mike Dunn - requested validation grouping
 python tools/annotation_lab.py --video raw_clips\Mikedunn.mp4 --clip-id mikedunn --player-id mike_dunn --split val
 python tools/annotation_lab.py --video raw_clips\mikeddunnstud1.mp4 --clip-id mikeddunnstud1 --player-id mike_dunn --split val
 python tools/annotation_lab.py --video raw_clips\mikeddunnstud2.mp4 --clip-id mikeddunnstud2 --player-id mike_dunn --split val
 
-# Sid — requested test grouping
+# Sid - requested test grouping
 python tools/annotation_lab.py --video raw_clips\sid_1.mp4 --clip-id sid_1 --player-id sid --split test
 python tools/annotation_lab.py --video raw_clips\sid_2.mp4 --clip-id sid_2 --player-id sid --split test
 python tools/annotation_lab.py --video raw_clips\sid_3_mult.mp4 --clip-id sid_3_mult --player-id sid --split test
@@ -319,7 +319,7 @@ Known environment-dependent tests: `test_ball_tracker`, `test_ball_tracking_flow
 
 Tests should use temporary DBs and fixtures. After tests, inspect `dataset_export/` and confirm its manifest/hash did not change unexpectedly.
 
-## 11. Demo and maintenance commands — use care
+## 11. Demo and maintenance commands - use care
 
 ```powershell
 # Seed sample players/shots/baselines. Use a separate DB; data is demo/sample data, not evaluation data.
@@ -433,8 +433,8 @@ Expected output: 21 tests pass with `OK` (18 unit tests + 3 integration tests).
 
 1. Open `http://127.0.0.1:8765/#drills`
 2. Four drill cards appear, each with a video thumbnail, difficulty badge, and skill chips.
-3. Click any combo drill (e.g. **Pound + Crossover** or **Pound + V-Dribble**) — the drill runner opens with the reference demo video on the left and camera placeholder on the right.
-4. Click **Start camera & count reps** — browser requests camera permission; allow it.
+3. Click any combo drill (e.g. **Pound + Crossover** or **Pound + V-Dribble**) - the drill runner opens with the reference demo video on the left and camera placeholder on the right.
+4. Click **Start camera & count reps** - browser requests camera permission; allow it.
 5. The reference demo video loops; your camera feed starts.
 6. A live MediaPipe skeleton overlay appears on your body (green lines for athletic stance, amber if knees are upright). A real-time knee bend angle badge (e.g. `154°`), live move indicator (`MOVE: POUND (R)`), and dynamic live coaching cue pill appear.
 7. **Strict Ground Dribble Verification**:
@@ -444,7 +444,7 @@ Expected output: 21 tests pass with `OK` (18 unit tests + 3 integration tests).
    - The engine tracks lateral displacement ΔX and body midline position X_mid to classify every bounce as `POUND`, `CROSSOVER`, or `V_DRIBBLE`.
    - The HUD displays the live move and combo step (e.g. `Step 1/3: Pound` -> `Step 2/3: Pound` -> `Step 3/3: Cross`).
    - Completing the sequence matching the demo video increments the **Combos Completed** counter and triggers a visual celebration ripple and flash.
-9. Click **Stop drill** — the session stops on the backend and displays genuine measured biomechanics and style adherence:
+9. Click **Stop drill** - the session stops on the backend and displays genuine measured biomechanics and style adherence:
    - **Authentic Reps** & Cadence (reps/sec) with ground contact height validation
    - **Completed Combos** matching the demo video sequence
    - **Style Match %** (% adherence to demo video movements)
@@ -452,7 +452,7 @@ Expected output: 21 tests pass with `OK` (18 unit tests + 3 integration tests).
    - **Stance Adherence %** (% time maintaining athletic knee bend)
    - **Eyes Up %** (% time head held high looking forward)
    - Detailed evidence-based feedback on move counts, sequence fidelity, and posture.
-10. Click **Done — back to drills** to return to the catalog.
+10. Click **Done - back to drills** to return to the catalog.
 
 No data is written to the database or uploaded. Camera feed stays local.
 
@@ -510,11 +510,14 @@ Open `http://127.0.0.1:8765` (or `https://` if using `--https`), review the pref
 **In-app camera recording & immersive full-screen mode:** on `http://127.0.0.1:8765`, in **Practice video** choose **Record with camera**, select **Turn on camera** and allow browser permission.
 - **Immersive Full-Screen Mode:** Click the fullscreen icon button (`#hud-btn-fullscreen`) on the top-left of the HUD to enter edge-to-edge camera preview. In immersive mode, sidebars and cards are hidden so the shooter has an uncluttered view of live pose tracking and trajectory feedback. Exit immersive mode via the floating "Exit full screen" button, the escape icon, or pressing the `Escape` key.
 - **Secondary Metrics Toggle:** Click `#hud-btn-toggle-metrics` to toggle the top metrics bar (`RIM (LIVE)`, `PEAK MAX`, `KNEE`, `ARM`, `PHASE`) on or off.
-- **Honest HUD Indicators:** When starting a session with no recorded attempts, the success rate shows `—` (dash) instead of misleading `0%`. When a rim is detected, the status pill shows `LOCKED` (or verified confidence %) instead of artificial `100%`.
+- **Honest HUD Indicators:** When starting a session with no recorded attempts, the success rate shows `-` (dash) instead of misleading `0%`. When a rim is detected, the status pill shows `LOCKED` (or verified confidence %) instead of artificial `100%`.
 - **Mobile Landscape Advisory:** On narrow screens in portrait mode, an orientation advisory recommends landscape framing for full court and hoop capture. During recording, accidental page scrolling is prevented (`is-camera-recording`).
 - **Recording & Submission:** Click **Start recording** and **Stop**. A recorded clip is placed into the upload control; select **Analyze Practice Clip** to process it. Browser camera permission and MediaRecorder support are required; recordings are capped at 250 MB and held in browser memory until submitted. The app tries OpenCV directly with local FFmpeg fallback if the browser's container requires conversion. Check that **Turn off camera** stops all tracks.
 - **Live Practice Audio Coach & Speech Feedback:**
-  - **Speech Synthesis:** In the camera HUD overlay, an audio coach uses the browser's native `speechSynthesis` to speak suggestive form cues (in English) before each rep and brief feedback after completed shots when supported by valid measurements.
+  - **Speech Synthesis (Kokoro Neural TTS & Web Speech Fallback):** In the camera HUD overlay and Guided Workouts, speech is driven by local neural TTS powered by Kokoro ONNX (`models/kokoro/kokoro-v0_19.int8.onnx` + `voices.bin`). If Kokoro models or ONNX runtime are missing, the client automatically and gracefully falls back to the browser's native `speechSynthesis` API without audio loss or interruption.
+  - **Voice API Endpoints:**
+    - `GET /api/voice/status`: Returns current neural engine status (`{"available": true, "provider": "kokoro_onnx", "model": "models\\kokoro\\kokoro-v0_19.int8.onnx", "default_voice": "af_sarah", "voices": [...]}`).
+    - `POST /api/voice/synthesize`: Synthesizes arbitrary text into 24kHz 16-bit mono PCM WAV audio buffer. Body: `{"text": "Bend your knees deeper"}`. Returns `audio/wav` binary stream.
   - **Mute / Voice Toggle:** Click `#hud-btn-voice` (speaker icon) in the top-left HUD toolbar to mute/unmute speech. When muted, voice queue is instantly cancelled and state is persisted in localStorage; the visible text caption banner (`#hud-coach-banner`) remains displayed.
   - **Evidence Gating & Gating Logic:**
     1. *Historical Evidence:* If the selected athlete has $\ge 5$ approved, sufficient-confidence shots with a confirmed baseline or active remediation, the pre-rep cue reinforces that focus (e.g. *"Try letting your legs start the shot before your arm extends"* or *"Try finishing with your elbow higher"*).
@@ -523,6 +526,10 @@ Open `http://127.0.0.1:8765` (or `https://` if using `--https`), review the pref
     4. *Confidence Gating:* If landmark visibility is insufficient ($< 0.45$) or key shooting joints are occluded, mechanics speech is suppressed.
     5. *Suggestive Tone & No Outcome Speech:* The coach uses purely suggestive language (never promises or guarantees made shots) and **never announces makes or misses in speech** (outcomes remain on the visual HUD banner).
     6. *End-of-Set Recap:* When clicking **End Session** (`#hud-finish-btn`) or closing the camera, a short recap summarizes the set reps and primary focus (e.g. *"Set complete: 10 shots tracked. Focus on arm extension in your next set"*).
+  - **Guided Workout Voice Integration:**
+    - Repetition numbers ("10, 9, 8..."), exercise names ("Next exercise: High Plank"), and rest intervals ("Rest for 30 seconds") are synthesized via the Kokoro neural voice pipeline.
+    - Repetition countdown numbers 1-10 are pre-warmed in memory on startup, ensuring instantaneous audio playback with <1ms latency.
+    - Toggle the workout voice button (`wk-voice`) at any time to mute/unmute guidance during exercises.
 
 **Existing desktop OpenCV camera workflow:** this is a separate live-analysis path, not a browser recording upload. Run `.venv\Scripts\python.exe main.py --player player --camera-view side_90 --shot-type catch_and_shoot --shot-style jump_shot --db shot_lab.db --no-ball --windowed`; OpenCV opens the computer's camera, analyzes frames live, and saves detected shot records to SQLite. Press `Q` to end the live run. It does not save the original webcam video or create the web app's replay job, so use the browser recorder above when you need a saved video and seekable replay. This prototype is local testing; a production website will need a separate recording/job/history design.
 
@@ -567,7 +574,7 @@ Expected: edited event frames appear in `annotated_*_frame`; corresponding `mach
 
 The **Progress** view loads for the Player ID shown at its top (change it there to switch players). All saved sessions remain visible so unreviewed sessions can be inspected or deleted, but only sessions with at least one human-approved, `SUFFICIENT` shot count toward activity or receive metrics. Metric means and sample standard deviations require at least five measured values. Trend charts and comparisons use only the same player, camera view, shot type, and shot style. “Consistency” is the per-metric sample standard deviation, not a validated score. Early-to-late differences require at least six eligible shots and at least three non-missing values in each half; these are descriptive within-session changes, not a fatigue finding.
 
-Choose a weekly goal from 1–7. The goal is saved in `player_app_settings`; a practice session counts only if it contains an approved, confidence-sufficient shot. Activity dates and streaks use the UTC date stored by SQLite.
+Choose a weekly goal from 1-7. The goal is saved in `player_app_settings`; a practice session counts only if it contains an approved, confidence-sufficient shot. Activity dates and streaks use the UTC date stored by SQLite.
 
 When an evidence-gated cue is present, select **Add drill to my practice plan** in the Coaching cue card. This explicit action writes an entry to `remediations`; merely viewing the cue is read-only. After uploading and reviewing a different session with the same player, camera view, shot type, and style, open that session in Review, then in Progress choose **Compare the open session to before the drill**. It requires at least five approved, sufficient-confidence measurements for the cue metric. It stores the post-session mean/spread and any human-labeled make-rate counts. The before/after comparison is descriptive and does not establish that the drill caused the change.
 
@@ -685,9 +692,9 @@ python web_app.py --lan --access-code MYCODE2026   # or a fixed code (>= 8 lette
    - Both flags are required together and cannot be combined with `--https`. The access cookie gets the `Secure` flag. `certs/`, `*.pem` and `user_data/` are git-ignored.
    - If running over plain HTTP, simply record the clip with your phone's native Camera app, then choose **Upload a file** in the web app.
 
-**What happens after an upload (worker stages and progress):** pose analysis (0–85%) → "Preparing a replay copy that plays in every browser" (an H.264 copy `<upload id>-replay.mp4` in the upload dir, only when the codec/container may not play everywhere, e.g. iPhone HEVC; the original is kept) → "Measuring mechanics and writing your coaching report" (stores `attempt_analysis`, `session_analysis`, `session_reports` rows and keyframe JPEGs under `user_data/keyframes/<session_id>/`) → complete. **Cancel analysis** (or `POST /api/jobs/<job_id>/cancel`) stops after the current frame, marks the job `failed`/`cancelled`, and removes the partial session, its pose cache and upload.
+**What happens after an upload (worker stages and progress):** pose analysis (0-85%) → "Preparing a replay copy that plays in every browser" (an H.264 copy `<upload id>-replay.mp4` in the upload dir, only when the codec/container may not play everywhere, e.g. iPhone HEVC; the original is kept) → "Measuring mechanics and writing your coaching report" (stores `attempt_analysis`, `session_analysis`, `session_reports` rows and keyframe JPEGs under `user_data/keyframes/<session_id>/`) → complete. **Cancel analysis** (or `POST /api/jobs/<job_id>/cancel`) stops after the current frame, marks the job `failed`/`cancelled`, and removes the partial session, its pose cache and upload.
 
-**Upload validation:** extensions MP4/MOV/M4V/AVI/MKV/WebM (or inferred from `X-Upload-Type` when the name has none), ≤ 250 MB, duration 0.5 s–10 min, first frame must decode (FFmpeg fallback first). Errors are returned as 400/413/415 with a plain message; nothing is kept on failure.
+**Upload validation:** extensions MP4/MOV/M4V/AVI/MKV/WebM (or inferred from `X-Upload-Type` when the name has none), ≤ 250 MB, duration 0.5 s-10 min, first frame must decode (FFmpeg fallback first). Errors are returned as 400/413/415 with a plain message; nothing is kept on failure.
 
 **Report:**
 
@@ -735,7 +742,7 @@ Full design: `docs/reference/WORKOUT_COACH.md`. Inputs: a session with a finishe
 In the browser:
 1. Open **Report**.
 2. Select **Generate My Personalized Workout**.
-3. Choose equipment, level, duration (20–60 min) and limitations.
+3. Choose equipment, level, duration (20-60 min) and limitations.
 4. Select **Generate My Workout**.
 5. Review the plan and select **Start workout**.
 
@@ -901,12 +908,13 @@ openssl x509 -in user_data/certs/shotlab-local-ca.pem -noout -ext nameConstraint
 | Chrome / Android | Records WebM |
 
 **Workout voice (browser, any device):**
+Driven by Kokoro Neural TTS when online (with automatic browser `speechSynthesis` fallback). Countdown numbers 1-10 are pre-warmed in memory on session initialization for instantaneous (<1ms) audio playback matching the visual counter.
 
 | Step | Expected |
 |---|---|
 | Start a workout | The exercise name once |
 | Repetition sets | Every rep counted down ("10, 9 … 1"), matching the on-screen number; each-side exercises say "Switch sides. 10" |
-| Timed sets | "45 seconds", then every 10 s, then 5–1 |
+| Timed sets | "45 seconds", then every 10 s, then 5-1 |
 | Rest begins | "Rest for N seconds" once, then silence; the countdown is on screen only |
 | Rest ends | "Rest complete. Next exercise: X." (or "Next set: X, set 2 of 3."); X's name is not said again |
 | Pause / mute / skip | Speech stops immediately; resuming repeats nothing |
@@ -1036,8 +1044,8 @@ OK
    - The topbar replaces "Sign In / Join Lab" with the athlete user badge showing user avatar, name, and skill level.
    - The **Player and session** setup form (`#upload-form`) is automatically pre-filled with the user's Player ID, Shooting hand, Experience, Shot style, and Goals.
 5. Click the user badge to open **Shooter Profile & Settings**:
-   - Update shooting goals or height and click **Save Profile Changes** — data updates in SQLite `users` and `players` tables.
-   - Click **Sign Out** — session is invalidated, and topbar returns to "Sign In / Join Lab".
+   - Update shooting goals or height and click **Save Profile Changes** - data updates in SQLite `users` and `players` tables.
+   - Click **Sign Out** - session is invalidated, and topbar returns to "Sign In / Join Lab".
 6. Click **Sign In**: enter registered email and password to log back in.
 7. Confirm all existing workflows (drag-and-drop video upload, camera recording, reviewing quarantined attempts, coaching reports, and dribble drills) work with full backward compatibility.
 
@@ -1182,3 +1190,86 @@ OK
   3. Click `Confirm rim` (in banner or overlay controls).
   4. On the video canvas, cursor changes to a crosshair. Click the rim center and drag to the rim outer edge, then release.
   5. The client submits `POST /api/sessions/{session_id}/rim-anchor`, updates the session anchor in cyan (`#00f0ff`) with concentric rings and `RIM: CONFIRMED` badge, re-estimates all attempts in the session, and refreshes the attempt list with `Likely make` / `Likely miss` / `Unclear` and reason pills.
+
+### 21.7 Automated Web Review Flow and Em Dash Verification
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  python scripts/verify_web_review_flow.py
+  ```
+- **Inputs**: Running local web server on `http://127.0.0.1:8765` and `shot_lab.db`.
+- **Expected Output**:
+  - `[1/5] Verifying web application static assets...` (verifies `/`, `/assets/app.js`, `/assets/app.css` return HTTP 200).
+  - `[2/5] Testing with session: ...` (selects session with reviewed shots).
+  - `[3/5] Testing GET /api/sessions/{session_id}...` (validates rim_anchor and shots properties).
+  - `[4/5] Testing POST /api/sessions/{session_id}/rim-anchor (User Confirmation)...` (verifies status=200, updates DB `rim_source='user_click'`, re-estimates shots, and confirms 100% human label immutability).
+  - `[5/5] Checking for em dashes across all UI and documentation files...` (confirms zero em dashes).
+  - `ALL STEP 4 VERIFICATION CHECKS PASSED CLEANLY!`
+- **Side Effects**: Sets `rim_anchor` on tested session with `rim_source = 'user_click'`. Does not mutate human labels.
+
+### 21.8 Rim Detection and Anchor Stability Diagnosis
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  py -3.12 scripts/diagnose_rim.py
+  ```
+- **Inputs**: Cached pose and tracking records in `user_data/pose_cache/*.json.gz`.
+- **Expected Output**:
+  - Reports total cached sessions and count of sessions containing raw YOLO rim detections.
+  - Compares anchor resolution rates between old strict filters (47.1% success) and production tuned filters (82.4% success).
+  - Shows distribution of raw YOLO rim confidence scores and aspect ratios (w / h).
+  - Displays per-session breakdown showing frame counts, rim detection counts, aspect ratio ranges, and anchor resolution status.
+- **Side Effects**: Read-only diagnostic; does not modify cache files or database.
+
+### 21.9 Legacy Outcome Mode Toggle (Rollback Option)
+- **Command**:
+  ```powershell
+  # Run web application in legacy outcome mode (bypasses new estimator)
+  $env:BASKETBALL_USE_LEGACY_OUTCOME="1"
+  $env:PYTHONPATH="src;."
+  py -3.12 -m basketball.app.web_app --port 8765
+  ```
+- **Inputs**: Environment variable `BASKETBALL_USE_LEGACY_OUTCOME=1`.
+- **Expected Output**:
+  - Reverts shot outcome logic directly to the legacy parabolic fit and 80px rim proximity check.
+  - Bypasses the physics-based outcome estimator for users preferring the old calculation.
+- **Side Effects**: Sets shot machine outcomes using legacy heuristic. Does not modify human labels.
+
+
+## 22. 1-Click Demo Athlete Accounts (Pranab, Pavan, Pracheth, Puneeth)
+
+Canonical demo profiles provide 1-click authentication and prefilled athlete profiles on both the Sign In modal and the landing page hero strip.
+
+### 22.1 Demo Accounts Seed and Auth Test
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  py -3.12 -m unittest tests/unit/test_auth.py tests/integration/test_auth_routes.py
+  ```
+- **Inputs**: SQLite database initialized with versioned schema.
+- **Expected Output**:
+  - `Ran 10 tests in ...s`
+  - `OK`
+  - Validates `seed_demo_accounts()`, `get_demo_accounts()`, `get_demo_user()`, `GET /api/auth/demo-accounts`, and `POST /api/auth/demo-login`.
+
+### 22.2 Manual 1-Click Browser Verification
+- **Command**:
+  ```powershell
+  py -3.12 web_app.py --port 8765
+  ```
+- **Procedure**:
+  1. Open `http://127.0.0.1:8765` in your browser.
+  2. In the hero section, observe the **1-Click Demo Profiles** strip with 4 athlete chips:
+     - **Pranab** (PB avatar, Right handed, Jump shot, 182 cm, 188 cm wingspan)
+     - **Pavan** (PK avatar, Right handed, Advanced, 186 cm, 192 cm wingspan)
+     - **Pracheth** (PR avatar, Left handed, Set shot, 178 cm, 180 cm wingspan)
+     - **Puneeth** (PG avatar, Right handed, Developing, 175 cm, Soreness noted)
+  3. Click any athlete chip (for example, **Pranab**):
+     - Credentials are automatically filled and submitted in 1 click.
+     - A welcome toast appears: `Welcome, Pranab! Signed in (Right handed, Jump shot).`
+     - The app transitions immediately into the Practice workspace with the athlete summary in Section 01 prefilled.
+  4. Or, open the **Sign In** modal:
+     - Click any of the 4 demo cards in the modal.
+     - Email and password are prefilled (`pranab@shotlab.local` / `123456`), and you are logged in instantly.
+  5. Click the athlete badge in the top right to open **Shooter Profile & Settings**:
+     - Confirm all saved athlete attributes (height, wingspan, shooting goals, handedness, pain/soreness) are fully populated and editable.

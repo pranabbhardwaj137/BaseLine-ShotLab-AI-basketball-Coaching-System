@@ -1101,6 +1101,7 @@ class ShotLabDB:
                 data = json.loads(row[0])
                 if isinstance(data, dict):
                     data["source"] = row[1] or "auto"
+                    data["rim_source"] = row[1] or "auto"
                 return data
             except Exception:
                 return None
@@ -1829,4 +1830,155 @@ class ShotLabDB:
             cursor.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
             conn.commit()
             return cursor.rowcount > 0
+
+    def seed_demo_accounts(self) -> List[Dict[str, Any]]:
+        """Seed or update the 4 canonical demo accounts (Pranab, Pavan, Pracheth, Puneeth).
+        
+        Ensures each demo account exists with full prefilled profile information and password '123456'.
+        Returns list of public demo account records.
+        """
+        from basketball.configs.demo_athletes import DEMO_ATHLETES
+
+        results = []
+        for athlete in DEMO_ATHLETES:
+            # Check if user exists by primary email
+            user = self.get_user_by_email(athlete["email"])
+
+            # If not found, check by alt_email if present
+            if not user and athlete.get("alt_email"):
+                user = self.get_user_by_email(athlete["alt_email"])
+
+            # If still not found, check by player_id
+            if not user:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT id FROM users WHERE LOWER(player_id) = ?", (athlete["player_id"].lower(),))
+                    row = cursor.fetchone()
+                    if row:
+                        user = self.get_user_by_id(row["id"])
+
+            profile_data = {
+                "name": athlete["name"],
+                "skill_level": athlete["skill_level"],
+                "handedness": athlete["handedness"],
+                "shot_style": athlete["shot_style"],
+                "height_cm": athlete["height_cm"],
+                "wingspan_cm": athlete["wingspan_cm"],
+                "goals": athlete["goals"],
+                "pain_reported": athlete["pain_reported"],
+                "onboarding_completed": True,
+            }
+
+            if user:
+                self.update_user_profile(user["id"], profile_data)
+                pwd_hash = self.hash_password(athlete["password"])
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (pwd_hash, user["id"]))
+                    conn.commit()
+                if user.get("email") != athlete["email"]:
+                    if not self.get_user_by_email(athlete["email"]):
+                        try:
+                            self.create_user(
+                                email=athlete["email"],
+                                password=athlete["password"],
+                                name=athlete["name"],
+                                player_id=athlete["player_id"],
+                                skill_level=athlete["skill_level"],
+                                handedness=athlete["handedness"],
+                                shot_style=athlete["shot_style"],
+                                height_cm=athlete["height_cm"],
+                                wingspan_cm=athlete["wingspan_cm"],
+                                goals=athlete["goals"],
+                                pain_reported=athlete["pain_reported"],
+                                onboarding_completed=True,
+                            )
+                        except Exception:
+                            pass
+                updated = self.get_user_by_id(user["id"])
+                results.append(updated)
+            else:
+                created = self.create_user(
+                    email=athlete["email"],
+                    password=athlete["password"],
+                    name=athlete["name"],
+                    player_id=athlete["player_id"],
+                    skill_level=athlete["skill_level"],
+                    handedness=athlete["handedness"],
+                    shot_style=athlete["shot_style"],
+                    height_cm=athlete["height_cm"],
+                    wingspan_cm=athlete["wingspan_cm"],
+                    goals=athlete["goals"],
+                    pain_reported=athlete["pain_reported"],
+                    onboarding_completed=True,
+                )
+                results.append(created)
+
+        return results
+
+    def get_demo_accounts(self) -> List[Dict[str, Any]]:
+        """Return public catalog of demo athletes for UI 1-click login and demo selectors."""
+        from basketball.configs.demo_athletes import DEMO_ATHLETES
+
+        self.seed_demo_accounts()
+
+        accounts = []
+        for a in DEMO_ATHLETES:
+            user = self.get_user_by_email(a["email"])
+            if not user and a.get("alt_email"):
+                user = self.get_user_by_email(a["alt_email"])
+
+            entry = {
+                "name": a["name"],
+                "player_id": a["player_id"],
+                "email": a["email"],
+                "alt_email": a.get("alt_email"),
+                "password": a["password"],
+                "avatar": a["avatar"],
+                "tag": a["tag"],
+                "highlights": a.get("highlights", ""),
+                "handedness": user.get("handedness") if user else a["handedness"],
+                "skill_level": user.get("skill_level") if user else a["skill_level"],
+                "shot_style": user.get("shot_style") if user else a["shot_style"],
+                "height_cm": user.get("height_cm") if user else a["height_cm"],
+                "wingspan_cm": user.get("wingspan_cm") if user else a["wingspan_cm"],
+                "goals": user.get("goals") if user else a["goals"],
+                "pain_reported": bool(user.get("pain_reported")) if user else a["pain_reported"],
+            }
+            accounts.append(entry)
+        return accounts
+
+    def get_demo_user(self, key: str) -> Optional[Dict[str, Any]]:
+        """Find and return full user record for a demo athlete by name, player_id, or email."""
+        from basketball.configs.demo_athletes import DEMO_ATHLETES
+
+        key_clean = key.strip().lower()
+        matched_athlete = None
+        for a in DEMO_ATHLETES:
+            if (
+                a["name"].lower() == key_clean
+                or a["player_id"].lower() == key_clean
+                or a["email"].lower() == key_clean
+                or (a.get("alt_email") and a["alt_email"].lower() == key_clean)
+            ):
+                matched_athlete = a
+                break
+
+        if not matched_athlete:
+            return None
+
+        self.seed_demo_accounts()
+        user = self.get_user_by_email(matched_athlete["email"])
+        if not user and matched_athlete.get("alt_email"):
+            user = self.get_user_by_email(matched_athlete["alt_email"])
+        if not user:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM users WHERE LOWER(player_id) = ?", (matched_athlete["player_id"].lower(),))
+                row = cursor.fetchone()
+                if row:
+                    user = self.get_user_by_id(row["id"])
+        if user:
+            return self.get_user_by_id(user["id"])
+        return None
 

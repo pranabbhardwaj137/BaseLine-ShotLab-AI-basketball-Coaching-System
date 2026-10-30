@@ -209,3 +209,65 @@ Expected output:
    - Observe that the session outcomes immediately update with re-estimated scores and the banner disappears.
    - In the Attempt Detail panel, verify the **Outcome evidence** card displays the evidence quality bar, trajectory metrics, and prototype advisory notice.
    - Verify that human label radio buttons (Not sure / Make / Miss) are never automatically modified.
+
+
+## 5. Canonical Demo Accounts (Pranab, Pavan, Pracheth, Puneeth)
+
+### Overview
+Added 4 canonical athlete profiles for instant 1-click authentication and testing across the web app:
+- **Pranab** (`pranab@shotlab.local`, alt `bhardwajpranab1312@gmail.com`): Right-handed, Intermediate, Jump Shot, 182 cm height, 188 cm wingspan. Focus: Consistent release arc, smooth dip-to-set transfer, and repeatable balance.
+- **Pavan** (`pavan@shotlab.local`): Right-handed, Advanced, Jump Shot, 186 cm height, 192 cm wingspan. Focus: Fast catch & shoot release off screens and high-elevation pull-up jump shots.
+- **Pracheth** (`pracheth@shotlab.local`): Left-handed, Intermediate, Set Shot, 178 cm height, 180 cm wingspan. Focus: Free throw routine consistency, tight elbow alignment under ball, and high follow-through.
+- **Puneeth** (`puneeth@shotlab.local`): Right-handed, Developing, Jump Shot, 175 cm height, 178 cm wingspan. Focus: Landing stability and knee flexion rhythm without shoulder or back strain (Soreness noted).
+
+All accounts share the standard password `123456`.
+
+### Implementation Details
+1. **Config Registry (`src/basketball/configs/demo_athletes.py`)**:
+   Defines `DEMO_ATHLETES` list with canonical attributes, avatars, tags, physical dimensions, and training goals.
+2. **Database Seeding (`src/basketball/persistence/shot_lab_db.py`)**:
+   Added `seed_demo_accounts()`, `get_demo_accounts()`, and `get_demo_user(key)` to automatically populate the SQLite database with full profile records on startup.
+3. **Web Server Routes (`src/basketball/app/web_app.py`)**:
+   - `GET /api/auth/demo-accounts`: Returns public catalog of demo athletes.
+   - `POST /api/auth/demo-login`: Accepts athlete identifier and logs the user in immediately, establishing a session cookie.
+4. **User Interface (`web/index.html`, `web/app.js`, `web/app.css`)**:
+   - **Hero Quick Strip**: Added 1-click athlete chips right under the landing page hero call-to-action buttons.
+   - **Sign In Modal**: Added a dedicated 1-click athlete card grid that automatically prefills email/password and signs in directly to the Practice workspace.
+   - **Practice Workspace & Profile Manager**: Seamlessly populates the athlete summary badge, player ID, handedness, shot style, goals, and health/injury status.
+
+
+## 6. Rim Tracking Robustness & Overlay Fix
+
+### Root Cause Analysis of 0% Rim Detection
+Investigation revealed three distinct filters that caused real rim detections to drop to 0%:
+1. **Aggressive `consensus_rim` Confidence Filter**:
+   `min_conf=0.50` silently dropped 30.5% of genuine YOLO rim detections (mean confidence of custom YOLO weights is 0.54, with detection threshold at 0.25).
+2. **Narrow Aspect Ratio and Width Caps**:
+   - `1.1 <= w/h <= 3.0` rejected 28.5% of real rim detections because normal upward-angled camera perspectives flatten the circular rim into ellipses with aspect ratios from 3.2 to 8.0.
+   - `w <= 0.25 * frame_w` rejected 100% of rim detections on portrait/vertical videos (e.g., 478x850 or 720x1280 smartphone videos where the rim is 30% to 40% of the frame width).
+   - `cy - h/2 < 0.01 * frame_h` rejected rims touching the top frame edge on low-angle court footage.
+3. **Cascade in `video_analysis_service.py`**:
+   When `consensus_rim` failed on those clips, `reestimate_session_outcomes` wiped out every single shot automated outcome to `unknown` with reason `RIM_NOT_ANCHORED`, discarding the make/miss outcome already calculated by `ball_tracker.on_shot_ended`.
+4. **Client-side Overlay Suppression in `web/app.js`**:
+   The review overlay removed `_lastRim` persistence and applied the same narrow geometry filters (`aspect <= 3.0`, `w <= 0.25vw`), hiding YOLO rim boxes completely from the user canvas.
+
+### Changes Made
+1. **`src/basketball/tracking/outcome_estimator.py`**:
+   - Lowered `min_conf` in `consensus_rim` from 0.50 to 0.20 to capture all detections from the YOLO tracker (threshold 0.25).
+   - Relaxed aspect ratio range to `[0.6, 9.0]` to accommodate elliptical rims seen from upward-angled court perspectives.
+   - Relaxed width cap to `0.55 * frame_w` for portrait mode (`frame_w < frame_h`) and `0.35 * frame_w` for landscape.
+   - Only reject top-edge strips if aspect ratio > 4.5 (filtering thin sky artifact strips without discarding rims at `y1 = 0.0`).
+   - Added candidate fallback to the median when votes are split.
+   - Raised bad stability threshold from 0.15 to 0.25.
+2. **`src/basketball/services/video_analysis_service.py`**:
+   - Updated consensus acceptance threshold to `stability <= 0.25`.
+   - In `reestimate_session_outcomes`, preserved existing `make`/`miss` outcomes from `on_shot_ended` if consensus anchor cannot be resolved, preventing shots from being wiped out to `unknown`.
+3. **`web/app.js`**:
+   - Restored `poseData._lastRim` and `_lastRimConf` persistence in the review overlay so detected rim boxes do not flicker across frames.
+   - Restored the prominent orange bounding box (`#ff6b00`), target reticle (concentric circle + crosshairs), and `RIM xx%` tag badge.
+   - Maintained cyan (`#00f0ff`) reticle for confirmed/consensus anchors, allowing athletes to see both the YOLO detection and the confirmed anchor simultaneously.
+4. **`scripts/diagnose_rim.py`**:
+   - Added diagnostic script to evaluate cached sessions across `user_data/pose_cache/*.json.gz`, comparing old strict filters vs production tuned filters.
+   - Verified anchor resolution rate increased from 47.1% to 82.4% on real clips.
+5. **Legacy Mode Option**:
+   - Maintained `BASKETBALL_USE_LEGACY_OUTCOME=1` environment variable to allow full fallback to the legacy parabolic fit without any estimator logic.

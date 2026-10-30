@@ -94,6 +94,27 @@
               <span>Sign In to Your Account</span>
             </button>
           </div>
+          <div class="hero-demo-strip">
+            <span class="hero-demo-label">1-Click Demo Profiles:</span>
+            <div class="hero-demo-chips" id="hero-demo-chips">
+              <button type="button" class="chip-demo-hero" data-athlete="pranab" title="Sign in as Pranab (Right, 182cm, Jump shot)">
+                <span class="chip-avatar">PB</span>
+                <span class="chip-name">Pranab</span>
+              </button>
+              <button type="button" class="chip-demo-hero" data-athlete="pavan" title="Sign in as Pavan (Right, 186cm, Advanced)">
+                <span class="chip-avatar">PK</span>
+                <span class="chip-name">Pavan</span>
+              </button>
+              <button type="button" class="chip-demo-hero" data-athlete="pracheth" title="Sign in as Pracheth (Left, 178cm, Set shot)">
+                <span class="chip-avatar">PR</span>
+                <span class="chip-name">Pracheth</span>
+              </button>
+              <button type="button" class="chip-demo-hero" data-athlete="puneeth" title="Sign in as Puneeth (Right, 175cm, Soreness noted)">
+                <span class="chip-avatar">PG</span>
+                <span class="chip-name">Puneeth</span>
+              </button>
+            </div>
+          </div>
           <div class="landing-metrics-strip">
             <div class="landing-metric">
               <span class="metric-num">33</span>
@@ -1009,7 +1030,47 @@
         <h2 id="auth-modal-title">Welcome Back, Shooter</h2>
         <p class="auth-subtext">Sign in to track your personal baseline, review quarantined shots, and progress over time.</p>
         <div class="auth-alert hidden" id="login-alert" role="alert"></div>
-        
+
+        <!-- 1-Click Demo Profiles -->
+        <div class="demo-login-box" id="demo-login-box">
+          <div class="demo-login-header">
+            <span class="demo-login-badge">Quick 1-Click Sign In</span>
+            <span class="demo-login-hint">Prefilled athlete profiles</span>
+          </div>
+          <div class="demo-athletes-grid" id="demo-athletes-grid">
+            <button type="button" class="btn-demo-athlete" data-athlete="pranab">
+              <span class="demo-avatar">PB</span>
+              <div class="demo-athlete-meta">
+                <span class="demo-athlete-name">Pranab</span>
+                <span class="demo-athlete-tag">Right · Jump shot · 182cm</span>
+              </div>
+            </button>
+            <button type="button" class="btn-demo-athlete" data-athlete="pavan">
+              <span class="demo-avatar">PK</span>
+              <div class="demo-athlete-meta">
+                <span class="demo-athlete-name">Pavan</span>
+                <span class="demo-athlete-tag">Right · Advanced · 186cm</span>
+              </div>
+            </button>
+            <button type="button" class="btn-demo-athlete" data-athlete="pracheth">
+              <span class="demo-avatar">PR</span>
+              <div class="demo-athlete-meta">
+                <span class="demo-athlete-name">Pracheth</span>
+                <span class="demo-athlete-tag">Left · Set shot · 178cm</span>
+              </div>
+            </button>
+            <button type="button" class="btn-demo-athlete" data-athlete="puneeth">
+              <span class="demo-avatar">PG</span>
+              <div class="demo-athlete-meta">
+                <span class="demo-athlete-name">Puneeth</span>
+                <span class="demo-athlete-tag">Right · Developing · Soreness</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="auth-divider"><span>or sign in with email</span></div>
+
         <label class="field">Email Address
           <input type="email" id="login-email" name="email" required autocomplete="email" placeholder="shooter@court.com">
         </label>
