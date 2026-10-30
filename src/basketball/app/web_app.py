@@ -1089,6 +1089,12 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._handle_live_process_frame()
         if path == "/api/live/reset":
             return self._handle_live_reset()
+        if path == "/api/live/rim-anchor":
+            return self._handle_live_set_rim_anchor()
+
+        confirm_rim = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/rim-anchor/confirm", path)
+        if confirm_rim:
+            return self._confirm_session_rim_anchor(confirm_rim.group(1))
         if path == "/api/voice/synthesize":
             return self._handle_voice_synthesize()
         if path == "/api/live/recap":
@@ -1616,6 +1622,134 @@ class AppHandler(BaseHTTPRequestHandler):
             "shots": shots,
         })
 
+    def _handle_live_set_rim_anchor(self):
+        engine = getattr(self.server, "live_engine", None)
+        if engine is None:
+            return self._text_error(503, "Live camera engine not available")
+        try:
+            payload = self._read_json(16 * 1024)
+        except (ValueError, json.JSONDecodeError) as e:
+            return self._text_error(400, f"Invalid JSON: {e}")
+        cx = payload.get("cx") or payload.get("center_x")
+        cy = payload.get("cy") or payload.get("center_y")
+        w = payload.get("w") or payload.get("width")
+        if cx is None or cy is None or w is None or float(w) <= 0.0:
+            return self._text_error(400, "cx, cy, and w > 0 are required")
+        anchor = engine.set_rim_anchor(float(cx), float(cy), float(w))
+        anchor_dict = asdict(anchor)
+        anchor_dict["source"] = "user_click"
+        anchor_dict["rim_source"] = "user_click"
+        return self._json(200, {"status": "ok", "rim_anchor": anchor_dict})
+
+    def _handle_live_clear_rim_anchor(self):
+        engine = getattr(self.server, "live_engine", None)
+        if engine is not None:
+            engine.clear_rim_anchor()
+        return self._json(200, {"status": "ok", "rim_anchor": None})
+
+    def _discard_session_rim_anchor(self, session_id):
+        db = ShotLabDB(self.server.db_path)
+        session = db.get_session(session_id)
+        if not session:
+            return self._text_error(404, "Session not found")
+        db.set_session_rim_anchor(session_id, None, rim_source="discarded")
+
+        cache_file = self.server.pose_cache_dir / f"{session_id}.json.gz"
+        tracking_frames = None
+        fps = 30.0
+        if cache_file.is_file():
+            try:
+                with gzip.open(cache_file, "rt", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                    tracking_frames = cdata.get("ball_rim", [])
+                    fps = float(cdata.get("fps", 30.0))
+            except Exception:
+                pass
+
+        media = self.server.job_store.media_for_session(session_id) or {}
+        video_path = media.get("video_path") or media.get("replay_path")
+
+        shots = reestimate_session_outcomes(
+            session_id=session_id,
+            db=db,
+            anchor=None,
+            video_path=video_path,
+            ball_tracker=None,
+            tracking_frames=tracking_frames,
+            fps=fps,
+        )
+
+        for shot in shots:
+            shot["review_history"] = db.get_shot_review_history(shot["shot_id"])
+
+        return self._json(200, {
+            "status": "ok",
+            "rim_anchor": None,
+            "shots": shots,
+        })
+
+    def _confirm_session_rim_anchor(self, session_id):
+        db = ShotLabDB(self.server.db_path)
+        session = db.get_session(session_id)
+        if not session:
+            return self._text_error(404, "Session not found")
+        existing = db.get_session_rim_anchor(session_id)
+        if not existing:
+            return self._text_error(404, "No rim anchor to confirm")
+
+        anchor = RimAnchor(
+            cx=float(existing["cx"]),
+            cy=float(existing["cy"]),
+            w=float(existing["w"]),
+            stability=float(existing.get("stability", 0.0)),
+        )
+        db.set_session_rim_anchor(session_id, asdict(anchor), rim_source="user_click")
+
+        cache_file = self.server.pose_cache_dir / f"{session_id}.json.gz"
+        tracking_frames = None
+        fps = 30.0
+        cdata = None
+        if cache_file.is_file():
+            try:
+                with gzip.open(cache_file, "rt", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                    tracking_frames = cdata.get("ball_rim", [])
+                    fps = float(cdata.get("fps", 30.0))
+            except Exception:
+                pass
+
+        media = self.server.job_store.media_for_session(session_id) or {}
+        video_path = media.get("video_path") or media.get("replay_path")
+        tracker = None
+        try:
+            from basketball.tracking.ball_tracker import BallTracker
+            w_path = "models/best.pt" if Path("models/best.pt").exists() else ("models/ballRim.pt" if Path("models/ballRim.pt").exists() else None)
+            tracker = BallTracker(weights_path=w_path, conf=0.25, detect_every=1, fps=fps, rim_anchor=anchor)
+        except Exception:
+            tracker = None
+
+        shots = reestimate_session_outcomes(
+            session_id=session_id,
+            db=db,
+            anchor=anchor,
+            video_path=video_path,
+            ball_tracker=tracker,
+            tracking_frames=tracking_frames,
+            fps=fps,
+        )
+
+        for shot in shots:
+            shot["review_history"] = db.get_shot_review_history(shot["shot_id"])
+
+        anchor_dict = asdict(anchor)
+        anchor_dict["source"] = "user_click"
+        anchor_dict["rim_source"] = "user_click"
+        return self._json(200, {
+            "status": "ok",
+            "rim_anchor": anchor_dict,
+            "shots": shots,
+        })
+
     def _add_manual_attempt(self, session_id):
         """Add an attempt the detector missed. Human-made, so it is approved with provenance."""
         db = ShotLabDB(self.server.db_path)
@@ -1863,7 +1997,15 @@ class AppHandler(BaseHTTPRequestHandler):
         return self._json(200, {"shot": db.get_shot(shot_id), "history": db.get_shot_review_history(shot_id)})
 
     def _do_delete(self):
-        workout_match = re.fullmatch(r"/api/workouts/([A-Za-z0-9_]{1,40})", urlparse(self.path).path)
+        del_path = urlparse(self.path).path
+        if del_path == "/api/live/rim-anchor":
+            return self._handle_live_clear_rim_anchor()
+
+        del_rim = re.fullmatch(r"/api/sessions/([A-Za-z0-9_-]{1,100})/rim-anchor", del_path)
+        if del_rim:
+            return self._discard_session_rim_anchor(del_rim.group(1))
+
+        workout_match = re.fullmatch(r"/api/workouts/([A-Za-z0-9_]{1,40})", del_path)
         if workout_match:
             if not WORKOUT_ID.fullmatch(workout_match.group(1)) or \
                     not ShotLabDB(self.server.db_path).delete_workout_plan(workout_match.group(1)):

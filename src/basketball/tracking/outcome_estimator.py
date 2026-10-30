@@ -106,10 +106,11 @@ def _clip01(v: float) -> float:
 # ----------------------------------------------------------------------------
 # Rim anchor: consensus over the whole clip (the rim never moves on a tripod)
 # ----------------------------------------------------------------------------
-def consensus_rim(dets, frame_w, frame_h, min_conf=0.20, min_votes=3):
+def consensus_rim(dets, frame_w, frame_h, min_conf=0.20, min_votes=5):
     """dets: iterable of (cx, cy, w, h, conf) for every frame of the clip.
-    Returns RimAnchor or None. Ask the user to click the rim when this is None
-    or stability is poor."""
+    Returns RimAnchor or None. Requires a spatial cluster of at least min_votes
+    consistent detections. Returns None when evidence is insufficient so the
+    user can be prompted to confirm the rim."""
     cand = []
     is_portrait = frame_w < frame_h
     max_w_ratio = 0.55 if is_portrait else 0.35
@@ -127,10 +128,6 @@ def consensus_rim(dets, frame_w, frame_h, min_conf=0.20, min_votes=3):
             continue
         cand.append((cx, cy, w, h))
     if len(cand) < min_votes:
-        if len(cand) >= 1:
-            a = np.asarray(cand, float)
-            cx, cy, w, _ = np.median(a, axis=0)
-            return RimAnchor(float(cx), float(cy), float(w), 0.10)
         return None
 
     a = np.asarray(cand, float)
@@ -139,8 +136,7 @@ def consensus_rim(dets, frame_w, frame_h, min_conf=0.20, min_votes=3):
     votes = (d < r).sum(axis=1)
     seed = int(np.argmax(votes))
     if votes[seed] < min_votes:
-        cx, cy, w, _ = np.median(a, axis=0)
-        return RimAnchor(float(cx), float(cy), float(w), 0.12)
+        return None
     cluster = a[d[seed] < r]
     cx, cy, w, _ = np.median(cluster, axis=0)
     stability = float(np.std(cluster[:, :2], axis=0).max() / max(1.0, w))

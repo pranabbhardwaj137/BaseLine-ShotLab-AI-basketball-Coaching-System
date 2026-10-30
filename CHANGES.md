@@ -271,3 +271,35 @@ Investigation revealed three distinct filters that caused real rim detections to
    - Verified anchor resolution rate increased from 47.1% to 82.4% on real clips.
 5. **Legacy Mode Option**:
    - Maintained `BASKETBALL_USE_LEGACY_OUTCOME=1` environment variable to allow full fallback to the legacy parabolic fit without any estimator logic.
+
+
+## 7. Rim Confirmation, Live HUD Controls & Data Integrity
+
+### Overview
+This update resolves the static rim confirmation button in the Review session, introduces dynamic confirmation, recalibration, and discard controls beside the video player, implements pointer-events-based interactive calibration with letterbox coordinate mapping, separates live HUD rim calibration from practice statistics reset, and eliminates synthetic confidence fallbacks.
+
+### Key Changes
+1. **Dynamic Review Rim Controls (`web/app.js`, `web/app.css`)**:
+   - Replaced static button with contextual actions located in `.overlay-toggles` beside Pose, Angles, and Ball & Rim:
+     - When an unconfirmed auto-anchor exists: displays `[Auto Rim]` badge, `Confirm this rim` (primary button), `Recalibrate` (secondary), and `Discard this rim` (secondary).
+     - When user has confirmed: displays `[✓ Rim Confirmed]` cyan badge, `Recalibrate` (secondary), and `Discard anchor` (secondary).
+     - When no anchor exists: displays `[No Rim Anchor]` badge and `Set rim anchor` (primary).
+   - In `Attempt Details` card, added a `Rim Anchor Status` row showing whether the rim is user-confirmed or auto-detected with coordinates and width.
+2. **Pointer Events Interactive Calibration (`web/app.js`, `web/app.css`)**:
+   - Switched from mouse/touch handlers to Pointer Events (`pointerdown`, `pointermove`, `pointerup`, `pointercancel`) with `setPointerCapture(pointerId)`.
+   - Pauses replay video during calibration.
+   - Added an absolute-positioned instruction bar (`#rim-calibrating-bar`) with explicit "Cancel" action and Esc key dismiss.
+   - Correctly inverts letterbox mapping (`(screen - offset) / scale`) to accurately position rim coordinates on video frame dimensions.
+3. **Live Practice HUD Controls Separation (`web/index.html`, `web/app.js`, `src/basketball/services/live_service.py`)**:
+   - Separated the old overloaded recalibrate button into:
+     - `#hud-calibrate-rim-btn` ("Calibrate Rim"): Locks the live rim anchor via camera drag without wiping shot counts.
+     - `#hud-reset-stats-btn` ("Reset Counts"): Resets practice make/miss counts to 0 without erasing the calibrated rim anchor.
+   - In `LiveService`, added `live_rim_anchor` persistence and dedicated `set_rim_anchor` / `clear_rim_anchor` methods.
+4. **Backend API Endpoints (`src/basketball/app/web_app.py`)**:
+   - Added `POST /api/sessions/{session_id}/rim-anchor/confirm` to confirm an existing auto-anchor in 1 click.
+   - Added `DELETE /api/sessions/{session_id}/rim-anchor` to discard anchor.
+   - Added `POST /api/live/rim-anchor` and `DELETE /api/live/rim-anchor`.
+5. **Data Integrity & Confidence Fallback Removal**:
+   - Removed synthetic confidence fallbacks (`conf || 0.89`, `conf || 0.85`).
+   - UI displays true YOLO model confidence or "RIM ANCHOR" / "RIM" when unavailable.
+   - Preserved human make/miss labels across re-estimations.

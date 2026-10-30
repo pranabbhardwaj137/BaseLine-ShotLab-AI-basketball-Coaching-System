@@ -237,25 +237,39 @@
   <!-- ============================ MAIN APPLICATION WORKSPACE ============================ -->
   <div class="app" id="app-workspace" hidden>
     <!-- Sidebar on desktop, icon rail on tablets, bottom tab bar on phones -->
-    <aside class="sidebar" aria-label="Main">
-      <a class="brand" href="#new" aria-label="Baseline Shot Lab, new session">
-        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14.5"/><path d="M1.5 16h29M16 1.5v29M5.5 5.8c4.6 4 4.6 16.4 0 20.4M26.5 5.8c-4.6 4-4.6 16.4 0 20.4"/></svg>
-        <span class="brand-name">Baseline<small>Shot Lab</small></span>
-      </a>
+    <aside class="sidebar" id="app-sidebar" aria-label="Main">
+      <div class="sidebar-header">
+        <a class="brand" href="#new" aria-label="Baseline Shot Lab, new session">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="14.5"/><path d="M1.5 16h29M16 1.5v29M5.5 5.8c4.6 4 4.6 16.4 0 20.4M26.5 5.8c-4.6 4-4.6 16.4 0 20.4"/></svg>
+          <span class="brand-name">Baseline<small>Shot Lab</small></span>
+        </a>
+        <button type="button" class="btn-sidebar-toggle" id="btn-sidebar-toggle" aria-label="Collapse sidebar" title="Collapse sidebar">
+          <svg class="icon icon-collapse" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M9 4v16" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M15 9l-3 3 3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <svg class="icon icon-expand hidden" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M9 4v16" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M13 9l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
       <p class="sidebar-label" aria-hidden="true">Workspace</p>
       <nav class="view-nav" aria-label="App sections">
-        <a href="#practice" data-nav="practice"><svg class="icon" aria-hidden="true"><use href="#i-basketball"/></svg><span class="nav-text">Practice</span></a>
-        <a href="#review" data-nav="review"><svg class="icon" aria-hidden="true"><use href="#i-review"/></svg><span class="nav-text">Review</span> <span id="nav-review-count" class="nav-count hidden"></span></a>
-        <a href="#report" data-nav="report"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg><span class="nav-text">Report</span></a>
-        <a href="#workout" data-nav="workout"><svg class="icon" aria-hidden="true"><use href="#i-workout"/></svg><span class="nav-text">Workout</span></a>
-        <a href="#progress" data-nav="progress"><svg class="icon" aria-hidden="true"><use href="#i-progress"/></svg><span class="nav-text">Progress</span></a>
-        <a href="#drills" data-nav="drills"><svg class="icon" aria-hidden="true"><use href="#i-drills"/></svg><span class="nav-text">Drills</span></a>
+        <a href="#practice" data-nav="practice" title="Practice"><svg class="icon" aria-hidden="true"><use href="#i-basketball"/></svg><span class="nav-text">Practice</span></a>
+        <a href="#review" data-nav="review" title="Review"><svg class="icon" aria-hidden="true"><use href="#i-review"/></svg><span class="nav-text">Review</span> <span id="nav-review-count" class="nav-count hidden"></span></a>
+        <a href="#report" data-nav="report" title="Report"><svg class="icon" aria-hidden="true"><use href="#i-report"/></svg><span class="nav-text">Report</span></a>
+        <a href="#workout" data-nav="workout" title="Workout"><svg class="icon" aria-hidden="true"><use href="#i-workout"/></svg><span class="nav-text">Workout</span></a>
+        <a href="#progress" data-nav="progress" title="Progress"><svg class="icon" aria-hidden="true"><use href="#i-progress"/></svg><span class="nav-text">Progress</span></a>
+        <a href="#drills" data-nav="drills" title="Drills"><svg class="icon" aria-hidden="true"><use href="#i-drills"/></svg><span class="nav-text">Drills</span></a>
         <span class="nav-indicator" aria-hidden="true"></span>
       </nav>
       <div class="sidebar-foot">
-        <div class="local-card">
+        <div class="local-card" title="Runs on this computer: Video and pose data never leave it.">
           <svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>
-          <div><strong>Runs on this computer</strong><span>Video and pose data never leave it.</span></div>
+          <div class="local-card-text"><strong>Runs on this computer</strong><span>Video and pose data never leave it.</span></div>
         </div>
       </div>
     </aside>
@@ -678,9 +692,13 @@
                         </div>
 
                         <div class="hud-actions">
-                          <button type="button" class="btn-hud-action" id="hud-recalibrate-btn" title="Recalibrate rim / reset stats">
+                          <button type="button" class="btn-hud-action" id="hud-calibrate-rim-btn" title="Tap or drag rim on camera feed to lock rim position">
                             <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" style="width:16px;height:16px;"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2"/></svg>
-                            <span>Recalibrate Rim</span>
+                            <span>Calibrate Rim</span>
+                          </button>
+                          <button type="button" class="btn-hud-action" id="hud-reset-stats-btn" title="Reset current practice shot counts (makes and misses to 0)">
+                            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M3 3v5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                            <span>Reset Counts</span>
                           </button>
                           <button type="button" class="btn-hud-finish" id="hud-finish-btn" title="End practice session">
                             <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" style="width:16px;height:16px;"><path d="M4 22V2h10l1 3h5v10h-7l-1-3H6v10H4z" fill="currentColor"/></svg>

@@ -1221,6 +1221,36 @@ OK
   - Displays per-session breakdown showing frame counts, rim detection counts, aspect ratio ranges, and anchor resolution status.
 - **Side Effects**: Read-only diagnostic; does not modify cache files or database.
 
+### 21.10 Rim Confirmation and Live HUD Controls
+- **Command**:
+  ```powershell
+  $env:PYTHONPATH="src;."
+  py -3.12 scripts/verify_web_review_flow.py
+  ```
+- **Inputs**: SQLite database with analyzed video sessions.
+- **Expected Output**:
+  - `[1/5] Verifying web application static assets... OK`
+  - `[2/5] Testing with session... OK`
+  - `[3/5] Testing GET /api/sessions/{session_id}... OK`
+  - `[4/5] Testing POST /api/sessions/{session_id}/rim-anchor (User Confirmation)... OK`
+  - `[5/5] Checking for em dashes across all UI and documentation files... OK`
+  - `ALL STEP 4 VERIFICATION CHECKS PASSED CLEANLY!`
+- **Browser Verification Workflow (Review Workspace)**:
+  1. Open Review workspace for an analyzed video clip (`http://127.0.0.1:8765`).
+  2. Beside the video player toggles (Pose, Angles, Ball & Rim), observe the dynamic rim controls:
+     - When auto-detected rim exists: shows **Auto Rim** badge, **Confirm this rim** (primary button), **Recalibrate** (secondary), and **Discard this rim** (secondary).
+     - Clicking **Confirm this rim**: promotes the auto-detected rim to user-confirmed in 1 click; status badge turns to **✓ Rim Confirmed**, and controls switch to **Recalibrate** and **Discard anchor**.
+     - Clicking **Recalibrate**: pauses playback, opens top instruction bar, and allows clicking/tapping the rim center and dragging across the rim opening to calibrate. Supports touch and mouse pointer events.
+     - Clicking **Discard this rim**: removes the session anchor and clears the rim association.
+     - In the **Attempt Details** card, verify the **Rim Anchor Status** displays confirmed coordinates and anchor source.
+- **Browser Verification Workflow (Live Practice HUD)**:
+  1. Open Practice workspace and click **Start Camera**.
+  2. In the HUD actions strip, observe two distinct controls:
+     - **Calibrate Rim**: Tap rim center and drag to rim edge on camera feed to lock rim position without altering shot counters.
+     - **Reset Counts**: Resets makes, misses, and accuracy to 0 while keeping the calibrated rim anchor intact.
+  3. Verify HUD badges display real model confidence or "RIM ANCHOR" without synthetic fallbacks.
+- **Side Effects**: Sets `rim_source = 'user_click'` in database upon user confirmation. Preserves human M/X/U labels.
+
 ### 21.9 Legacy Outcome Mode Toggle (Rollback Option)
 - **Command**:
   ```powershell
@@ -1273,3 +1303,46 @@ Canonical demo profiles provide 1-click authentication and prefilled athlete pro
      - Email and password are prefilled (`pranab@shotlab.local` / `123456`), and you are logged in instantly.
   5. Click the athlete badge in the top right to open **Shooter Profile & Settings**:
      - Confirm all saved athlete attributes (height, wingspan, shooting goals, handedness, pain/soreness) are fully populated and editable.
+
+## 23. Mobile 1-Line Footer Navigation & Desktop Sidebar Minimizer
+
+### 23.1 Mobile 1-Line Footer Verification
+- **Command**:
+  ```powershell
+  # Launch web application locally
+  $env:PYTHONPATH="src;."
+  py -3.12 -m basketball.app.web_app --port 8765
+  ```
+- **Inputs**: Modern browser in mobile emulation mode (320px to 428px viewport width, e.g. iPhone SE, Pixel 7).
+- **Expected Output**:
+  - The bottom navigation bar strictly renders all 6 tabs on exactly 1 single line:
+    1. **Practice**
+    2. **Review** (with count badge pinned to top right of icon, taking zero horizontal space)
+    3. **Report**
+    4. **Workout**
+    5. **Progress**
+    6. **Drills**
+  - No icon wraps to a second line.
+  - No horizontal scrolling or overflow on the bottom navigation bar.
+  - Content in `.shell` includes safe-area padding so no cards or buttons are hidden behind the fixed bottom bar.
+  - Topbar user badge compactly truncates on narrow mobile viewports without overflowing.
+
+### 23.2 Desktop Sidebar Minimizer Verification
+- **Command**:
+  ```powershell
+  # Launch web application locally
+  $env:PYTHONPATH="src;."
+  py -3.12 -m basketball.app.web_app --port 8765
+  ```
+- **Inputs**: Modern desktop browser (viewport width > 760px).
+- **Expected Output**:
+  - Beside the top **Baseline Shot Lab** brand logo, a collapse button (`#btn-sidebar-toggle`) is present.
+  - Clicking the collapse button smoothly transitions the sidebar from 252px into a 78px icon rail:
+    - Workspace label, brand text, and computer card description are hidden.
+    - Brand basketball logo remains visible and centered.
+    - 6 navigation items display icon with compact centered label underneath.
+    - Hovering any navigation icon displays native tooltip with section name.
+    - Collapse icon switches to expand icon (`icon-expand`).
+  - Refreshing the page preserves the collapsed or expanded state in `localStorage` (`shotLabSidebarCollapsed`).
+  - Clicking the expand button expands the sidebar back to full width (252px).
+- **Side Effects**: Sets `shotLabSidebarCollapsed` in browser `localStorage`. No database changes.

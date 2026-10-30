@@ -71,14 +71,21 @@ def ball_under_rim(
 ) -> bool:
     """
     True if ball center is vertically below rim center and horizontally aligned within x_threshold.
-    Heuristic for ball passing through or under the hoop aperture.
+    Uses rim-width-normalized threshold when a rim bounding box is available.
     """
     ball = box_center(ball_box_or_pt) if isinstance(ball_box_or_pt, (list, np.ndarray)) and len(ball_box_or_pt) == 4 else ball_box_or_pt
     rim = box_center(rim_box_or_pt) if isinstance(rim_box_or_pt, (list, np.ndarray)) and len(rim_box_or_pt) == 4 else rim_box_or_pt
 
     if ball is None or rim is None:
         return False
-    horiz_aligned = abs(ball[0] - rim[0]) < x_threshold
+
+    effective_thr = x_threshold
+    if isinstance(rim_box_or_pt, (list, np.ndarray)) and len(rim_box_or_pt) == 4:
+        rim_w = float(rim_box_or_pt[2] - rim_box_or_pt[0])
+        if rim_w > 10.0:
+            effective_thr = max(35.0, 0.65 * rim_w)
+
+    horiz_aligned = abs(ball[0] - rim[0]) < effective_thr
     vert_below = (ball[1] - rim[1]) > 0
     return horiz_aligned and vert_below
 

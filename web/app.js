@@ -75,7 +75,8 @@ const hudHoopText = $('#hud-hoop-text');
 const hudMakesCount = $('#hud-makes-count');
 const hudMissesCount = $('#hud-misses-count');
 const hudAccVal = $('#hud-acc-val');
-const hudRecalibrateBtn = $('#hud-recalibrate-btn');
+const hudCalibrateRimBtn = $('#hud-calibrate-rim-btn');
+const hudResetStatsBtn = $('#hud-reset-stats-btn');
 const hudFinishBtn = $('#hud-finish-btn');
 const hudBtnClose = $('#hud-btn-close');
 const hudBtnSkeleton = $('#hud-btn-skeleton');
@@ -1291,7 +1292,7 @@ async function processLiveFrame() {
   } finally {
     liveProcessing = false;
     if (liveTrackingActive) {
-      scheduleLiveFrame(cameraState === 'recording' ? 250 : 50);
+      scheduleLiveFrame(50);
     }
   }
 }
@@ -1344,8 +1345,9 @@ function renderLiveHUD(data, vw, vh) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    const rimConfPct = Math.round((data.rim.conf || 0.89) * 100);
-    const tagText = `RIM ${rimConfPct}%`;
+    const tagText = data.rim.conf != null
+      ? `RIM ${Math.round(data.rim.conf * 100)}%`
+      : (data.rim.status === 'CONFIRMED_ANCHOR' ? 'RIM ANCHOR' : 'RIM');
     ctx.font = 'bold 12px Inter, system-ui, sans-serif';
     const tagW = ctx.measureText(tagText).width + 14;
     ctx.fillStyle = '#ff6b00';
@@ -1402,8 +1404,9 @@ function renderLiveHUD(data, vw, vh) {
       ctx.arc(cx, cy, Math.max(w, h) / 2, 0, Math.PI * 2);
       ctx.stroke();
 
-      const ballConfPct = Math.round((data.ball.conf || 0.9) * 100);
-      const tagText = `BALL ${ballConfPct}%`;
+      const tagText = data.ball.conf != null
+        ? `BALL ${Math.round(data.ball.conf * 100)}%`
+        : 'BALL';
       ctx.font = 'bold 11px Inter, system-ui, sans-serif';
       const tagW = ctx.measureText(tagText).width + 12;
       ctx.fillStyle = '#38bdf8';
@@ -1537,10 +1540,11 @@ function flashOutcomeBanner(outcome, conf) {
   if (!hudOutcomeBanner) return;
   clearTimeout(liveOutcomeTimer);
   const isMake = outcome === 'make';
+  const confText = conf != null ? ` (${Math.round(conf * 100)}%)` : '';
   if (hudOutcomeText) {
     hudOutcomeText.textContent = isMake
-      ? `SHOT MADE! (${Math.round((conf || 0.85) * 100)}%)`
-      : `SHOT MISSED! (${Math.round((conf || 0.85) * 100)}%)`;
+      ? `SHOT MADE!${confText}`
+      : `SHOT MISSED!${confText}`;
   }
   hudOutcomeBanner.className = `hud-outcome-banner is-visible ${isMake ? 'outcome-make' : 'outcome-miss'}`;
   liveOutcomeTimer = setTimeout(() => {
@@ -1548,9 +1552,88 @@ function flashOutcomeBanner(outcome, conf) {
   }, 3200);
 }
 
-if (hudRecalibrateBtn) {
-  hudRecalibrateBtn.addEventListener('click', async () => {
-    hudRecalibrateBtn.disabled = true;
+let liveCalibratingRim = false;
+let liveDragStart = null;
+
+if (hudCalibrateRimBtn) {
+  hudCalibrateRimBtn.addEventListener('click', () => {
+    if (!cameraStream) {
+      toast('Turn on the camera to calibrate rim');
+      return;
+    }
+    liveCalibratingRim = !liveCalibratingRim;
+    if (liveCalibratingRim) {
+      if (cameraOverlay) {
+        cameraOverlay.style.pointerEvents = 'auto';
+        cameraOverlay.style.cursor = 'crosshair';
+      }
+      toast('Tap rim center and drag to rim edge on camera feed to lock rim (Esc to cancel)');
+    } else {
+      if (cameraOverlay) {
+        cameraOverlay.style.pointerEvents = 'none';
+        cameraOverlay.style.cursor = 'default';
+      }
+      toast('Rim calibration cancelled');
+    }
+  });
+}
+
+if (cameraOverlay) {
+  cameraOverlay.addEventListener('pointerdown', (e) => {
+    if (!liveCalibratingRim) return;
+    e.preventDefault();
+    try { cameraOverlay.setPointerCapture(e.pointerId); } catch {}
+    const rect = cameraOverlay.getBoundingClientRect();
+    liveDragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top, pointerId: e.pointerId };
+  });
+
+  cameraOverlay.addEventListener('pointerup', async (e) => {
+    if (!liveCalibratingRim || !liveDragStart) return;
+    if (liveDragStart.pointerId != null && e.pointerId !== liveDragStart.pointerId) return;
+    try { cameraOverlay.releasePointerCapture(e.pointerId); } catch {}
+    const rect = cameraOverlay.getBoundingClientRect();
+    const endPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    const distPx = Math.hypot(endPt.x - liveDragStart.x, endPt.y - liveDragStart.y);
+    const startCopy = liveDragStart;
+    liveDragStart = null;
+    liveCalibratingRim = false;
+    cameraOverlay.style.pointerEvents = 'none';
+    cameraOverlay.style.cursor = 'default';
+
+    if (distPx < 6) {
+      toast('Drag outward from rim center to set width');
+      return;
+    }
+
+    const vw = cameraPreview?.videoWidth || 640;
+    const vh = cameraPreview?.videoHeight || 480;
+    const cw = cameraOverlay.width || vw;
+    const ch = cameraOverlay.height || vh;
+    const sx = cw / vw;
+    const sy = ch / vh;
+    const cx = startCopy.x / sx;
+    const cy = startCopy.y / sy;
+    const w = (distPx * 2) / sx;
+
+    try {
+      await api('/api/live/rim-anchor', jsonBody('POST', { cx, cy, w }));
+      toast('Live rim anchor locked');
+    } catch (err) {
+      toast('Failed to set live rim: ' + err.message);
+    }
+  });
+
+  cameraOverlay.addEventListener('pointercancel', () => {
+    liveDragStart = null;
+    liveCalibratingRim = false;
+    cameraOverlay.style.pointerEvents = 'none';
+    cameraOverlay.style.cursor = 'default';
+  });
+}
+
+if (hudResetStatsBtn) {
+  hudResetStatsBtn.addEventListener('click', async () => {
+    hudResetStatsBtn.disabled = true;
     try {
       PracticeVoice.cancel();
       const profile = {
@@ -1567,15 +1650,11 @@ if (hudRecalibrateBtn) {
       if (hudMakesCount) hudMakesCount.textContent = '0';
       if (hudMissesCount) hudMissesCount.textContent = '0';
       if (hudAccVal) hudAccVal.textContent = '-';
-      if (cameraOverlay) {
-        const ctx = cameraOverlay.getContext('2d');
-        if (ctx) ctx.clearRect(0, 0, cameraOverlay.width, cameraOverlay.height);
-      }
-      toast('Rim and trajectory recalibrated');
+      toast('Practice shot counts reset to 0 (rim anchor preserved)');
     } catch (err) {
-      toast('Recalibration failed: ' + err.message);
+      toast('Reset failed: ' + err.message);
     } finally {
-      hudRecalibrateBtn.disabled = false;
+      hudResetStatsBtn.disabled = false;
     }
   });
 }
@@ -2112,8 +2191,8 @@ function renderResults(result, jobId) {
   const ballToggle = el('input', {type: 'checkbox'});
   ballToggle.checked = true;
   const ballLabel = el('label', {class: 'overlay-toggle'}, ballToggle, 'Ball & Rim');
-  const confirmRimBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', style: 'margin-left: 6px;', onclick: () => startRimCalibration()}, 'Confirm rim');
-  frame.append(video, canvas, el('div', {class: 'overlay-toggles'}, overlayLabel, anglesLabel, ballLabel, confirmRimBtn));
+  const rimControlsGroup = el('div', {class: 'rim-controls-group'});
+  frame.append(video, canvas, el('div', {class: 'overlay-toggles'}, overlayLabel, anglesLabel, ballLabel, rimControlsGroup));
   playerCard.append(frame);
 
   const timelineTrack = el('div', {class: 'timeline-track', role: 'slider', tabindex: '0', 'aria-label': 'Clip timeline. Use arrow keys to step frames.', 'aria-valuemin': '0', 'aria-valuemax': String(frameCount - 1), 'aria-valuenow': '0'});
@@ -2410,12 +2489,30 @@ function renderResults(result, jobId) {
           el('div', {class: 'evidence-bar', style: `width: ${evidenceQuality}%`})
         )
       ),
-      el('div', {class: 'evidence-grid'},
-        el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Margin'}), el('span', {class: 'evidence-v', text: marginVal})),
-        el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Below rim in column'}), el('span', {class: 'evidence-v', text: belowVal})),
-        el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Bounce back'}), el('span', {class: 'evidence-v', text: bounceVal})),
-        el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Ball points'}), el('span', {class: 'evidence-v', text: String(ptsVal)}))
-      ),
+      (() => {
+        const rimStatusLabel = !rimAnchor
+          ? 'Not set / discarded'
+          : (rimAnchor.rim_source === 'user_click' || rimAnchor.source === 'user_click')
+            ? `Confirmed by athlete (cx=${Math.round(rimAnchor.cx)}, cy=${Math.round(rimAnchor.cy)}, w=${Math.round(rimAnchor.w)}px)`
+            : `Auto-detected unconfirmed (cx=${Math.round(rimAnchor.cx)}, cy=${Math.round(rimAnchor.cy)})`;
+        return el('div', {class: 'evidence-grid'},
+          el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Margin'}), el('span', {class: 'evidence-v', text: marginVal})),
+          el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Below rim in column'}), el('span', {class: 'evidence-v', text: belowVal})),
+          el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Bounce back'}), el('span', {class: 'evidence-v', text: bounceVal})),
+          el('div', {class: 'evidence-metric'}, el('span', {class: 'evidence-k', text: 'Ball points'}), el('span', {class: 'evidence-v', text: String(ptsVal)}))
+        );
+      })(),
+      (() => {
+        const rimStatusLabel = !rimAnchor
+          ? 'Not set / discarded'
+          : (rimAnchor.rim_source === 'user_click' || rimAnchor.source === 'user_click')
+            ? `Confirmed by athlete (cx=${Math.round(rimAnchor.cx)}, cy=${Math.round(rimAnchor.cy)}, w=${Math.round(rimAnchor.w)}px)`
+            : `Auto-detected unconfirmed (cx=${Math.round(rimAnchor.cx)}, cy=${Math.round(rimAnchor.cy)})`;
+        return el('div', {class: 'evidence-metric evidence-rim-status'},
+          el('span', {class: 'evidence-k', text: 'Rim Anchor Status'}),
+          el('span', {class: 'evidence-v', text: rimStatusLabel})
+        );
+      })(),
       shot.p_make != null
         ? el('p', {class: 'evidence-uncalibrated-note', text: `Uncalibrated score: ${Math.round(shot.p_make * 100)}% (provisional, not a probability)`})
         : null
@@ -2492,46 +2589,149 @@ function renderResults(result, jobId) {
     if (seek) seekToFrame(frameOf(shots[selected], 'start'));
   }
 
-  // Rim calibration & interactive drag state
+  // Rim calibration, dynamic controls and pointer-driven drag state
   let calibratingRim = false;
   let dragStart = null;
   let dragCurrent = null;
+  let calibratingBar = null;
+
+  function updateRimControls() {
+    rimControlsGroup.replaceChildren();
+    const isUserConfirmed = rimAnchor && (rimAnchor.rim_source === 'user_click' || rimAnchor.source === 'user_click');
+    const hasAnchor = Boolean(rimAnchor && rimAnchor.cx != null && rimAnchor.cy != null);
+
+    if (isUserConfirmed) {
+      const badge = el('span', {class: 'badge-rim-status badge-rim-confirmed', title: `Confirmed at (${Math.round(rimAnchor.cx)}, ${Math.round(rimAnchor.cy)})`}, '✓ Rim Confirmed');
+      const recalibrateBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', title: 'Drag to adjust rim location', onclick: startRimCalibration}, 'Recalibrate');
+      const discardBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', title: 'Discard this rim anchor and clear rim association', onclick: discardRimAnchor}, 'Discard anchor');
+      rimControlsGroup.append(badge, recalibrateBtn, discardBtn);
+    } else if (hasAnchor) {
+      const badge = el('span', {class: 'badge-rim-status badge-rim-auto', title: `Auto detected at (${Math.round(rimAnchor.cx)}, ${Math.round(rimAnchor.cy)})`}, 'Auto Rim');
+      const confirmBtn = el('button', {type: 'button', class: 'btn btn-primary btn-small', title: 'Confirm auto-detected rim with 1 click', onclick: confirmCurrentRimAnchor}, 'Confirm this rim');
+      const recalibrateBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', title: 'Drag to adjust rim location', onclick: startRimCalibration}, 'Recalibrate');
+      const discardBtn = el('button', {type: 'button', class: 'btn btn-quiet btn-small', title: 'Discard this rim anchor', onclick: discardRimAnchor}, 'Discard this rim');
+      rimControlsGroup.append(badge, confirmBtn, recalibrateBtn, discardBtn);
+    } else {
+      const badge = el('span', {class: 'badge-rim-status badge-rim-none'}, 'No Rim Anchor');
+      const setBtn = el('button', {type: 'button', class: 'btn btn-primary btn-small', title: 'Click and drag across rim in replay video', onclick: startRimCalibration}, 'Set rim anchor');
+      rimControlsGroup.append(badge, setBtn);
+    }
+  }
+
+  async function confirmCurrentRimAnchor() {
+    try {
+      const resp = await api(`/api/sessions/${result.session_id}/rim-anchor/confirm`, {method: 'POST'});
+      if (resp && resp.status === 'ok') {
+        rimAnchor = resp.rim_anchor;
+        result.rim_anchor = resp.rim_anchor;
+        if (resp.shots) {
+          result.shots = resp.shots;
+          shots.splice(0, shots.length, ...resp.shots);
+        }
+        if (rimBanner) {
+          rimBanner.remove();
+          rimBanner = null;
+        }
+        updateRimControls();
+        renderList();
+        renderTimeline();
+        renderEditor();
+        redraw();
+        toast('Rim anchor confirmed by athlete');
+      }
+    } catch (err) {
+      toast('Failed to confirm rim: ' + err.message);
+    }
+  }
+
+  async function discardRimAnchor() {
+    try {
+      const resp = await api(`/api/sessions/${result.session_id}/rim-anchor`, {method: 'DELETE'});
+      if (resp && resp.status === 'ok') {
+        rimAnchor = null;
+        result.rim_anchor = null;
+        if (resp.shots) {
+          result.shots = resp.shots;
+          shots.splice(0, shots.length, ...resp.shots);
+        }
+        updateRimControls();
+        renderList();
+        renderTimeline();
+        renderEditor();
+        redraw();
+        toast('Rim anchor discarded');
+      }
+    } catch (err) {
+      toast('Failed to discard rim: ' + err.message);
+    }
+  }
 
   function startRimCalibration() {
+    if (calibratingRim) return;
+    video.pause();
     calibratingRim = true;
+    dragStart = null;
+    dragCurrent = null;
     canvas.style.cursor = 'crosshair';
-    canvas.setAttribute('title', 'Click rim center and drag to rim edge, then release');
+    canvas.style.pointerEvents = 'auto';
+
+    if (!calibratingBar) {
+      calibratingBar = el('div', {class: 'rim-calibrating-bar', id: 'rim-calibrating-bar'},
+        el('span', {class: 'rim-calibrating-text'},
+          el('strong', {text: 'Select Rim:'}),
+          el('span', {text: 'Click or tap rim center and drag to rim edge. (Press Esc to cancel)'})
+        ),
+        el('button', {type: 'button', class: 'btn btn-quiet btn-small', onclick: cancelRimCalibration}, 'Cancel')
+      );
+      frame.append(calibratingBar);
+    }
     redraw();
   }
 
-  canvas.addEventListener('mousedown', (e) => {
+  function cancelRimCalibration() {
+    calibratingRim = false;
+    dragStart = null;
+    dragCurrent = null;
+    canvas.style.cursor = 'default';
+    canvas.style.pointerEvents = 'none';
+    if (calibratingBar) {
+      calibratingBar.remove();
+      calibratingBar = null;
+    }
+    redraw();
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
     if (!calibratingRim) return;
+    e.preventDefault();
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
     const rect = canvas.getBoundingClientRect();
-    dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top, pointerId: e.pointerId };
     dragCurrent = dragStart;
     redraw();
   });
 
-  window.addEventListener('mousemove', (e) => {
+  canvas.addEventListener('pointermove', (e) => {
     if (!calibratingRim || !dragStart) return;
+    if (dragStart.pointerId != null && e.pointerId !== dragStart.pointerId) return;
     const rect = canvas.getBoundingClientRect();
-    dragCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    dragCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top, pointerId: e.pointerId };
     redraw();
   });
 
-  window.addEventListener('mouseup', async (e) => {
+  canvas.addEventListener('pointerup', async (e) => {
     if (!calibratingRim || !dragStart) return;
+    if (dragStart.pointerId != null && e.pointerId !== dragStart.pointerId) return;
+    try { canvas.releasePointerCapture(e.pointerId); } catch {}
     const rect = canvas.getBoundingClientRect();
     const endPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     const distPx = Math.hypot(endPt.x - dragStart.x, endPt.y - dragStart.y);
     const startCopy = dragStart;
-    dragStart = null;
-    dragCurrent = null;
-    calibratingRim = false;
-    canvas.style.cursor = 'default';
 
-    if (distPx < 4) {
-      redraw();
+    cancelRimCalibration();
+
+    if (distPx < 6) {
+      toast('Click rim center and drag outward to the rim edge to set width');
       return;
     }
 
@@ -2548,6 +2748,11 @@ function renderResults(result, jobId) {
     const centerVideoY = (startCopy.y - offsetY) / sy;
     const widthVideo = (distPx * 2) / sx;
 
+    if (widthVideo < 15 || widthVideo > 0.60 * vw || centerVideoX < 0 || centerVideoX > vw || centerVideoY < 0 || centerVideoY > vh) {
+      toast('Invalid rim selection. Drag across the rim opening.');
+      return;
+    }
+
     try {
       const resp = await api(`/api/sessions/${result.session_id}/rim-anchor`, {
         method: 'POST',
@@ -2560,25 +2765,34 @@ function renderResults(result, jobId) {
           result.shots = resp.shots;
           shots.splice(0, shots.length, ...resp.shots);
         }
-        if (rimBanner) rimBanner.remove();
+        if (rimBanner) {
+          rimBanner.remove();
+          rimBanner = null;
+        }
+        updateRimControls();
         renderList();
+        renderTimeline();
         renderEditor();
         redraw();
+        toast('Rim anchor calibrated and confirmed');
       }
     } catch (err) {
-      console.error('Rim confirmation error:', err);
+      toast('Rim calibration failed: ' + err.message);
     }
+  });
+
+  canvas.addEventListener('pointercancel', () => {
+    if (calibratingRim) cancelRimCalibration();
   });
 
   window.addEventListener('keydown', (e) => {
     if (calibratingRim && e.key === 'Escape') {
-      calibratingRim = false;
-      dragStart = null;
-      dragCurrent = null;
-      canvas.style.cursor = 'default';
-      redraw();
+      cancelRimCalibration();
     }
   });
+
+  // Initialize rim controls on review load
+  updateRimControls();
 
   // Pose overlay
   let poseData = null;
@@ -3377,8 +3591,9 @@ function drawPoseOverlay(video, canvas, poseData, videoMetadata, options = {}) {
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      const rimConfPct = Math.round((rimConf || 0.89) * 100);
-      const tagText = `RIM ${rimConfPct}%`;
+      const tagText = rimConf != null
+        ? `RIM ${Math.round(rimConf * 100)}%`
+        : 'RIM';
       ctx.font = 'bold 12px Inter, system-ui, sans-serif';
       const tagW = ctx.measureText(tagText).width + 14;
       ctx.fillStyle = '#ff6b00';
@@ -3482,8 +3697,9 @@ function drawPoseOverlay(video, canvas, poseData, videoMetadata, options = {}) {
       ctx.arc(bcx, bcy, Math.max(bw, bh) / 2, 0, Math.PI * 2);
       ctx.stroke();
 
-      const ballConfPct = Math.round((trk.ball_conf || 0.9) * 100);
-      const tagText = `BALL ${ballConfPct}%`;
+      const tagText = trk.ball_conf != null
+        ? `BALL ${Math.round(trk.ball_conf * 100)}%`
+        : 'BALL';
       ctx.font = 'bold 11px Inter, system-ui, sans-serif';
       const tagW = ctx.measureText(tagText).width + 12;
       ctx.fillStyle = '#38bdf8';
@@ -4326,6 +4542,28 @@ function initPracticeSetup() {
 }
 
 /* --------------------------------------------------------------------- boot */
+function initSidebarToggle() {
+  const btn = $('#btn-sidebar-toggle');
+  if (!btn) return;
+  const isStoredCollapsed = localStorage.getItem('shotLabSidebarCollapsed') === '1';
+  if (isStoredCollapsed && window.innerWidth > 760) {
+    document.body.classList.add('sidebar-collapsed');
+    btn.setAttribute('title', 'Expand sidebar');
+    btn.setAttribute('aria-label', 'Expand sidebar');
+    btn.querySelector('.icon-collapse')?.classList.add('hidden');
+    btn.querySelector('.icon-expand')?.classList.remove('hidden');
+  }
+  btn.addEventListener('click', () => {
+    const collapsed = document.body.classList.toggle('sidebar-collapsed');
+    localStorage.setItem('shotLabSidebarCollapsed', collapsed ? '1' : '0');
+    btn.setAttribute('title', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    btn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    btn.querySelector('.icon-collapse')?.classList.toggle('hidden', collapsed);
+    btn.querySelector('.icon-expand')?.classList.toggle('hidden', !collapsed);
+    setTimeout(() => moveNavIndicator(false), 220);
+  });
+}
+
 (function boot() {
   const savedPlayer = storage('get', 'shotLabPlayerId');
   if (savedPlayer && PLAYER_ID_PATTERN.test(savedPlayer)) playerIdInput.value = savedPlayer;
@@ -4343,6 +4581,7 @@ function initPracticeSetup() {
   setupHeroParallax();
   loadPhoneCard();
   initPracticeSetup();
+  initSidebarToggle();
   document.fonts?.ready.then(() => { moveNavIndicator(false); moveSegmentThumb(false); });
 })();
 

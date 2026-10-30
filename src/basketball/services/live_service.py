@@ -11,7 +11,9 @@ import logging
 import threading
 import time
 from pathlib import Path
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional, Tuple
+from basketball.tracking.outcome_estimator import RimAnchor
 
 import cv2
 import numpy as np
@@ -46,6 +48,7 @@ class LiveCameraEngine:
         self.session_total = 0
         self.last_shot_outcome: Optional[str] = None
         self.last_shot_conf: float = 0.0
+        self.live_rim_anchor: Optional[RimAnchor] = None
 
         self._init_engines()
 
@@ -111,9 +114,24 @@ class LiveCameraEngine:
                 "misses": 0,
                 "total": 0,
                 "accuracy": 0.0,
-                "caption": self.audio_coach.current_caption if self.audio_coach else "",
+                "caption": "Shot counts reset to 0. Rim anchor preserved.",
                 "focus": self.audio_coach.current_focus if self.audio_coach else "setup",
+                "anchor": asdict(self.live_rim_anchor) if self.live_rim_anchor else None,
             }
+
+    def set_rim_anchor(self, cx: float, cy: float, w: float) -> RimAnchor:
+        with self.lock:
+            anchor = RimAnchor.from_user_click(cx, cy, w)
+            self.live_rim_anchor = anchor
+            if self.ball_tracker is not None:
+                self.ball_tracker.rim_anchor = anchor
+            return anchor
+
+    def clear_rim_anchor(self) -> None:
+        with self.lock:
+            self.live_rim_anchor = None
+            if self.ball_tracker is not None:
+                self.ball_tracker.rim_anchor = None
 
     def get_session_recap(self) -> Dict[str, Any]:
         """Generate a short recap when the user completes a set or session."""
@@ -294,8 +312,10 @@ class LiveCameraEngine:
                 "rim": {
                     "detected": rim_box is not None,
                     "box": rim_box,
-                    "conf": round(float(rim_conf), 2),
-                    "status": rim_status,
+                    "conf": round(float(rim_conf), 2) if rim_conf else None,
+                    "status": "CONFIRMED_ANCHOR" if self.live_rim_anchor else rim_status,
+                    "anchor": asdict(self.live_rim_anchor) if self.live_rim_anchor else None,
+                    "anchor_confirmed": self.live_rim_anchor is not None,
                 },
                 "shot": {
                     "phase": self.current_phase,
