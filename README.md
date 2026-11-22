@@ -1,468 +1,115 @@
-# Baseline Shot Lab — Intelligent Basketball Performance Analysis System
+# Baseline Shot Lab
 
-A local-first AI shooting coach. Upload a video of yourself shooting, from your computer or from your phone over Wi-Fi. The app estimates your pose locally, finds each shot attempt, measures your mechanics, and writes a personalised coaching report: strengths, priorities, drills, a practice plan, and cautious technique and injury-risk-reduction guidance. Every finding is tied to timestamps and measurements from your own video, and the report can be printed or saved as a PDF. Video never leaves your computer.
+**Baseline Shot Lab is a local-first basketball practice and shooting-analysis app.** Record a session with your camera or upload a practice video, review the shot attempts it detects, and get a report with measured technique, coaching priorities, and drills to practise.
 
-The app also includes a **Drills section** — a dedicated practice mode with video-backed dribbling drills. Each drill shows a reference video (recorded shorts-format clips) side-by-side with your live camera feed. A motion-based rep counter tracks your dribbles in real time and a post-drill feedback card reports your pace, rhythm consistency, and coaching cue reminders.
+It is designed for players and coaches who want a clearer view of a practice session. The browser app runs on your computer; video analysis and storage stay local. Pose estimates and coaching suggestions are useful training aids, not a substitute for a coach's judgement or medical advice.
 
-> **For AI Assistants:** Agent rules: [`AGENTS.md`](AGENTS.md). Canonical verification commands: [`docs/reference/MANUAL_VERIFICATION_COMMANDS.md`](docs/reference/MANUAL_VERIFICATION_COMMANDS.md). Project status: [`.planning/STATE.md`](.planning/STATE.md), [`.planning/ROADMAP.md`](.planning/ROADMAP.md). Latest audit: [`.planning/phases/08-user-facing-app/08-07-AUDIT.md`](.planning/phases/08-user-facing-app/08-07-AUDIT.md).
+## What you can do
 
----
+- **Analyze shooting practice:** Upload a clip or record from a camera, choose the shot and camera view, then let Shot Lab estimate pose and propose shot attempts.
+- **Review attempts yourself:** Check the proposed attempts and replay their video. Confirm or discard them, and label makes or misses yourself. Shot outcome is not decided for you.
+- **Explore your results:** View measurable biomechanics, consistency and session findings. Metrics that cannot be reliably measured from the clip may be marked unavailable.
+- **Get coaching guidance:** Read a session report with strengths, improvement priorities and practice suggestions. Where available, create a personalized workout and ask the optional AI coach questions about the session.
+- **Practise dribbling:** Use the Drills area for video-guided drills, a camera-based rep counter and basic pace/rhythm feedback.
+- **Track sessions:** Revisit saved sessions and view progress over time.
 
-## 1. Quickstart & Developer Onboarding
+## See the app
 
-The repository is pre-configured so that onboarding is quick and does not require downloading heavy external model weights or datasets. The essential models (`models/best.pt`, `models/ballRim.pt`, `models/yolov8m-pose.pt`, `pose_landmarker.task`, `hand_landmarker.task`) and sample clips (`raw_clips/`) are included in the repository.
+<table>
+  <tr>
+    <td><strong>Practice analysis</strong><br><img src="docs/screenshots/practice-analysis.png" alt="Practice video with pose, joint angle, ball and rim overlays" width="700"></td>
+    <td><strong>Attempt review</strong><br><img src="docs/screenshots/attempt-review.png" alt="Review screen with video timeline and proposed attempts to approve, correct or discard" width="700"></td>
+  </tr>
+  <tr>
+    <td><strong>Coaching report</strong><br><img src="docs/screenshots/coaching-report.png" alt="Technical shooting analysis report with measured evidence and confidence" width="700"></td>
+    <td><strong>Drill practice</strong><br><img src="docs/screenshots/drill-session.png" alt="Dribbling drill with reference video and live camera rep counter" width="700"></td>
+  </tr>
+</table>
 
-### Quick Setup
+## How a session works
+
+```mermaid
+flowchart LR
+    A[Record a clip or upload video] --> B[Choose shot type and camera view]
+    B --> C[Local video and pose analysis]
+    C --> D[Review proposed attempts]
+    D --> E[Confirm or discard attempts; label outcomes]
+    E --> F[Metrics and coaching report]
+    F --> G[Practise suggested drills and track progress]
+```
+
+### A good first session
+
+1. Start the web app and open it in a browser on the same computer.
+2. In **Practice**, select the shot type, shot style and camera view that match your clip.
+3. Record a short clip or upload a video. Keep your full body and the ball visible; a steady side-on or 45-degree camera angle is a useful starting point.
+4. Start analysis and wait for processing to finish.
+5. Open **Review**. Check each proposed attempt, discard false detections, and confirm the attempts you want included. Add make/miss labels based on what you see in the video.
+6. Open **Report** to read the session findings and suggestions. Use **Progress** to revisit previous sessions. Dribbling practice is available separately under **Drills**.
+
+Analysis quality depends on camera placement, lighting, visibility, and the movement being filmed. Single-camera pose and biomechanics are estimates. Shot attempts are proposals and should be reviewed before you rely on the report.
+
+## Run Shot Lab
+
+### Requirements
+
+- Python 3.9 or newer (as specified by the package metadata).
+- A modern desktop browser.
+- The repository's model assets are needed for video analysis. They are included in the project checkout; no external dataset is required for normal use.
+
+### Install and start
+
+From the project directory, create and activate a virtual environment if desired, then install the project dependencies:
 
 ```powershell
-# 1. Clone repository and navigate inside
-cd basketball_proj
-
-# 2. Install package in editable mode (or install requirements.txt)
 python -m pip install -e .
-# Alternatively: python -m pip install -r requirements.txt
-
-# 3. Run the automated test suite (123+ tests across unit, integration, and e2e)
-$env:PYTHONPATH="src;."
-python -m unittest discover tests
-```
-
-### Running the Applications
-
-#### Local Web Application (Recommended)
-```powershell
-# Start local web app on port 8000
 python web_app.py --port 8000
-# Or using the package syntax:
-python -m basketball.app.web_app --port 8000
-```
-Open **`http://127.0.0.1:8000/`** in your browser to upload clips, view biomechanics metrics, and generate reports.
-
-**Personalized workout:** after a report is ready, select **Generate My Personalized Workout** on the Report page. The demonstration videos are read from `workout/` in the project root (not in Git); point elsewhere with `--workout-dir PATH`. Design, rules and limits: [`docs/reference/WORKOUT_COACH.md`](docs/reference/WORKOUT_COACH.md).
-
-#### Phone camera over Wi-Fi (HTTPS)
-
-Browsers only allow camera access on secure pages: `https://…` or `http://localhost`. On the computer
-running Shot Lab, `http://127.0.0.1:8765` can already use its own camera. A phone, or another laptop,
-opening `http://<computer's Wi-Fi IP>:8765` is **not** a secure page. The browser then hides the camera
-API, and recording cannot work. Uploading files still works over plain http.
-
-Start Shot Lab with built-in HTTPS:
-
-```bash
-python -m pip install cryptography          # once; needed by --https
-python web_app.py --lan --https             # macOS/Linux (Windows: same command)
 ```
 
-The terminal prints:
-- the `https://<Wi-Fi IP>:8765/` address and the access code;
-- a **phone setup page**, `http://<Wi-Fi IP>:8766/`. It is plain http and serves only the public certificate
-  and the steps below; it cannot open Shot Lab;
-- the certificate file (`user_data/certs/shotlab-local-ca.crt`) and its SHA-256 **fingerprint**.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser. Stop the server with **Ctrl+C** in the terminal.
 
-The certificate is created on first start and kept for 10 years. Each phone must **install and trust it
-once**. Until then, the phone's browser refuses the connection. On the computer this shows as
-`SSLV3_ALERT_CERTIFICATE_UNKNOWN` / `TLSV1_ALERT_UNKNOWN_CA` lines (Shot Lab now prints one plain-English
-`[https] <phone IP>: …` line instead). **Never tap through a certificate warning**; install the certificate
-instead:
+To use the desktop HUD with a video file instead, see the command examples in [Manual Verification Commands](docs/reference/MANUAL_VERIFICATION_COMMANDS.md).
 
-- **iPhone / iPad: use Safari** (Chrome on iOS uses the same trust store).
-  1. Open the setup page `http://<Wi-Fi IP>:8766/` and tap **Download the Shot Lab certificate**, then
-     **Allow**. Alternatively, AirDrop `user_data/certs/shotlab-local-ca.crt` from the Mac.
-  2. Open **Settings › General › VPN & Device Management** (or tap **Profile Downloaded** at the top of
-     Settings). Choose **Shot Lab Local CA**, tap **Install** and enter your passcode.
-  3. Open **Settings › General › About › Certificate Trust Settings**. Turn on **Shot Lab Local CA** and
-     confirm. *This step is easy to miss; without it the browser still refuses the connection.*
-  4. Check the fingerprint: **Settings › General › VPN & Device Management › Shot Lab Local CA › More
-     Details › SHA-256** must equal the fingerprint printed on the computer.
-- **Android: use Chrome.**
-  1. Open the setup page `http://<Wi-Fi IP>:8766/` and tap **Download the Shot Lab certificate**.
-  2. Open **Settings**, search for **"CA certificate"** and choose **Install a certificate › CA certificate**.
-     The path is usually **Security & privacy › More security settings › Encryption & credentials**.
-     Accept the warning and pick `shotlab-local-ca.crt`. Android may ask you to set a screen lock first.
-  3. Check it under **Trusted credentials › User**.
-- **Mac, only if you open Shot Lab by its Wi-Fi address** (`http://127.0.0.1:8765` needs nothing):
-  1. Double-click `shotlab-local-ca.crt`.
-  2. In Keychain Access, open it and set **Trust › When using this certificate › Always Trust**.
+### Use a phone camera over Wi-Fi
 
-Then open the `https://` address, enter the access code, choose **Record with camera** and allow the
-camera.
-
-Recording works like this:
-- **Controls:**
-  - **Use front camera** / **Use rear camera**: shown when the device has more than one camera. It releases
-    the current camera before opening the other. It is available before recording and after Stop or Retake,
-    not during a clip. If the other camera cannot be opened, the previous one is reopened and the reason is shown;
-  - **Start recording**, **Pause** / **Resume** (where the browser supports it) and **Stop**;
-  - watch the clip back, then **Retake** or **Analyze this session**.
-- **Recording format:** Safari records MP4 (H.264); Chrome, Edge and Android record WebM. Both go
-  through the same analysis pipeline. The limit is 250 MB or 10 minutes.
-- **Screen lock:** keep the phone's screen on. Locking it, or switching apps, stops the camera; what
-  was already recorded is kept for review.
-
-**Security:**
-- The certificate authority made by `--https` is **name-constrained**: it can only vouch for private
-  network addresses, `localhost` and `.local` names. Even if its key leaked, it could not be used to
-  impersonate a public website.
-- Private keys stay in `user_data/certs/` (git-ignored, owner-only permissions) and are never served.
-  Only the public certificate is offered at `/shotlab-ca.crt`.
-- `--lan` still binds only to private addresses and still requires the access code. Nothing is exposed
-  to the internet.
-
-**Changing or removing the certificate:**
-- When the computer's Wi-Fi address changes, the server certificate is renewed automatically.
-  Phones do not need to reinstall anything.
-- To revoke trust, remove the profile or certificate on each device. To start over, delete
-  `user_data/certs/`.
-
-You can use your own certificate instead, for example one made with mkcert:
-`--tls-cert cert.pem --tls-key key.pem`.
-
-**Troubleshooting:**
-- **Terminal shows `[https] <IP>: … CERTIFICATE_UNKNOWN / UNKNOWN_CA`:** that phone has not installed *and*
-  trusted the certificate. Repeat the steps above, including **Certificate Trust Settings** on iPhone.
-  The computer's **Use it from your phone** panel lists such devices too.
-- **`[https] <IP>: HTTP_REQUEST`:** the phone used `http://…:8765`; use `https://…:8765`.
-- **The Wi-Fi address changed:** restart Shot Lab. The server certificate is renewed automatically, and
-  phones keep trusting the same CA.
-- **The address printed is not your Wi-Fi network** (for example a VPN):
-  1. Start with `--host <Wi-Fi IP>`.
-  2. Use an address listed under "Covers".
-- **"Camera recording is not available on this http:// address":** open the `https://` address instead.
-- **Anything else:** open **Camera diagnostics** under the camera. It shows:
-  - whether the page is a secure context;
-  - whether `getUserMedia` and `MediaRecorder` are available;
-  - which recording formats the browser supports;
-  - the last camera error.
-- **"Camera permission was blocked":**
-  - Safari: **aA › Website Settings › Camera › Allow**;
-  - Chrome: the icon left of the address › **Permissions**.
-- **macOS firewall prompt:** allow incoming connections for Python.
-- **Certificate warning on the phone:** the certificate is not trusted yet; repeat the trust steps for
-  that device and compare the fingerprint. Do not continue past the warning.
-- **Setup page port is in use:** pass `--setup-port <port>`; `--setup-port 0` turns the setup page off.
-
-#### AI coach chat (Groq, with Gemini as backup)
-
-The **Ask about this session** card on the Review screen explains your results and suggests training.
-Each answer is built from this session's measured results:
-- the rule-based findings and their confidence;
-- the metrics;
-- the report's technical summary, correction plan and practice checklist;
-- the latest workout plan, if there is one;
-- the recording limits.
-
-Only text summaries are sent. Video, frames and body landmarks never leave the computer. API keys stay
-on the computer: they are never sent to the browser, shown in API responses, or logged.
-
-**Providers:**
-- **Primary: Groq**, through the official `groq` Python SDK with a streaming chat completion:
-  - parameters: `temperature=1`, `max_completion_tokens=2048`, `top_p=1`, `reasoning_effort="medium"`,
-    `stream=True`;
-  - model: `GROQ_MODEL`, default `openai/gpt-oss-120b` ([models](https://console.groq.com/docs/models));
-  - `reasoning_effort` is sent only to reasoning models (`openai/gpt-oss-*`), because Groq's other
-    models do not accept it.
-- **Backup: Google Gemini** `generateContent`. The default model is `gemini-3.8-flash`, a stable model
-  Google recommends for new projects ([models](https://ai.google.dev/gemini-api/docs/models)).
-
-**Answer style:** answers read like a coach talking to a player:
-- the direct answer comes first, followed by short headings and bullet points in plain words;
-- there are no tables, shot IDs, frame numbers or internal metric names;
-- numbers appear only when they help, and are rounded and explained.
-
-The style adapts to questions such as "What are my strengths?", "What should I practise this week?",
-"What is my biggest weakness?" and "Which results are uncertain?". To see the numbers, ask for detail
-(for example "Show me the detailed measurements"). You then also get a **Technical details** part and a
-"Measurements behind this answer" section. Groq and Gemini receive the same instructions, so answers
-read the same whichever one replies.
-
-**Streaming:** the answer appears in the chat card word by word while it is generated, and a **Stop**
-button cancels it. Stopping closes the connection to Groq, so generation stops too. An answer counts
-as finished only when Groq's stream ends with a finish reason and contains answer text. Neither an
-HTTP 200 nor a stream that breaks off is treated as success. Groq's reasoning text is not shown.
-
-**When the backup is used:**
-- Gemini answers only when Groq fails for a *temporary* reason: rate or usage limit (HTTP 429),
-  capacity or outage (5xx, 498), timeout, no network, or a stream that stopped early or produced no text.
-- Gemini's answer replaces any partial Groq text in the same chat card. The card notes that Groq was
-  unavailable, with its HTTP status and Groq's error code (for example `HTTP 429, rate_limit_exceeded`).
-  The computer's log shows the same, never the key or your question.
-- A wrong key, an unknown model or an invalid question is reported, not retried.
-- Each provider is tried once per question; nothing loops.
-- If both fail, the card says so; it never makes up an answer.
-
-**Setup:**
-1. Create the keys:
-   - Groq: [console.groq.com/keys](https://console.groq.com/keys);
-   - Gemini: [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-
-   Both have usage limits on free plans; heavier use may need a paid plan.
-2. Add the keys to `.env` in the project folder. Start from `.env.example`, which holds placeholders only:
-   ```
-   GROQ_API_KEY=gsk_...
-   GEMINI_API_KEY=AIza...
-   # optional: GROQ_MODEL=openai/gpt-oss-120b   GEMINI_MODEL=gemini-3.8-flash
-   ```
-   - `.env` is git-ignored. Never put keys in code, HTML or a commit. Put them in `.env`, **not**
-     `.env.example`: that file is tracked by Git. A test fails if it ever contains a real-looking key.
-   - Placeholder values such as `your_groq_api_key` are ignored.
-3. Install the Groq SDK (once): `python -m pip install groq`. It is also listed in `requirements.txt`.
-   If it is missing, start-up says so, and Gemini answers alone until you install it.
-4. Check the keys without starting the app:
-   ```bash
-   PYTHONPATH=src python -m basketball.coaching.llm_coach            # lists models (no tokens used)
-   PYTHONPATH=src python -m basketball.coaching.llm_coach --answer   # also asks each for a one-word reply
-   ```
-   Expected output: `Groq (primary, model openai/gpt-oss-120b): key_ok - …` and a similar Gemini line.
-   Other possible states: `invalid_key`, `model_not_listed` (the models your key can use are listed),
-   `forbidden`, and `unreachable`.
-5. Start the app as usual: `python web_app.py --lan --https`.
-   - Chat turns on automatically when a key is set.
-   - The start-up log shows `AI coach chat: enabled - Groq (openai/gpt-oss-120b); backup Google Gemini (gemini-3.8-flash)`, followed by one key-check line per provider.
-   - To keep chat off, use `--disable-llm-chat`.
-   - To make Gemini the primary, use `--llm-provider gemini`.
-
-**Messages shown in the chat card:**
-- "Groq rejected the API key" or "Gemini rejected the API key";
-- "does not offer the configured model": set `GROQ_MODEL` or `GEMINI_MODEL`;
-- "rate or usage limit was reached";
-- "temporarily unavailable";
-- "took too long";
-- "Could not reach …";
-- "No AI answer is available right now…", when both providers fail.
-
-When the backup answers, the reply says that Groq was unavailable and why. xAI Grok is still supported,
-but only when chosen explicitly with `--llm-provider xai` and `XAI_API_KEY`.
-
-#### Desktop HUD & Live Pose Analysis
-```powershell
-# Analyze a sample video clip with default ball & rim tracking
-python main.py --video raw_clips\klay_vid.mp4 --player klay_thompson --camera-view side_90 --windowed
-# Or using the package syntax:
-python -m basketball.app.main --video raw_clips\klay_vid.mp4 --player klay_thompson --camera-view side_90 --windowed
-```
-
-#### Developer Annotation Lab
-```powershell
-python tools/annotation_lab.py
-```
-
----
-
-## 2. Repository Structure
-
-The codebase is organized into modular packages under `src/basketball/` alongside dedicated directories for tests, scripts, developer tools, evaluation benchmarks, configurations, and data.
-
-```
-basketball_proj/
-├── src/basketball/                    # Core library and production application
-│   ├── core/                          # Pose estimation and kinematic feature extraction
-│   │   ├── analyzer.py                # 2D/3D joint angle computation and phase detection
-│   │   ├── pose_engine.py             # MediaPipe BlazePose 33-landmark inference engine
-│   │   └── shot_feature_extractor.py  # Scale-normalized biomechanical kinematic features
-│   ├── tracking/                      # Object tracking and shot detection
-│   │   ├── ball_tracker.py            # YOLO ball and rim tracking with evidence gating
-│   │   ├── ball_geometry.py           # Parabolic trajectory fitting and rim entry angles
-│   │   ├── calibrated_fsm.py          # Calibrated Finite State Machine shot detector
-│   │   └── shot_detector_ml.py        # ML sequence classifier for shot attempts
-│   ├── analysis/                      # Biomechanics and performance analysis
-│   │   ├── shooting_analysis.py       # 20 per-attempt metrics, consistency, and make/miss split
-│   │   ├── baseline_engine.py         # Player personal baseline computation
-│   │   └── pro_comparator.py          # Pro benchmark comparisons (Curry, Klay, Ray Allen)
-│   ├── coaching/                      # Evidence-based coaching rules and advice
-│   │   ├── shot_coach.py              # Rule-based findings, drill plans, and injury guidance
-│   │   ├── coach_engine.py            # Multi-attempt coaching aggregation engine
-│   │   ├── coaching_service.py        # Remediation follow-up and drill plan generation
-│   │   ├── drills_catalog.py          # Video-backed dribbling drill catalog (Drills section)
-│   │   └── llm_coach.py               # Optional grounded Gemini AI explanation
-│   ├── persistence/                   # Data storage layer
-│   │   └── shot_lab_db.py             # SQLite schema v7: sessions, shots, baselines, audits
-│   ├── services/                      # High-level backend services
-│   │   ├── video_analysis_service.py  # Async video decode, pose cache v2, and replay generation
-│   │   ├── report_service.py          # 10-section coaching report builder and keyframe renderer
-│   │   └── history_service.py         # Player progression history, trends, and weekly goals
-│   ├── hand/                          # Hand and wrist tracking
-│   │   └── hand_engine.py             # MediaPipe hand landmarker and wrist snap analysis
-│   └── app/                           # Application entry points
-│       ├── main.py                    # Desktop OpenCV HUD and live camera runner
-│       └── web_app.py                 # Multi-client local HTTP web server and REST API
-├── tests/                             # Comprehensive test suites
-│   ├── unit/                          # 90+ fast, isolated unit tests
-│   ├── integration/                   # 30+ subsystem and database integration tests
-│   ├── e2e/                           # End-to-end API and browser UI test suites
-│   └── support/                       # Synthetic test fixtures and stick-figure pose generators
-├── scripts/                           # Maintenance and batch processing scripts
-│   ├── batch_ingest_clips.py          # Automated batch ingestion and proposal generation
-│   ├── clean_db_provenance.py         # Database provenance cleanup utility
-│   ├── download_models.py             # Model asset verification and downloader
-│   ├── export_dataset.py              # Normalized dataset exporter and manifest builder
-│   ├── inspect_db.py                  # Database schema and content inspector
-│   ├── review_shots.py                # Terminal-based shot review tool
-│   ├── seed_shot_lab.py               # Test dataset database seeder
-│   └── sync_split_annotations.py      # Ground-truth annotation synchronization tool
-├── tools/                             # Interactive developer tools
-│   └── annotation_lab.py              # Web-based ground truth annotation GUI
-├── evaluation/                        # Evaluation benchmarks and validation harnesses
-│   ├── evaluate_pipeline.py           # Pipeline measurement accuracy and timing benchmark
-│   ├── evaluate_video.py              # Single-video diagnostic evaluator
-│   ├── evaluate_dataset.py            # Multi-clip dataset benchmark
-│   ├── evaluate_ball_tracking.py      # Ball and rim trajectory evaluation harness
-│   ├── evaluate_pose_backends.py      # MediaPipe vs. YOLOv8 Pose comparative benchmark
-│   ├── evaluate_public_datasets.py    # Public benchmark evaluation script
-│   ├── evaluate_shot_models.py        # Shot detector comparison (heuristic vs FSM vs ML)
-│   └── validate_dataset.py            # Dataset split and label integrity validator
-├── configs/                           # System and dataset configuration
-│   └── clip_splits.json               # Canonical clip-to-split mapping (train/val/test)
-├── data/                              # Data manifests, annotations, and reports
-│   ├── ground_truth_annotations.json  # Expert human-labeled shot intervals
-│   ├── manifests/                     # Dataset and weights manifests
-│   └── reports/                       # Generated evaluation benchmark reports
-├── docs/                              # Project documentation
-│   ├── reference/                     # Manual commands, metric dictionary, and deep dives
-│   │   ├── MANUAL_VERIFICATION_COMMANDS.md  # Canonical runnable command index
-│   │   ├── METRIC_DICTIONARY.md             # Biomechanical metric definitions
-│   │   ├── AI_Models_Deep_Dive.md           # Model architecture review
-│   │   └── VIDEO_ANNOTATION_PROTOCOL.md     # Protocol for video labeling
-│   └── setup/                         # Setup and installation guides
-├── web/                               # Frontend single-page application
-│   ├── index.html                     # Main application HTML shell
-│   ├── app.js                         # Core client logic, review UI, player flow, and drills
-│   ├── report.js                      # 10-section report rendering and PDF print formatting
-│   ├── app.css                        # Modern responsive design and design tokens
-│   └── drills/                        # Reference drill videos served by the Drills section
-│       ├── pound_dribble.mp4          # Pound dribble reference (shorts format, 9:16)
-│       ├── pound_plus_cross.mp4       # Pound + crossover reference
-│       ├── pound_plus_v-dribble.mp4   # Pound + V-dribble reference
-│       └── v-dribble_plus_cross.mp4   # V-dribble + crossover reference
-├── models/                            # Machine learning model weights
-│   ├── best.pt                        # Primary YOLO ball & rim detection model (6 MB)
-│   ├── ballRim.pt                     # Alternative ball & rim detection model (22 MB)
-│   └── yolov8m-pose.pt                # YOLOv8 Medium pose estimation model (53 MB)
-├── main.py                            # Backward-compatible root entry point for Desktop HUD
-├── web_app.py                         # Backward-compatible root entry point for Web App
-├── pyproject.toml                     # Modern package configuration
-└── requirements.txt                   # Pinned project dependencies
-```
-
----
-
-## 3. Key Principles & Architecture
-
-Baseline Shot Lab is designed around **evidence before advice**:
-
-- **Grounded Measurements**: Each metric records its value, unit, timestamp, confidence, and the camera views for which it is geometrically valid. Occluded joints or incompatible viewpoints are marked *not measurable* rather than guessed.
-- **Deterministic Coaching Rules**: Findings come from deterministic biomechanical rules applied only to medium- or high-confidence measurements, explicitly citing the attempts and frame timestamps they rest on.
-- **Human-in-the-Loop Verification**: Machine-proposed attempts are quarantined in the database (`shot_lab.db`) until explicitly reviewed by the player or coach. Confirming attempts raises finding confidence; discarded attempts are never included in baselines.
-- **Conservative Injury Guidance**: Explains what the video shows, why it matters biomechanically, and offers conservative modifications. Never diagnoses, predicts, or scores injury risk.
-
-### Data Flow
-
-```
- Browser / Phone Client (web/index.html, app.js, report.js)
-   │  Video Upload (with progress) · Review UI · Replay Player · Report View · Drills Section
-   ▼
- web_app.py (Standard Library HTTP Server)
-   ├── Security Guard: CSRF check, Host validation, LAN access code, rate limiting
-   ├── Job Store (<db>.web_jobs.sqlite3): Async job queues, progress tracking, cancellation
-   ├── Worker Pipeline (services/video_analysis_service.py):
-   │     OpenCV Video Decode → MediaPipe BlazePose (33 landmarks, raw + 3D metric world)
-   │     → ShotPhaseDetector (dip, rise, release, landing proposals)
-   │     → Pose Cache v2 (.json.gz raw unlagged landmark stream)
-   │     → H.264 Replay Generation (for iOS HEVC compatibility)
-   │     → services/report_service.py:
-   │          analysis/shooting_analysis.py (20 biomechanical metrics, consistency, make/miss)
-   │          coaching/shot_coach.py (strengths, priority improvements, scaled drills)
-   │          OpenCV Keyframe Extraction → user_data/keyframes/<session>/
-   ├── Drills API (GET /api/drills, GET /drills/*.mp4):
-   │     coaching/drills_catalog.py (4 video-backed dribbling drills, form check labels)
-   │     web/drills/*.mp4 (reference video files, streamed with byte-range support)
-   └── SQLite Database (shot_lab.db, Schema v7):
-         sessions, labeled_clips, shots, attempt_analysis, session_reports, baselines, remediations
-```
-
----
-
-## 4. Guidelines for Adding New Features
-
-When extending the system with new features, follow these architectural guidelines:
-
-1. **Keep Existing Features Intact**: Existing entry points (`main.py`, `web_app.py`), CLI arguments, and API routes must remain backward-compatible.
-2. **Modular Placement**:
-   - New kinematic metrics: Place in `src/basketball/analysis/shooting_analysis.py`.
-   - New coaching rules: Place in `src/basketball/coaching/shot_coach.py`.
-   - New database queries: Add helper methods to `src/basketball/persistence/shot_lab_db.py`.
-   - New API endpoints: Add route handler in `src/basketball/app/web_app.py`.
-3. **Use Package Imports**: Within `src/`, always use absolute package imports:
-   ```python
-   from basketball.core.pose_engine import PoseEngine
-   from basketball.persistence.shot_lab_db import ShotLabDB
-   ```
-4. **Write Tests**: Add corresponding unit tests in `tests/unit/` or integration tests in `tests/integration/`. Use synthetic test fixtures from `tests/support/tests_support_synthetic_pose.py` to keep tests deterministic and independent of GPU/ultralytics availability.
-5. **Update Verification Index**: If an entry point or CLI option is added or changed, update [`docs/reference/MANUAL_VERIFICATION_COMMANDS.md`](docs/reference/MANUAL_VERIFICATION_COMMANDS.md).
-
----
-
-## 5. Testing & Verification
-
-Run the entire automated test suite:
+Uploading a video from your phone works over a normal local network connection. Live camera access from a phone browser requires HTTPS. Shot Lab can provide local HTTPS and a phone setup page:
 
 ```powershell
-$env:PYTHONPATH="src;."
-python -m unittest discover tests
+python -m pip install cryptography
+python web_app.py --lan --https
 ```
 
-- **Unit tests (`tests/unit/`)**: 92 tests verifying ball geometry, trajectory fitting, biomechanics calculations, baseline aggregation, coaching rules, and dataset export.
-- **Integration tests (`tests/integration/`)**: 31 tests verifying database workflows, video processing pipelines, annotation lab flows, and model evaluation routines.
-- **E2E tests (`tests/e2e/`)**: 17 tests verifying the web server REST API, file upload handling, job lifecycle, keyframe security, and session management.
-- **Workout coach**: `tests/unit/test_workout_planner.py` (catalog, equipment/level/pain rules, finding links, duration formula, final-10% voice rule, honest summary), `tests/e2e/test_workout_api.py` (routes, progress lock, safe media streaming) and `tests/e2e/test_workout_ui.py` (Playwright with a controlled clock and recorded speech; needs Playwright Chromium and ffmpeg, otherwise skipped).
+Follow the address and setup instructions printed by the server. The phone and computer must be on the same trusted Wi-Fi network. The first setup requires installing and trusting Shot Lab's local certificate on the phone; see [Phone camera over Wi-Fi](#phone-camera-over-wi-fi-https) in the detailed setup notes below.
 
-All tests are designed to run out-of-the-box on standard CPU environments without requiring optional dependencies like GPU PyTorch or cloud APIs.
+<details id="phone-camera-over-wi-fi-https">
+<summary>Phone camera over Wi-Fi (HTTPS) setup details</summary>
 
----
+The terminal prints the HTTPS app address, an access code, a phone setup page, and the certificate fingerprint. Use the setup page to download the public certificate, then install and trust it in the phone's system settings. Open the HTTPS address, enter the access code, choose **Record with camera**, and allow camera access. Do not bypass browser certificate warnings.
 
-## 6. Drills Section
+- On iPhone/iPad, install the downloaded profile in **Settings → General → VPN & Device Management**, then enable trust in **Settings → General → About → Certificate Trust Settings**.
+- On Android, install it as a CA certificate in the device's security settings.
+- Keep the phone screen awake while recording. Camera access requires a secure browser context; video uploads do not.
 
-The **Drills** tab in the web app is a standalone practice mode separate from the shot-analysis workflow.
+See the server's printed setup instructions and camera diagnostics if your device or browser uses different menu names.
+</details>
 
-### What it does
+## Privacy and optional AI coach
 
-- Shows a catalog of 4 video-backed dribbling drills (beginner → intermediate).
-- Each drill card displays a thumbnail preview of the reference video, difficulty badge, duration, and skill tags.
-- Clicking a card opens the **drill runner**: the reference video (recorded in 9:16 shorts format) plays on the left; your live camera feed appears on the right at the same aspect ratio.
-- A **motion-based rep counter** tracks dribble bounces in real time using frame-differencing — no model weights, no upload. The count and elapsed time are shown as a HUD overlay on the camera feed and as a large number beside the controls.
-- After stopping, a **form feedback card** appears with pace rating, rhythm consistency score (based on inter-rep timing), and drill-specific coaching cue reminders.
+Video decoding, pose estimation, and report generation run on the computer hosting Shot Lab. The AI coach is optional and requires provider API keys. When enabled, it sends session text summaries to the configured provider; video, frames and pose landmarks are not sent. Do not enable it if you do not want session summaries sent to an external service. See `.env.example` for the supported settings and keep real keys in the ignored `.env` file.
 
-### Drills included
+The web server is intended for local use. If you enable LAN access, keep it on a trusted private network and use the access code and HTTPS instructions provided by the app.
 
-| ID | Name | Difficulty | Video file |
-|---|---|---|---|
-| `pound_dribble` | Pound Dribble | Beginner | `web/drills/pound_dribble.mp4` |
-| `pound_plus_cross` | Pound + Crossover | Beginner | `web/drills/pound_plus_cross.mp4` |
-| `pound_plus_v_dribble` | Pound + V-Dribble | Intermediate | `web/drills/pound_plus_v-dribble.mp4` |
-| `v_dribble_plus_cross` | V-Dribble + Crossover | Intermediate | `web/drills/v-dribble_plus_cross.mp4` |
+## Project notes
 
-### Adding or replacing drill videos
+Shot Lab focuses on evidence-backed feedback: findings are based on recorded measurements and attempt review, and uncertain or unmeasurable results should be treated cautiously. It does not diagnose injuries or calculate a medical injury-risk score.
 
-1. Drop the new `.mp4` file into `web/drills/`.
-2. Add or update the drill entry in `src/basketball/coaching/drills_catalog.py` — set `"video"` to the filename, fill in `"how"`, `"cues"`, `"form_checks"`, and `"difficulty"`.
-3. No server restart is needed if the app is already running; the catalog is fetched fresh on each visit to the Drills tab.
+The application is built in Python, with a browser interface, local video/pose processing and SQLite session storage. The web entry point is `web_app.py`; the desktop HUD entry point is `main.py`. For architecture, data handling, evaluation and development commands, see [Manual Verification Commands](docs/reference/MANUAL_VERIFICATION_COMMANDS.md) and the source tree under `src/basketball/`.
 
-### New API endpoints added
+### Project team
 
-| Method | Route | Description |
-|---|---|---|
-| `GET` | `/api/drills` | Returns the full drill catalog. Accepts `?category=` and `?difficulty=` query params. |
-| `GET` | `/drills/<filename>.mp4` | Streams a drill reference video with byte-range support for seeking. |
+BCS506 Major Project, B.E. Information Science & Engineering, VTU — BMS Institute of Technology & Management, Bengaluru (2025–26).
 
----
-
-## 7. Academic Profile & Team
-
-- **Course:** BCS506 Major Project, B.E. Information Science & Engineering, VTU — BMS Institute of Technology & Management, Bengaluru (2025–26)
-- **Guide:** Asst. Prof. Amulya P, Department of ISE
-- **Team:**
-  - Pranab Bhardwaj (1BY23IS154) — Core vision layer, architecture, and tracking pipeline
-  - Pavan R Bhat (1BY23IS145) — Kinematics and shot-phase detection
-  - Pracheth Kashyap (1BY23IS152) — Session recorder, database, and dataset export
-  - Puneetgouda Patil (1BY23IS165) — Feedback, coaching rules, and output interface
-- **Lineage:** Combines `Basketball-Shot-Analyzer` (kinematics, phase detection, session recording) and `basketball-shot-analysis` (YOLO ball/rim, trajectory fitting), rebuilt on the MediaPipe Tasks API, Ultralytics YOLO, and SQLite provenance engine.
+- Pranab Bhardwaj — vision, architecture and tracking
+- Pavan R Bhat — kinematics and shot-phase detection
+- Pracheth Kashyap — recording, database and dataset export
+- Puneetgouda Patil — coaching rules and output interface
